@@ -1,0 +1,11 @@
+#
+#  xinetd file for running the image server
+#
+service carpsIS
+{
+        socket_type     = stream
+        wait            = no
+        user            = root
+        server          = /usr/local/bin/isWrap
+        disable         = no
+}
