@@ -137,7 +137,7 @@ void marTiff2jpeg( ) {
 	} else {
 	  *(bufo + 3*i*xsize + 3*j)     = 255 - dout;
 	  *(bufo + 3*i*xsize + 3*j + 1) = d & 0xff;
-	  *(bufo + 3*i*xsize + 3*j + 2) = (d & 0xff00)>8;
+	  *(bufo + 3*i*xsize + 3*j + 2) = (d & 0xff00)>>8;
 	  /*
 	  *(bufo + 3*i*xsize + 3*j + 1) = 255 - dout;
 	  *(bufo + 3*i*xsize + 3*j + 2) = 255 - dout;
