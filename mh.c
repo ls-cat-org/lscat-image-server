@@ -276,8 +276,8 @@ int main( int argc, char **argv) {
   printf( " saturation=\"%d\"",        fh.saturation_level);
   printf( " minValue=\"%d\"",          fh.min);
   printf( " maxValue=\"%d\"",          fh.max);
-  printf( " meanValue=\"%d\"",         fh.mean);
-  printf( " rmsValue=\"%d\"",          fh.rms);
+  printf( " meanValue=\"%.1f\"",       fh.mean/1000.0);
+  printf( " rmsValue=\"%.1f\"",        fh.rms/1000.0);
   printf( "/>\n");
 
   return( 0);
