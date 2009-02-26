@@ -13,7 +13,7 @@ clean:
 
 dist:
 	ln -fs . is-$(VERSION)
-	tar czvf is-$(VERSION).tar.gz is-$(VERSION)/*.c is-$(VERSION)/*.h is-$(VERSION)/Makefile is-$(VERSION)/isWrap is-$(VERSION)/etcService is-$(VERSION)/carpsIS
+	tar czvf is-$(VERSION).tar.gz is-$(VERSION)/*.c is-$(VERSION)/*.h is-$(VERSION)/Makefile is-$(VERSION)/*Wrap is-$(VERSION)/etcService is-$(VERSION)/carpsIS is-$(VERSION)/mhxml
 	cd is-$(VERSION)
 	rm -f is-$(VERSION)
 
