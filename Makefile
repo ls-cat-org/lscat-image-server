@@ -1,4 +1,4 @@
-VERSION= 0.20
+VERSION= 0.30
 
 all: is mh
 
