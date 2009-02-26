@@ -21,7 +21,7 @@ install: is
 	install mh /usr/local/bin
 	install is /usr/local/bin
 	install isWrap /usr/local/bin
-	install mhWrap
+	install mhWrap /usr/local/bin
 	grep -q 14850/tcp /etc/services || echo "Please append etcService to /etc/services"
 	grep -q 14851/tcp /etc/services || echo "Please append etcService to /etc/services"
 	if [ -d /etc/xinetd.d ]; then cp carpsIS /etc/xinetd.d; echo "Please restart xinetd"; fi
