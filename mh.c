@@ -268,6 +268,8 @@ int main( int argc, char **argv) {
   printf( " wavelength=\"%.5f\"",      fh.source_wavelength/100000.0);
   printf( " beamX=\"%.3f\"",           fh.beam_x/1000.0);
   printf( " beamY=\"%.3f\"",           fh.beam_y/1000.0);
+  printf( " imagesizeX=\"%d\"",        fh.nfast);
+  printf( " imagesizeY=\"%d\"",        fh.nslow);
   printf( " pixelsizeX=\"%.3f\"",      fh.pixelsize_x/1000.0);
   printf( " pixelsizeY=\"%.3f\"",      fh.pixelsize_y/1000.0);
   printf( " integrationTime=\"%.3f\"", fh.integration_time/1000.0);
