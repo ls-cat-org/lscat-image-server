@@ -256,12 +256,19 @@ int main( int argc, char **argv) {
   fn = argv[1];
 
   f = fopen( fn, "r");
+  if( f == NULL) {
+    printf( "<marheader success=\"false\" msg=\"File Not Found\"/>");
+    return( 0);
+  }
+
+
   fseek( f, 1024, SEEK_SET);
 
   fread( &fh, sizeof(frame_header), 1, f);
 
   printf( "<marheader");
 
+  printf( " success=\"true\"");
   printf( " filename=\"%s\"",          fh.filename);
   printf( " dir=\"%s\"",               fh.filepath);
   printf( " dist=\"%.3f\"",            fh.xtal_to_detector/1000.0);
