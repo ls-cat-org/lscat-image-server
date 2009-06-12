@@ -272,6 +272,8 @@ int main( int argc, char **argv) {
   printf( " filename=\"%s\"",          fh.filename);
   printf( " dir=\"%s\"",               fh.filepath);
   printf( " dist=\"%.3f\"",            fh.xtal_to_detector/1000.0);
+  printf( " rotationRange=\"%.3f\"",   fh.rotation_range/1000.0);
+  printf( " startPhi=\"%.3f\"",        fh.start_phi/1000.0);
   printf( " wavelength=\"%.5f\"",      fh.source_wavelength/100000.0);
   printf( " beamX=\"%.3f\"",           fh.beam_x/1000.0);
   printf( " beamY=\"%.3f\"",           fh.beam_y/1000.0);
@@ -287,6 +289,7 @@ int main( int argc, char **argv) {
   printf( " maxValue=\"%d\"",          fh.max);
   printf( " meanValue=\"%.1f\"",       fh.mean/1000.0);
   printf( " rmsValue=\"%.1f\"",        fh.rms/1000.0);
+  printf( " nSaturated=\"%d\"",        fh.n_saturated);
   printf( "/>\n");
 
   return( 0);
