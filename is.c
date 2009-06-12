@@ -107,7 +107,7 @@ int main( int argc, char **argv) {
   }
 
   if( showUsage || strlen( filename) <= 0) {
-    fprintf( stderr, usage);
+    fprintf( stderr, "%s\n", usage);
     exit( 1);
   }
 
