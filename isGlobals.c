@@ -11,11 +11,11 @@ imtype_type mar345BS = {
 };
 
 imtype_type mar165 = {
-  0, 0, 1, 0x00, 0x0000, 0x002a4949, "Mar 165", marTiff2jpeg
+  0, 0, 1, 0x00, 0x0000, 0x002a4949, "Mar 165", marTiff2png
 };
 
 imtype_type mar165BS = {
-  0, 0, 1, 0x00, 0x0000, 0x49492a00, "Mar 165 Byte Swapped", marTiff2jpeg
+  0, 0, 1, 0x00, 0x0000, 0x49492a00, "Mar 165 Byte Swapped", marTiff2png
 };
 
 imtype_type adsc = {

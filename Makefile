@@ -1,9 +1,9 @@
-VERSION= 0.31
+VERSION= 0.40
 
 all: is mh
 
 is: is.c is.h mr.c isGlobals.c adsc.c imtype.c mar345.c
-	gcc -Wall -o is is.c isGlobals.c mr.c adsc.c imtype.c mar345.c  -ltiff -ljpeg -lm
+	gcc -Wall -o is is.c isGlobals.c mr.c adsc.c imtype.c mar345.c  -ltiff -ljpeg -lpng -lm
 
 mh: mh.c
 	gcc -Wall -o mh mh.c

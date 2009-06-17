@@ -10,7 +10,7 @@
 #include <tiffio.h>
 #include <jpeglib.h>
 #include <fcntl.h>
-
+#include <png.h>
 
 extern int debug;
 
@@ -22,7 +22,7 @@ extern double zoom, xcen, ycen;
 extern char filename[256];
 
 void typeDispatch( void);
-void marTiff2jpeg( void);
+void marTiff2png( void);
 void mar3452jpeg( void);
 void adsc2jpeg( void);
 

@@ -1,9 +1,12 @@
 #include "is.h"
 
-void marTiff2jpeg( ) {
+void write_row_callback( png_structp png_ptr, png_uint_32 row, int pass) {
+  return;
+}
+
+void marTiff2png( ) {
   TIFF *tf;
-  struct jpeg_compress_struct cinfo;
-  struct jpeg_error_mgr jerr;
+
   unsigned short *buf;
   unsigned char  *bufo;
   unsigned int length, width;
@@ -13,27 +16,35 @@ void marTiff2jpeg( ) {
   tsize_t sls;
   int i, j, k, l, m, n, ya, xa;
   int newL, newT, newW, newH;
-  FILE *jout;
-  JSAMPROW jsp[1];
+
+  png_structp png_ptr;
+  png_infop info_ptr;
+  png_bytep row_pointer;
 
   tf = TIFFOpen( filename, "r");
 
-  cinfo.err = jpeg_std_error(&jerr);
-  jpeg_create_compress(&cinfo);
 
-  jout = stdout;
+  png_ptr = png_create_write_struct( PNG_LIBPNG_VER_STRING, (png_voidp)NULL, NULL, NULL);
+  if( !png_ptr)
+    return;
 
-  jpeg_stdio_dest(&cinfo, jout);
-  cinfo.image_width = xsize;		/* image width and height, in pixels */
-  cinfo.image_height = ysize;
+  info_ptr = png_create_info_struct( png_ptr);
+  if( !info_ptr) {
+    png_destroy_write_struct( &png_ptr, (png_infopp)NULL);
+    return;
+  }
 
-  cinfo.input_components = 3;		/* # of color components per pixel */
-  cinfo.in_color_space = JCS_RGB;	/* colorspace of input image */
+  if( setjmp(png_jmpbuf(png_ptr))) {
+    png_destroy_write_struct(&png_ptr, &info_ptr);
+    return;
+  }
 
-  jpeg_set_defaults(&cinfo);
-  jpeg_set_quality( &cinfo, jpq, TRUE);
+  png_init_io( png_ptr, stdout);
+  png_set_write_status_fn( png_ptr, write_row_callback);
 
-  jpeg_start_compress(&cinfo, TRUE);
+  png_set_IHDR( png_ptr, info_ptr, xsize, ysize, 8, PNG_COLOR_TYPE_RGB, PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
+
+  png_write_info( png_ptr, info_ptr);
 
   if( tf != NULL) {
     TIFFGetField( tf, TIFFTAG_IMAGELENGTH,   &length);
@@ -141,12 +152,13 @@ void marTiff2jpeg( ) {
 	}
       }
 
-      jsp[0] = bufo + 3*i*xsize;
-      jpeg_write_scanlines(&cinfo, jsp, 1);
+      row_pointer = bufo + 3*i*xsize;
+      png_write_row( png_ptr, row_pointer);
     }
     TIFFClose( tf);
 
-    jpeg_finish_compress(&cinfo);
-    fclose( jout);
+    png_write_end( png_ptr, info_ptr);
+    fclose( stdout);
+    png_destroy_write_struct( &png_ptr, &info_ptr);
   }
 }
