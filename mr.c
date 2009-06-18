@@ -42,7 +42,8 @@ void marTiff2png( ) {
   png_init_io( png_ptr, stdout);
   png_set_write_status_fn( png_ptr, write_row_callback);
 
-  png_set_IHDR( png_ptr, info_ptr, xsize, ysize, 8, PNG_COLOR_TYPE_RGB, PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
+  png_set_IHDR( png_ptr, info_ptr, xsize, ysize, 8, PNG_COLOR_TYPE_RGB_ALPHA, PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
+  //  png_set_IHDR( png_ptr, info_ptr, xsize, ysize, 8, PNG_COLOR_TYPE_RGB, PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
 
   png_write_info( png_ptr, info_ptr);
 
@@ -53,7 +54,8 @@ void marTiff2png( ) {
     sls = TIFFScanlineSize( tf);
     buf  = malloc( sls * length);
 
-    bufo = calloc( 3 * ysize * xsize, sizeof(unsigned char) );
+    //    bufo = calloc( 3 * ysize * xsize, sizeof(unsigned char) );
+    bufo = calloc( 4 * ysize * xsize, sizeof(unsigned char) );
 
     //
     //  Define the portion of the original image that is to appear in
@@ -130,6 +132,7 @@ void marTiff2png( ) {
 	  }
 	}
 
+
 	if( d <= wpixel) {
 	  dout = 0;
 	} else {
@@ -141,6 +144,14 @@ void marTiff2png( ) {
 	  }
 	}
 
+	// 16 bit encoding
+
+	*(bufo + 4*i*xsize + 4*j    )  = ((d & 0xff00) >> 8) & 0xff;
+	*(bufo + 4*i*xsize + 4*j + 1)  = (d & 0x00ff) & 0xff;
+	*(bufo + 4*i*xsize + 4*j + 2)  = 255 - dout;
+	*(bufo + 4*i*xsize + 4*j + 3)  = (d==65535) ? 0 : 255;
+
+	/*
 	if( d==65535) {
 	  *(bufo + 3*i*xsize + 3*j    ) = 255;	// prefer red for saturation
 	  *(bufo + 3*i*xsize + 3*j + 1) =   0;
@@ -150,9 +161,11 @@ void marTiff2png( ) {
 	  *(bufo + 3*i*xsize + 3*j + 1) = 255 - dout;
 	  *(bufo + 3*i*xsize + 3*j + 2) = 255 - dout;
 	}
+	*/
       }
 
-      row_pointer = bufo + 3*i*xsize;
+      row_pointer = bufo + 4*i*xsize;
+      //      row_pointer = bufo + 3*i*xsize;
       png_write_row( png_ptr, row_pointer);
     }
     TIFFClose( tf);
