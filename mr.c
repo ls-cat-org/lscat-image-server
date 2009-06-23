@@ -88,9 +88,9 @@ void marTiff2jpeg( ) {
 	l += newL;
 
 	//
-	// default pixel has no value  (white)
+	// default pixel has maximum value
 	//
-	d = 0;
+	d = 65535;
 
 	if( l>=0 && k>=0 && l<width && k<length) {
 	  //
