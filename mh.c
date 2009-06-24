@@ -248,12 +248,18 @@ int main( int argc, char **argv) {
   FILE *f;
   static frame_header fh;
   char *fn;
-  
+  char *rqid;
+
   if( argc < 2) {
-    fprintf( stderr, "Usage:\n  %s filename\n\n", argv[0]);
+    fprintf( stderr, "Usage:\n  %s filename [rqid]\n\n", argv[0]);
     exit( 1);
   }
   fn = argv[1];
+  if( argc == 3)
+    rqid = argv[2];
+  else
+    rqid = "0";
+
 
   f = fopen( fn, "r");
   if( f == NULL) {
@@ -269,6 +275,7 @@ int main( int argc, char **argv) {
   printf( "<marheader");
 
   printf( " success=\"true\"");
+  printf( " rqid=\"%s\"",	       rqid);
   printf( " filename=\"%s\"",          fh.filename);
   printf( " dir=\"%s\"",               fh.filepath);
   printf( " dist=\"%.3f\"",            fh.xtal_to_detector/1000.0);
