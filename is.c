@@ -33,12 +33,19 @@ This program converts diffraction images into a jpeg image for display.\n\
 void isDaemon() {
   isType isInfo;
   int gotOne;
+  struct passwd *pwInfo;
   dbInit();
   
   while( 1) {
     dbWait();
     gotOne = dbGet( &isInfo);
-    fprintf( stderr, "Got %d\n", gotOne);
+    fprintf( stderr, "Got %d for %s\n", gotOne, isInfo.user);
+    pwInfo = getpwnam( isInfo.user);
+    if( pwInfo == NULL) {
+      fprintf( stderr, "Null pwd info\n");
+    } else {
+      fprintf( stderr, "uid: %d    guid: %d\n", pwInfo->pw_uid, pwInfo->pw_gid);
+    }
   }
 }
 

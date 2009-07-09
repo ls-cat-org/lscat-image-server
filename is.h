@@ -13,6 +13,8 @@
 #include <math.h>
 #include <libpq-fe.h>
 #include <poll.h>
+#include <sys/types.h>
+#include <pwd.h>
 
 extern int debug;
 
@@ -29,6 +31,7 @@ void marTiff2jpeg( void);
 //void adsc2jpeg( void);
 
 typedef struct is_struct {
+  char *user;   // user name to run as
   char *ip;	// ip address of waiting image servee
   int port;	// the port to connect to
   char *fn;	// the file name

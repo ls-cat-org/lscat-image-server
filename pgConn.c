@@ -1,6 +1,7 @@
 #include "is.h"
 
 PGconn *db=NULL;
+PGresult *isResult = NULL;
 
 void dbInit() {
   PGresult* res;
@@ -18,6 +19,7 @@ void dbInit() {
 
     /** get the next pid. */
     res = PQexec( db, "select rmt.isInit()");
+    PQclear( res);
 
     status = PQstatus( db);
     if( status == PGRES_BAD_RESPONSE || status == PGRES_FATAL_ERROR || status == PGRES_NONFATAL_ERROR) {
@@ -62,6 +64,9 @@ int dbGet( isType *inf) {
 
   rtn = 0;	// ignore result by default
 
+  //
+  // Query the database to find our information
+  //
   res = PQexec( db, "select * from rmt.popIs() where isuser is not null");
   if( res == NULL)
     return rtn;
@@ -69,14 +74,43 @@ int dbGet( isType *inf) {
   status = PQresultStatus( res);
   if( status != PGRES_TUPLES_OK) {
     fprintf( stderr, "popIs failure: %s\n %s\n", PQresStatus( status), PQresultErrorMessage( res));
+    PQclear( res);
     return rtn;
   }
 
   rtn = PQntuples( res);
-  if( rtn != 1)
+  if( rtn != 1) {
+    PQclear( res);
     return 0;		// more than one row is bad, treat it as though it didn't find any
+  }
 
-  // usually we'll get a row nulls
+  // CREATE TYPE rmt.isType AS ( isuser text, isip inet, isport int, fn text, xsize int, ysize int, contrast int, wval int, x int, y int, width int, height int);
+
+  inf->user      = PQgetvalue( res, 0, PQfnumber( res, "isuser"));
+  inf->ip        = PQgetvalue( res, 0, PQfnumber( res, "isip"));
+  inf->port      = atoi(PQgetvalue( res, 0, PQfnumber( res, "isport")));
+  inf->fn        = PQgetvalue( res, 0, PQfnumber( res, "fn"));
+  inf->xsize     = atoi(PQgetvalue( res, 0, PQfnumber( res, "xsize")));
+  inf->ysize     = atoi(PQgetvalue( res, 0, PQfnumber( res, "ysize")));
+  inf->contrast  = atoi(PQgetvalue( res, 0, PQfnumber( res, "contrast")));
+  inf->wval      = atoi(PQgetvalue( res, 0, PQfnumber( res, "wval")));
+  inf->x         = atoi(PQgetvalue( res, 0, PQfnumber( res, "x")));
+  inf->y         = atoi(PQgetvalue( res, 0, PQfnumber( res, "y")));
+  inf->width     = atoi(PQgetvalue( res, 0, PQfnumber( res, "width")));
+  inf->height    = atoi(PQgetvalue( res, 0, PQfnumber( res, "height")));
+
+
+
+  //
+  // free memory from the previous call, if appropriate
+  //
+  if( isResult != NULL)
+    PQclear( isResult);
+
+  //
+  // save this so we don't have to allocate memory for all those strings we are pointing to
+  //
+  isResult = res;
 
   {
     PQprintOpt zz;
