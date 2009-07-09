@@ -61,6 +61,7 @@ void isDaemon() {
       setfsuid( oldUid);
       continue;
     }
+    fprintf( stderr, "test  uid of file: %d\n", sb.st_uid);
 
     setfsuid( oldUid);
   }
