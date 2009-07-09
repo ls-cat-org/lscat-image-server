@@ -34,6 +34,9 @@ void isDaemon() {
   isType isInfo;
   int gotOne;
   struct passwd *pwInfo;
+  uid_t oldUid;
+  struct stat sb;
+
   dbInit();
   
   while( 1) {
@@ -43,9 +46,23 @@ void isDaemon() {
     pwInfo = getpwnam( isInfo.user);
     if( pwInfo == NULL) {
       fprintf( stderr, "Null pwd info\n");
-    } else {
-      fprintf( stderr, "uid: %d    guid: %d\n", pwInfo->pw_uid, pwInfo->pw_gid);
+      continue;
     }
+    if( pwInfo.pw_uid < 10000) {
+      fprintf( stderr, "uid too low: %d\n", pwInfo.pw_uid);
+      continue;
+    }
+
+    fprintf( stderr, "uid: %d    guid: %d  real name: %s\n", pwInfo->pw_uid, pwInfo->pw_gid, pwInfo->gecos);
+
+    oldUid = setfsuid( pwInfo->pw_uid);
+    if( stat( "/root/.ssh", &sb) == 0) {
+      fprintf( stderr, "stat error\n");
+      setfsuid( oldUid);
+      continue;
+    }
+
+    setfsuid( oldUid);
   }
 }
 

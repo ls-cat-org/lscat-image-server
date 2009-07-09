@@ -15,6 +15,7 @@
 #include <poll.h>
 #include <sys/types.h>
 #include <pwd.h>
+#include <sys/stat.h>
 
 extern int debug;
 
