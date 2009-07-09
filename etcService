@@ -1,1 +1,4 @@
-carpsIS         14850/tcp                       # CARPS image server
+lscatis         14850/tcp                       # LS-CAT Image Server (V1)
+lscaths         14851/tcp                       # LS-CAT Header Server
+lscatis2        14852/tcp                       # LS-CAT Image Server (V2)
+

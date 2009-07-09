@@ -6,13 +6,13 @@ void marTiff2jpeg( ) {
   struct jpeg_error_mgr jerr;
   unsigned short *buf;
   unsigned char  *bufo;
-  unsigned int length, width;
   unsigned short d, d1;
   unsigned char dout;
   unsigned int rslt;
+  unsigned int iheight, iwidth;
   tsize_t sls;
-  int i, j, k, l, m, n, ya, xa;
-  int newL, newT, newW, newH;
+  int i, j, k, l, m, n;
+  float ya, xa;
   FILE *jout;
   JSAMPROW jsp[1];
 
@@ -31,45 +31,41 @@ void marTiff2jpeg( ) {
   cinfo.in_color_space = JCS_RGB;	/* colorspace of input image */
 
   jpeg_set_defaults(&cinfo);
-  jpeg_set_quality( &cinfo, jpq, TRUE);
+  jpeg_set_quality( &cinfo, 100, TRUE);
 
   jpeg_start_compress(&cinfo, TRUE);
 
   if( tf != NULL) {
-    TIFFGetField( tf, TIFFTAG_IMAGELENGTH,   &length);
-    TIFFGetField( tf, TIFFTAG_IMAGEWIDTH,    &width);
+    TIFFGetField( tf, TIFFTAG_IMAGELENGTH,   &iheight);
+    TIFFGetField( tf, TIFFTAG_IMAGEWIDTH,    &iwidth);
+
+    //    fprintf( stderr, "iheight: %d  iwidth: %d\n", iheight, iwidth);
+    //    fprintf( stderr, "height: %d  width: %d\n", height, width);
+    //    fprintf( stderr, "xstart: %d  ystart: %d\n", xstart, ystart);
+    //    fprintf( stderr, "xsize: %d  ysize: %d\n", xsize, ysize);
 
     sls = TIFFScanlineSize( tf);
-    buf  = malloc( sls * length);
+    buf  = malloc( sls * height);
 
     bufo = calloc( 3 * ysize * xsize, sizeof(unsigned char) );
 
     //
-    //  Define the portion of the original image that is to appear in
-    //  the output.
-    //
-    newW = width/zoom;
-    newH = length/zoom;
-    newL = (width  - newW)/2.0 + width*(xcen - 0.5);
-    if( newL < 0)
-      newL++;
-    newT = (length - newH)/2.0 + length*(ycen - 0.5);
-    if( newT < 0)
-      newT++;
-
-    //
     // size of rectangle to search for the maximum pixel value
     //
-    ya = newH/ysize;
-    xa = newW/xsize;
+    ya = (double)height/(double)ysize;
+    xa = (double)width/(double)xsize;
+
+    //    fprintf( stderr, "ya: %f  xa: %f\n", ya, xa);
+
 
     //
     // read only the rows only that will appear in the final image
     //
-    for( i=newT-1; i<newT+newH+1; i++) {
-      if( i<0 || i>=length)
+    //    fprintf( stderr, "ystart-1: %d   ystart+height+1: %d\n", ystart-1, ystart+height+1);
+    for( i = (int)ystart - (int)1; i<(int)(ystart+height+1); i++) {
+      if( i<0 || i>=iheight)
 	continue;
-      TIFFReadScanline( tf, buf + i*width, i, 0);
+      TIFFReadScanline( tf, buf + i*iwidth, i, 0);
     }
 
     //
@@ -78,39 +74,41 @@ void marTiff2jpeg( ) {
     for( i=0; i<ysize; i++) {
       //
       // map pixel horz index in old image
-      k = i * newH;
+      k = i * height;
       k /= ysize;
-      k += newT;
+      k += ystart;
 
       for( j=0; j<xsize; j++) {
-	l = j * newW;
+	l = j * width;
 	l /= xsize;
-	l += newL;
+	l += xstart;
 
 	//
 	// default pixel has maximum value, er, zero
 	//
 	d = 0;
 
-	if( l>=0 && k>=0 && l<width && k<length) {
+	if( l>=0 && k>=0 && l<iwidth && k<iheight) {
 	  //
 	  //  If we are on the orginal image, get the pixel value
 	  //
-	  if( k>=0 && k<length) { 
-	    if( l>=0 && l<width)
-	      d = *(buf + k*width+l);
+	  if( k>=0 && k<iheight) { 
+	    if( l>=0 && l<iwidth)
+	      d = *(buf + k*iwidth+l);
 	  }
+	  //	  fprintf( stderr, "l: %d  k: %d  d: %d\n", l, k, d);
+
 
 	  //
 	  // Look around for the maximum value when the ouput image is
 	  // being reduced
 	  //
-	  if( ya>0 || xa>0) {
-	    for( m=(k-ya/2)*width; m<(k+ya/2)*width; m+=width) {
-	      if( m<0 || m>=length*width)
+	  if( ya>0. || xa>0.) {
+	    for( m=floor(k-ya/2.)*iwidth; m<ceil(k+ya/2.)*iwidth; m+=iwidth) {
+	      if( m<0 || m>=iheight*iwidth)
 		continue;
-	      for( n=l-xa/2; n<l+xa/2; n++) {
-		if( n<0 || n>= width)
+	      for( n=floor(l-xa/2.); n<ceil(l+xa/2.); n++) {
+		if( n<0 || n>= iwidth)
 		  continue;
 		d1 = *(buf + m + n);
 		d = (d>d1 ? d : d1);

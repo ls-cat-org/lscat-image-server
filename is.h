@@ -10,21 +10,39 @@
 #include <tiffio.h>
 #include <jpeglib.h>
 #include <fcntl.h>
-
+#include <math.h>
+#include <postgresql/libpq-fe.h>
+#include <poll.h>
 
 extern int debug;
 
 //
 // Global variables used in the modules that actually do the work
 //
-extern unsigned int xsize, ysize, wpixel, bpixel, jpq;
+extern unsigned int xsize, ysize, wpixel, bpixel, jpq, width, height, xstart, ystart;
 extern double zoom, xcen, ycen;
 extern char filename[256];
 
 void typeDispatch( void);
 void marTiff2jpeg( void);
-void mar3452jpeg( void);
-void adsc2jpeg( void);
+//void mar3452jpeg( void);
+//void adsc2jpeg( void);
+
+typedef struct is_struct {
+  char *ip;	// ip address of waiting image servee
+  int port;	// the port to connect to
+  char *fn;	// the file name
+  int xsize;	// x size of final image
+  int ysize;	// y size of final image
+  int contrast;	// black pixel value
+  int wval;	// white pixel value
+  int x;	// x coordinate of upper left hand corner of original image segment
+  int y;	// y coordinate of upper left hand corner of original image segment
+  int width;	// width of original image segment
+  int height;	// height of original image segment
+} isType;
+
+
 
 //
 // structure to store image identification information
@@ -42,26 +60,26 @@ typedef struct imtype_struct {
 
 extern imtype_type *imTypeArray[];
 
-
+/*
 typedef struct adsc_header_struct {
   struct adsc_header_struct *next;
   char *key;
   char *val;
 } adsc_header_type;
+*/
 
 
+//extern adsc_header_type *theHeader;
 
-extern adsc_header_type *theHeader;
-
-
+/*
 typedef struct mar345_ascii_header_struct {
   struct mar345_ascii_header_struct *next;
   char *key;
   char *val;
 } mar345_ascii_header_type;
-
-extern mar345_ascii_header_type *theMar345AsciiHeader;
-
+*/
+//extern mar345_ascii_header_type *theMar345AsciiHeader;
+/*
 typedef struct mar345_bin_header_struct {
   unsigned int swapFlag;	//  1) 1234 or else swap needed
   unsigned int n1Size;		//  2) image size in one dimension
@@ -80,11 +98,16 @@ typedef struct mar345_bin_header_struct {
   unsigned int chi;		// 15) Chi (in milli-degrees)
   unsigned int twotheta;	// 16) 2-theta (in milli-degrees)
 } mar345_bin_header_type;
+*/
+//extern mar345_bin_header_type theMar345BinHeader;
 
-extern mar345_bin_header_type theMar345BinHeader;
-
-
+/*
 typedef struct mar345_overflow_struct {
   unsigned int location;
   unsigned int value;
 } mar345_overflow_type;
+*/
+
+extern void dbInit();
+extern void dbWait();
+extern int dbGet( isType *);

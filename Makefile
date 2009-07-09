@@ -2,8 +2,8 @@ VERSION= 0.60
 
 all: is mh
 
-is: is.c is.h mr.c isGlobals.c adsc.c imtype.c mar345.c
-	gcc -Wall -O3 -o is is.c isGlobals.c mr.c adsc.c imtype.c mar345.c  -ltiff -ljpeg -lm
+is: is.c is.h mr.c isGlobals.c imtype.c pgConn.c
+	gcc -Wall -O3 -o is is.c isGlobals.c mr.c imtype.c pgConn.c  -ltiff -ljpeg -lm -lpq
 
 mh: mh.c
 	gcc -Wall -o mh mh.c
@@ -20,10 +20,4 @@ dist:
 install: is
 	install mh /usr/local/bin
 	install is /usr/local/bin
-	install isWrap /usr/local/bin
-	install mhWrap /usr/local/bin
-	grep -q 14850/tcp /etc/services || echo "Please append etcService to /etc/services"
-	grep -q 14851/tcp /etc/services || echo "Please append etcService to /etc/services"
-	if [ -d /etc/xinetd.d ]; then cp carpsIS /etc/xinetd.d; echo "Please restart xinetd"; fi
-	if [ -d /etc/xinetd.d ]; then cp mhxml   /etc/xinetd.d; echo "Please restart xinetd"; fi
 
