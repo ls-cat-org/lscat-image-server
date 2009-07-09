@@ -11,7 +11,7 @@
 #include <jpeglib.h>
 #include <fcntl.h>
 #include <math.h>
-#include <postgresql/libpq-fe.h>
+#include <libpq-fe.h>
 #include <poll.h>
 
 extern int debug;
