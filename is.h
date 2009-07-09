@@ -12,10 +12,12 @@
 #include <fcntl.h>
 #include <math.h>
 #include <libpq-fe.h>
+//#include <postgresql/libpq-fe.h>
 #include <poll.h>
 #include <sys/types.h>
 #include <pwd.h>
 #include <sys/stat.h>
+#include <sys/fsuid.h>
 
 extern int debug;
 

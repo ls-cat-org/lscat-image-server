@@ -48,12 +48,12 @@ void isDaemon() {
       fprintf( stderr, "Null pwd info\n");
       continue;
     }
-    if( pwInfo.pw_uid < 10000) {
-      fprintf( stderr, "uid too low: %d\n", pwInfo.pw_uid);
+    if( pwInfo->pw_uid < 10000) {
+      fprintf( stderr, "uid too low: %d\n", pwInfo->pw_uid);
       continue;
     }
 
-    fprintf( stderr, "uid: %d    guid: %d  real name: %s\n", pwInfo->pw_uid, pwInfo->pw_gid, pwInfo->gecos);
+    fprintf( stderr, "uid: %d    guid: %d  real name: %s\n", pwInfo->pw_uid, pwInfo->pw_gid, pwInfo->pw_gecos);
 
     oldUid = setfsuid( pwInfo->pw_uid);
     if( stat( "/root/.ssh", &sb) == 0) {
