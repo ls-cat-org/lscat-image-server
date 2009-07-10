@@ -42,7 +42,6 @@ void isDaemon() {
   while( 1) {
     dbWait();
     gotOne = dbGet( &isInfo);
-    fprintf( stderr, "Got %d for %s\n", gotOne, isInfo.user);
     if( gotOne != 1)
       continue;
 
@@ -69,6 +68,10 @@ void isDaemon() {
       //setfsuid( oldUid);
       continue;
     }
+
+    fprintf( stderr, "Running as uid=%d, gid=%d\n", getuid(), getgid());
+    fprintf( stderr, "Running as euid=%d, egid=%d\n", geteuid(), getegid());
+
     if( stat( isInfo.fn, &sb) == -1) {
       fprintf( stderr, "stat error: %s on file '%s'\n", strerror( errno), isInfo.fn);
       //setfsuid( oldUid);
