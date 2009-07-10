@@ -65,12 +65,12 @@ void isDaemon() {
     fprintf( stderr, "uid: %d    guid: %d  real name: %s\n", pwInfo->pw_uid, pwInfo->pw_gid, pwInfo->pw_gecos);
 
 
-    grInfo = getdrgid( isInfo.esaf * 100);
+    grInfo = getgrgid( isInfo.esaf * 100);
     if( grInfo == NULL) {
       continue;
     }
 
-    for( spp = grInfo.gr_mem; spp != NULL; spp++) {
+    for( spp = grInfo->gr_mem; spp != NULL; spp++) {
       fprintf( stderr, "group member: %s\n", *spp);
     }
 
