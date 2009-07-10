@@ -129,6 +129,7 @@ void isDaemon() {
     }
     fprintf( stderr, "test  uid of file: %d\n", sb.st_uid);
 
+    strcpy( filename, isInfo.fn);
     xsize  = isInfo.xsize;
     ysize  = isInfo.ysize;
     xstart = isInfo.x;
