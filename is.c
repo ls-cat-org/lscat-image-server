@@ -56,8 +56,8 @@ void isDaemon() {
     fprintf( stderr, "uid: %d    guid: %d  real name: %s\n", pwInfo->pw_uid, pwInfo->pw_gid, pwInfo->pw_gecos);
 
     //oldUid = setfsuid( pwInfo->pw_uid);
-    if( seteuid( pwInfo->pw_uid) == -1) {
-      fprintf( stderr, "seteuid error\n%s\n", strerror( errno));
+    if( seteid( pwInfo->pw_uid) == -1) {
+      fprintf( stderr, "setuid error\n%s\n", strerror( errno));
       //setfsuid( oldUid);
       continue;
     }
@@ -68,7 +68,7 @@ void isDaemon() {
     }
     fprintf( stderr, "test  uid of file: %d\n", sb.st_uid);
 
-    setfsuid( oldUid);
+    //setfsuid( oldUid);
   }
 }
 
