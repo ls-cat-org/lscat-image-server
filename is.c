@@ -43,6 +43,9 @@ void isDaemon() {
     dbWait();
     gotOne = dbGet( &isInfo);
     fprintf( stderr, "Got %d for %s\n", gotOne, isInfo.user);
+    if( gotOne != 1)
+      continue;
+
     pwInfo = getpwnam( isInfo.user);
     if( pwInfo == NULL) {
       fprintf( stderr, "Null pwd info\n");
