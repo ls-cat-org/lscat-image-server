@@ -57,7 +57,8 @@ void isDaemon() {
 
     fprintf( stderr, "uid: %d    guid: %d  real name: %s\n", pwInfo->pw_uid, pwInfo->pw_gid, pwInfo->pw_gecos);
 
-    //oldUid = setfsuid( pwInfo->pw_uid);
+    oldUid = seteuid( 6441900);
+    /*
     if( setresgid( pwInfo->pw_gid, pwInfo->pw_gid, pwInfo->pw_gid) == -1) {
       fprintf( stderr, "setregid to %d error: %s\n", pwInfo->pw_gid, strerror( errno));
       //setfsuid( oldUid);
@@ -71,6 +72,7 @@ void isDaemon() {
 
     fprintf( stderr, "Running as uid=%d, gid=%d\n", getuid(), getgid());
     fprintf( stderr, "Running as euid=%d, egid=%d\n", geteuid(), getegid());
+    */
 
     if( stat( isInfo.fn, &sb) == -1) {
       fprintf( stderr, "stat error: %s on file '%s'\n", strerror( errno), isInfo.fn);
