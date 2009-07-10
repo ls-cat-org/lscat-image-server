@@ -68,17 +68,10 @@ void isDaemon() {
       continue;
     }
 
-    /*
     if( seteuid( pwInfo->pw_uid) == -1) {
       fprintf( stderr, "seteuid to %d error: %s\n", pwInfo->pw_uid, strerror( errno));
       continue;
     }
-    */
-    if( setuid( 82825) == -1) {
-      fprintf( stderr, "seteuid to %d error: %s\n", pwInfo->pw_uid, strerror( errno));
-      continue;
-    }
-
 
     fprintf( stderr, "Running as uid=%d, gid=%d\n", getuid(), getgid());
     fprintf( stderr, "Running as euid=%d, egid=%d\n", geteuid(), getegid());
