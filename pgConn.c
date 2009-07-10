@@ -87,7 +87,7 @@ int dbGet( isType *inf) {
   // CREATE TYPE rmt.isType AS ( isuser text, isip inet, isport int, fn text, xsize int, ysize int, contrast int, wval int, x int, y int, width int, height int);
 
   inf->user      = PQgetvalue( res, 0, PQfnumber( res, "isuser"));
-  inf->esaf      = atoi(PQgetvalue( res, 0, PQfnumber( res, "isessaf")));
+  inf->esaf      = atoi(PQgetvalue( res, 0, PQfnumber( res, "isesaf")));
   inf->ip        = PQgetvalue( res, 0, PQfnumber( res, "isip"));
   inf->port      = atoi(PQgetvalue( res, 0, PQfnumber( res, "isport")));
   inf->fn        = PQgetvalue( res, 0, PQfnumber( res, "fn"));
