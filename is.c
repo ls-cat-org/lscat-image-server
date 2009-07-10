@@ -6,6 +6,7 @@
 unsigned int xsize, ysize, wpixel, bpixel, jpq, xstart, ystart, height, width;
 double zoom, xcen, ycen;
 char filename[256];
+char **spp;
 
 
 static char usage[] = {
@@ -34,6 +35,7 @@ void isDaemon() {
   isType isInfo;
   int gotOne;
   struct passwd *pwInfo;
+  struct group *grInfo;
   uid_t oldUid;
   struct stat sb;
 
@@ -63,16 +65,21 @@ void isDaemon() {
     fprintf( stderr, "uid: %d    guid: %d  real name: %s\n", pwInfo->pw_uid, pwInfo->pw_gid, pwInfo->pw_gecos);
 
 
-    if( setfsuid( 82825) == -1) {
-      fprintf( stderr, "seteuid to %d error: %s\n", 82825, strerror( errno));
+    grInfo = getdrgid( isInfo.esaf * 100);
+    if( grInfo == NULL) {
       continue;
     }
-    /*
+
+    for( spp = grInfo.gr_mem; spp != NULL; spp++) {
+      fprintf( stderr, "group member: %s\n", *spp);
+    }
+
+
     if( setfsuid( pwInfo->pw_uid) == -1) {
       fprintf( stderr, "seteuid to %d error: %s\n", pwInfo->pw_uid, strerror( errno));
       continue;
     }
-    */
+
     if( setfsgid( isInfo.esaf * 100) == -1) {
       fprintf( stderr, "setgid to %d error: %s\n", isInfo.esaf*100, strerror( errno));
       continue;
