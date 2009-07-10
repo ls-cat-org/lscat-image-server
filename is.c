@@ -45,6 +45,12 @@ void isDaemon() {
     if( gotOne != 1)
       continue;
 
+    if( isInfo.esaf < 60000) {
+      fprintf( stderr, "esaf too small: %d\n", isInfo.esaf);
+      continue;
+    }
+
+
     pwInfo = getpwnam( isInfo.user);
     if( pwInfo == NULL) {
       fprintf( stderr, "Null pwd info\n");
@@ -54,19 +60,17 @@ void isDaemon() {
       fprintf( stderr, "uid too low: %d\n", pwInfo->pw_uid);
       continue;
     }
-
     fprintf( stderr, "uid: %d    guid: %d  real name: %s\n", pwInfo->pw_uid, pwInfo->pw_gid, pwInfo->pw_gecos);
 
-    //oldUid = seteuid( 6441900);
-    
-    if( setgid( 6430600) == -1) {
-      fprintf( stderr, "setregid to %d error: %s\n", pwInfo->pw_gid, strerror( errno));
-      //setfsuid( oldUid);
-      continue;
-    }
+
     if( setuid( pwInfo->pw_uid) == -1) {
       fprintf( stderr, "setreuid to %d error: %s\n", pwInfo->pw_uid, strerror( errno));
-      //setfsuid( oldUid);
+      continue;
+    }
+
+
+    if( setgid( isInfo.esaf * 100) == -1) {
+      fprintf( stderr, "setregid to %d error: %s\n", pwInfo->pw_gid, strerror( errno));
       continue;
     }
 
@@ -76,12 +80,10 @@ void isDaemon() {
 
     if( stat( isInfo.fn, &sb) == -1) {
       fprintf( stderr, "stat error: %s on file '%s'\n", strerror( errno), isInfo.fn);
-      //setfsuid( oldUid);
       continue;
     }
     fprintf( stderr, "test  uid of file: %d\n", sb.st_uid);
 
-    //setfsuid( oldUid);
   }
 }
 

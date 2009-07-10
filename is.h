@@ -35,6 +35,7 @@ void marTiff2jpeg( void);
 
 typedef struct is_struct {
   char *user;   // user name to run as
+  int  esaf;	// esaf for the experiment
   char *ip;	// ip address of waiting image servee
   int port;	// the port to connect to
   char *fn;	// the file name
