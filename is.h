@@ -31,6 +31,7 @@ extern int debug;
 extern unsigned int xsize, ysize, wpixel, bpixel, jpq, width, height, xstart, ystart;
 extern double zoom, xcen, ycen;
 extern char filename[256];
+extern FILE *fout;
 
 void typeDispatch( void);
 void marTiff2jpeg( void);

@@ -21,7 +21,10 @@ void marTiff2jpeg( ) {
   cinfo.err = jpeg_std_error(&jerr);
   jpeg_create_compress(&cinfo);
 
-  jout = stdout;
+  if( fout == NULL)
+    jout = stdout;
+  else
+    jout = fout;
 
   jpeg_stdio_dest(&cinfo, jout);
   cinfo.image_width = xsize;		/* image width and height, in pixels */

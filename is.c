@@ -7,6 +7,7 @@ unsigned int xsize, ysize, wpixel, bpixel, jpq, xstart, ystart, height, width;
 double zoom, xcen, ycen;
 char filename[256];
 char **spp;
+FILE *fout = NULL;
 
 
 static char usage[] = {
@@ -103,7 +104,7 @@ void isDaemon() {
     memset( &theAddr.sin_addr.s_addr, 0, sizeof( theAddr.sin_addr.s_addr));
     theAddr.sin_addr.s_addr = ((struct in_addr *) hostInfo->h_addr_list[0])->s_addr;
 
-    if( connect( outSoc, &theAddr, sizeof( theAddr)) == -1) {
+    if( connect( outSoc,(struct sockaddr *) &theAddr, sizeof( theAddr)) == -1) {
       fprintf( stderr, "connect to %s failed: %s\n", isInfo.ip, strerror( errno));
       continue;
     }
@@ -128,7 +129,20 @@ void isDaemon() {
     }
     fprintf( stderr, "test  uid of file: %d\n", sb.st_uid);
 
-    write( outSoc, "Here I am\n", sizeof( "Here I am\n"));
+    xsize  = isInfo.xsize;
+    ysize  = isInfo.ysize;
+    xstart = isInfo.x;
+    ystart = isInfo.y;
+    bpixel = isInfo.contrast;
+    wpixel = isInfo.wval;
+    height = isInfo.height;
+    width  = isInfo.width;
+    jpq    = 100;
+
+    fout = fdopen( outSoc, "w");
+    typeDispatch();
+
+    //write( outSoc, "Here I am\n", sizeof( "Here I am\n"));
     close( outSoc);
 
 
