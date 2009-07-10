@@ -19,6 +19,9 @@
 #include <sys/stat.h>
 #include <sys/fsuid.h>
 #include <errno.h>
+#include <sys/socket.h>
+#include <netinet/ip.h>
+#include <netdb.h>
 
 extern int debug;
 

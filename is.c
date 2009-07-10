@@ -35,9 +35,13 @@ void isDaemon() {
   isType isInfo;
   int gotOne;
   int foundUidFlag;
+  int newGid;
   struct passwd *pwInfo;
   struct group *grInfo;
   struct stat sb;
+  struct sockaddr_in theAddr;
+  struct hostent *hostInfo;
+  int outSoc;
 
   dbInit();
   
@@ -65,7 +69,8 @@ void isDaemon() {
     fprintf( stderr, "uid: %d    guid: %d  real name: %s\n", pwInfo->pw_uid, pwInfo->pw_gid, pwInfo->pw_gecos);
 
 
-    grInfo = getgrgid( isInfo.esaf * 100);
+    newGid = isInfo.esaf * 100;
+    grInfo = getgrgid( newGid);
     if( grInfo == NULL) {
       continue;
     }
@@ -84,8 +89,27 @@ void isDaemon() {
       continue;
     }
 
-    if( setegid( isInfo.esaf * 100) == -1) {
-      fprintf( stderr, "setgid to %d error: %s\n", isInfo.esaf*100, strerror( errno));
+    hostInfo = gethostbyname( isInfo.ip);
+    if( hostInfo == NULL) {
+      fprintf( stderr, "Couldn't find host %s\n", isInfo.ip);
+      continue;
+    }
+
+    // Set up output socket
+    outSoc = socket( AF_INET, SOCK_STREAM, 0);
+    
+    theAddr.sin_family   = AF_INET;
+    theAddr.sin_port     = htons( (unsigned short int)isInfo.port);
+    memset( &theAddr.sin_addr.s_addr, 0, sizeof( theAddr.sin_addr.s_addr));
+    theAddr.sin_addr.s_addr = ((struct in_addr *) hostInfo->h_addr_list[0])->s_addr;
+
+    if( connect( outSoc, &theAddr, sizeof( theAddr)) == -1) {
+      fprintf( stderr, "connect to %s failed: %s\n", isInfo.ip, strerror( errno));
+      continue;
+    }
+
+    if( setegid( newGid) == -1) {
+      fprintf( stderr, "setgid to %d error: %s\n", newGid, strerror( errno));
       continue;
     }
 
@@ -103,6 +127,10 @@ void isDaemon() {
       continue;
     }
     fprintf( stderr, "test  uid of file: %d\n", sb.st_uid);
+
+    write( outSoc, "Here I am\n", sizeof( "Here I am\n"));
+    close( outSoc);
+
 
     if( seteuid( 0) == -1) {
       fprintf( stderr, "seteuid to %d error: %s\n", 0, strerror( errno));
