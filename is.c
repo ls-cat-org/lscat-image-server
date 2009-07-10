@@ -34,6 +34,7 @@ This program converts diffraction images into a jpeg image for display.\n\
 void isDaemon() {
   isType isInfo;
   int gotOne;
+  int foundUidFlag;
   struct passwd *pwInfo;
   struct group *grInfo;
   uid_t oldUid;
@@ -70,17 +71,26 @@ void isDaemon() {
       continue;
     }
 
-    for( spp = grInfo->gr_mem; spp != NULL; spp++) {
+    foundUidFlag = 0;
+    for( spp = grInfo->gr_mem; *spp != NULL; spp++) {
       fprintf( stderr, "group member: %s\n", *spp);
+      if( strcmp( *spp, isInfo.user) == 0) {
+	foundUidFlag = 1;
+	break;
+      }
     }
 
+    if( !foundUidFlag) {
+      fprintf( stderr, "user %s not found in group %s\n", isInfo.user, grInfo->gr_name);
+      continue;
+    }
 
-    if( setfsuid( pwInfo->pw_uid) == -1) {
+    if( seteuid( pwInfo->pw_uid) == -1) {
       fprintf( stderr, "seteuid to %d error: %s\n", pwInfo->pw_uid, strerror( errno));
       continue;
     }
 
-    if( setfsgid( isInfo.esaf * 100) == -1) {
+    if( setegid( isInfo.esaf * 100) == -1) {
       fprintf( stderr, "setgid to %d error: %s\n", isInfo.esaf*100, strerror( errno));
       continue;
     }
