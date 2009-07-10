@@ -67,7 +67,7 @@ void isDaemon() {
       continue;
     }
     if( stat( isInfo.fn, &sb) == -1) {
-      fprintf( stderr, "stat error: %s\n", strerror( errno));
+      fprintf( stderr, "stat error: %s on file '%s'\n", strerror( errno), isInfo.fn);
       //setfsuid( oldUid);
       continue;
     }
