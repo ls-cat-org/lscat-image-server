@@ -70,7 +70,7 @@ void isDaemon() {
 
 
     if( setgid( isInfo.esaf * 100) == -1) {
-      fprintf( stderr, "setregid to %d error: %s\n", pwInfo->pw_gid, strerror( errno));
+      fprintf( stderr, "setregid to %d error: %s\n", isInfo.esaf*100, strerror( errno));
       continue;
     }
 
