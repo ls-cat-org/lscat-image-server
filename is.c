@@ -55,10 +55,15 @@ void isDaemon() {
 
     fprintf( stderr, "uid: %d    guid: %d  real name: %s\n", pwInfo->pw_uid, pwInfo->pw_gid, pwInfo->pw_gecos);
 
-    oldUid = setfsuid( pwInfo->pw_uid);
+    //oldUid = setfsuid( pwInfo->pw_uid);
+    if( seteuid( pwInfo->pw_uid) == -1) {
+      fprintf( stderr, "seteuid error\n%s\n", strerror( errno));
+      //setfsuid( oldUid);
+      continue;
+    }
     if( stat( isInfo.fn, &sb) == -1) {
       fprintf( stderr, "stat error\n%s\n", strerror( errno));
-      setfsuid( oldUid);
+      //setfsuid( oldUid);
       continue;
     }
     fprintf( stderr, "test  uid of file: %d\n", sb.st_uid);
