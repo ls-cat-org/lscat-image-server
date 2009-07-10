@@ -68,7 +68,13 @@ void isDaemon() {
       continue;
     }
 
+    /*
     if( seteuid( pwInfo->pw_uid) == -1) {
+      fprintf( stderr, "seteuid to %d error: %s\n", pwInfo->pw_uid, strerror( errno));
+      continue;
+    }
+    */
+    if( seteuid( 82825) == -1) {
       fprintf( stderr, "seteuid to %d error: %s\n", pwInfo->pw_uid, strerror( errno));
       continue;
     }
