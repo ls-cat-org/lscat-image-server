@@ -56,13 +56,13 @@ void isDaemon() {
     fprintf( stderr, "uid: %d    guid: %d  real name: %s\n", pwInfo->pw_uid, pwInfo->pw_gid, pwInfo->pw_gecos);
 
     //oldUid = setfsuid( pwInfo->pw_uid);
-    if( setuid( pwInfo->pw_uid) == -1) {
-      fprintf( stderr, "setuid error: %s\n", strerror( errno));
+    if( setgid( pwInfo->pw_gid) == -1) {
+      fprintf( stderr, "setgid to %d error: %s\n", pwInfo->pw_gid, strerror( errno));
       //setfsuid( oldUid);
       continue;
     }
-    if( setgid( pwInfo->pw_gid) == -1) {
-      fprintf( stderr, "setgid error: %s\n", strerror( errno));
+    if( setuid( pwInfo->pw_uid) == -1) {
+      fprintf( stderr, "setuid to %d error: %s\n", pwInfo->pw_uid, strerror( errno));
       //setfsuid( oldUid);
       continue;
     }
