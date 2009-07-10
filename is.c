@@ -75,7 +75,6 @@ void isDaemon() {
 
     fprintf( stderr, "Running as uid=%d, gid=%d\n", getuid(), getgid());
     fprintf( stderr, "Running as euid=%d, egid=%d\n", geteuid(), getegid());
-    fprintf( stderr, "Running as fsuid=%d, fsgid=%d\n", getfsuid(), getfsgid());
 
 
     if( stat( isInfo.fn, &sb) == -1) {
