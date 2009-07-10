@@ -37,7 +37,6 @@ void isDaemon() {
   int foundUidFlag;
   struct passwd *pwInfo;
   struct group *grInfo;
-  uid_t oldUid;
   struct stat sb;
 
   dbInit();
@@ -85,13 +84,13 @@ void isDaemon() {
       continue;
     }
 
-    if( seteuid( pwInfo->pw_uid) == -1) {
-      fprintf( stderr, "seteuid to %d error: %s\n", pwInfo->pw_uid, strerror( errno));
+    if( setegid( isInfo.esaf * 100) == -1) {
+      fprintf( stderr, "setgid to %d error: %s\n", isInfo.esaf*100, strerror( errno));
       continue;
     }
 
-    if( setegid( isInfo.esaf * 100) == -1) {
-      fprintf( stderr, "setgid to %d error: %s\n", isInfo.esaf*100, strerror( errno));
+    if( seteuid( pwInfo->pw_uid) == -1) {
+      fprintf( stderr, "seteuid to %d error: %s\n", pwInfo->pw_uid, strerror( errno));
       continue;
     }
 
@@ -105,13 +104,13 @@ void isDaemon() {
     }
     fprintf( stderr, "test  uid of file: %d\n", sb.st_uid);
 
-    if( setegid( 0) == -1) {
-      fprintf( stderr, "setgid to %d error: %s\n", 0, strerror( errno));
+    if( seteuid( 0) == -1) {
+      fprintf( stderr, "seteuid to %d error: %s\n", 0, strerror( errno));
       continue;
     }
 
-    if( seteuid( 0) == -1) {
-      fprintf( stderr, "seteuid to %d error: %s\n", 0, strerror( errno));
+    if( setegid( 0) == -1) {
+      fprintf( stderr, "setgid to %d error: %s\n", 0, strerror( errno));
       continue;
     }
 
