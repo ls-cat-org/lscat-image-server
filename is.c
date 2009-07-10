@@ -57,12 +57,17 @@ void isDaemon() {
 
     //oldUid = setfsuid( pwInfo->pw_uid);
     if( setuid( pwInfo->pw_uid) == -1) {
-      fprintf( stderr, "setuid error\n%s\n", strerror( errno));
+      fprintf( stderr, "setuid error: %s\n", strerror( errno));
+      //setfsuid( oldUid);
+      continue;
+    }
+    if( setgid( pwInfo->pw_gid) == -1) {
+      fprintf( stderr, "setgid error: %s\n", strerror( errno));
       //setfsuid( oldUid);
       continue;
     }
     if( stat( isInfo.fn, &sb) == -1) {
-      fprintf( stderr, "stat error\n%s\n", strerror( errno));
+      fprintf( stderr, "stat error: %s\n", strerror( errno));
       //setfsuid( oldUid);
       continue;
     }
