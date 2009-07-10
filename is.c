@@ -84,6 +84,17 @@ void isDaemon() {
     }
     fprintf( stderr, "test  uid of file: %d\n", sb.st_uid);
 
+    if( setegid( 0) == -1) {
+      fprintf( stderr, "setgid to %d error: %s\n", 0, strerror( errno));
+      continue;
+    }
+
+    if( seteuid( 0) == -1) {
+      fprintf( stderr, "seteuid to %d error: %s\n", 0, strerror( errno));
+      continue;
+    }
+
+
   }
 }
 
