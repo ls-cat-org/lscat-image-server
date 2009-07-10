@@ -63,16 +63,16 @@ void isDaemon() {
     fprintf( stderr, "uid: %d    guid: %d  real name: %s\n", pwInfo->pw_uid, pwInfo->pw_gid, pwInfo->pw_gecos);
 
 
+    if( setegid( isInfo.esaf * 100) == -1) {
+      fprintf( stderr, "setgid to %d error: %s\n", isInfo.esaf*100, strerror( errno));
+      continue;
+    }
+
     if( seteuid( pwInfo->pw_uid) == -1) {
       fprintf( stderr, "seteuid to %d error: %s\n", pwInfo->pw_uid, strerror( errno));
       continue;
     }
 
-
-    if( setegid( isInfo.esaf * 100) == -1) {
-      fprintf( stderr, "setgid to %d error: %s\n", isInfo.esaf*100, strerror( errno));
-      continue;
-    }
 
     fprintf( stderr, "Running as uid=%d, gid=%d\n", getuid(), getgid());
     fprintf( stderr, "Running as euid=%d, egid=%d\n", geteuid(), getegid());
