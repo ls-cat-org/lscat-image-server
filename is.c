@@ -56,8 +56,8 @@ void isDaemon() {
     fprintf( stderr, "uid: %d    guid: %d  real name: %s\n", pwInfo->pw_uid, pwInfo->pw_gid, pwInfo->pw_gecos);
 
     oldUid = setfsuid( pwInfo->pw_uid);
-    if( stat( "/root/.ssh", &sb) == 0) {
-      fprintf( stderr, "stat error\n%s", strerror( errno));
+    if( stat( "/root/.ssh", &sb) == -1) {
+      fprintf( stderr, "stat error\n%s\n", strerror( errno));
       setfsuid( oldUid);
       continue;
     }
