@@ -128,4 +128,4 @@ extern int dbGet( isType *);
 
 
 void typeDispatch( isType *is);
-void marTiff2jpeg( isType *is);
+void marTiff( isType *is);

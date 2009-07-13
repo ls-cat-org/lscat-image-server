@@ -2,6 +2,23 @@
 
 static jmp_buf j_jumpHere;
 
+extern void marTiff2jpeg( isType *is);
+extern void marTiff2profile( isType *is);
+
+void marTiff( isType *is) {
+  if( strcmp( is->cmd, "jpeg") == 0) {
+    marTiff2jpeg( is);
+  } else {
+    if( strcmp( is->cmd, "profile") == 0)
+    marTiff2profile( is);
+  }
+}
+
+
+
+
+
+
 unsigned short nearestValue( isType *is, unsigned short *buf, double k, double l) {
   return *(buf + (int)(k+0.5)*(is->inWidth)+(int)(l+0.5));
 }
@@ -236,4 +253,59 @@ void marTiff2jpeg( isType *is ) {
   // don't forget to free the memory!
   free( buf);
   free( bufo);
+}
+
+
+
+void marTiff2profile( isType *is) {
+  double k, l;		// double version of row (k), column (l) indices in the input image
+  double mk, bk, ml, bl;  // slope and offset of map from s to k and l
+  int s;		// parametric 'index' along line
+  int smin, smax;	// limit of s
+  int n;		// number of points to plot
+  unsigned short *buf;	// our image buffer
+  unsigned short *maxs; // array of maxima from the images
+  unsigned short mx, mn;  // max and min for graph scaling
+
+  buf = marTiffRead( is);
+
+  // compute distance in input image to traverse and add one to get number of points from one end to the other
+  n = sqrt( (double)(is->pbx - is->pax)*(is->pbx - is->pax) + (is->pby - is->pay)*(is->pby - is->pay)) + 1;
+
+  maxs = (unsigned short *)calloc( n, sizeof( unsigned short));
+  if( maxs == NULL) {
+    fprintf( stderr, "marTiff2profile: out of memory %d bytes\n", n * sizeof( unsigned short));
+    return;
+  }
+  
+  smin = 0;
+  smax = n;
+
+  mx = 0;
+  mn = -1;
+
+  mk = (double)(is->pbx - is->pax)/(double)n;
+  bk = is->pax;
+
+  ml = (double)(is->pby - is->pay)/(double)n;
+  bl = is->pay;
+  
+  for( s=smin; s<smax; s++) {
+    k = mk * s + bk;
+    l = ml * s + bl;
+    
+    if( (int)(k+0.5) >= 0 && (int)(k+0.5) < is->inHeight && (int)(l+0.5) >=0 && (int)(l+0.5) < is->inWidth) {
+      maxs[s] = nearestValue( is, buf, k, l);
+    } else {
+      maxs[s] = 0;
+    }
+    mx = (maxs[s] > mx) ? maxs[s] : mx;
+    mn = (maxs[s] < mn) ? maxs[s] : mn;
+  }
+  
+  fprintf( is->fout, "<data xMin=\"%d\" xMax=\"%d\" yMin=\"%d\" yMax=\"%d\">\n", smin, smax, mn, mx);
+  for( s=smin; s<smax; s++) {
+    fprintf( is->fout, "<point x=\"%d\" y=\"%d\"/>\n", s, maxs[s]);
+  }
+  fprintf( is->fout, "</data>\n");
 }

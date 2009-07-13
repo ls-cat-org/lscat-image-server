@@ -3,28 +3,28 @@
 int debug = 0;
 
 //imtype_type mar345 = {
-//  0, 0, 1, 0x00, 0x0000, 0x000004d2, "Mar 345", mar3452jpeg
+//  0, 0, 1, 0x00, 0x0000, 0x000004d2, "Mar 345", mar345
 //};
 
 //imtype_type mar345BS = {
-//  0, 0, 1, 0x00, 0x0000, 0xd2040000, "Mar 345 Byte Swapped", mar3452jpeg
+//  0, 0, 1, 0x00, 0x0000, 0xd2040000, "Mar 345 Byte Swapped", mar345
 //};
 
-imtype_type mar165 = {
-  0, 0, 1, 0x00, 0x0000, 0x002a4949, "Mar 165", marTiff2jpeg
+imtype_type martiff = {
+  0, 0, 1, 0x00, 0x0000, 0x002a4949, "Mar 165", marTiff
 };
 
-imtype_type mar165BS = {
-  0, 0, 1, 0x00, 0x0000, 0x49492a00, "Mar 165 Byte Swapped", marTiff2jpeg
+imtype_type martiffBS = {
+  0, 0, 1, 0x00, 0x0000, 0x49492a00, "Mar 165 Byte Swapped", marTiff
 };
 
 //imtype_type adsc = {
-//  1, 0, 0, '{', 0x0000, 0x00000000, "ADSC", adsc2jpeg
+//  1, 0, 0, '{', 0x0000, 0x00000000, "ADSC", adsc
 //};
 
 
 imtype_type *imTypeArray[] = {
-  &mar165, &mar165BS, NULL
+  &martiff, &martiffBS, NULL
 };
 
 
@@ -40,7 +40,7 @@ imtype_type *imTypeArray[] = {
   or {\nHE
 
 
-  mar165
+  martiff
   2a4949
 
 */
