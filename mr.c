@@ -24,8 +24,6 @@ unsigned short maxBox( isType *is, unsigned short *buf, double k, double l, int 
   d = 0;
 
   for( m=(k-yal) * (is->inWidth); m < (k+yau) * (is->inWidth); m+=(is->inWidth)) {
-    if( m<0 || m>=(is->inHeight)*(is->inWidth))
-      continue;
     for( n= l - xal; n< l + xau;  n++) {
       d1 = *(buf + m + n);
       d = (d>d1 ? d : d1);
