@@ -1,34 +1,147 @@
 #include "is.h"
 
-void marTiff2jpeg( ) {
+jmp_buf j_jumpHere;
+
+void outputZeroScanline( isType *is, struct jpeg_compress_struct *cp, unsigned char *bufo, int i) {
+  JSAMPROW jsp[1];
+
+  jsp[0] = bufo + 3*i*(is->xsize);
+  jpeg_write_scanlines(cp, jsp, 1);
+}
+
+unsigned short nearestValue( isType *is, unsigned short *buf, double k, double l) {
+  return *(buf + (int)(k+0.5)*(is->inWidth)+(int)(l+0.5));
+}
+
+
+/*
+** returns the maximum value of ha xa by ya box centered on d,l
+*/
+unsigned short maxBox( isType *is, unsigned short *buf, double k, double l, int ya, int xa) {
+  int m, n;
+  unsigned short d, d1;
+  unsigned int yal, yau, xal, xau;
+  
+
+  d = 0;
+  if( ya <= 0 && xa <= 0)
+    return 0;
+
+  yal = yau = ya/2;
+  if( (yal + yau) < ya)
+    yau++;
+
+  xal = xau = xa/2;
+  if( (xal+xau) < xa)
+    xau++;
+  
+
+  for( m=(k-yal) * (is->inWidth); m < (k+yau) * (is->inWidth); m+=(is->inWidth)) {
+    if( m<0 || m>=(is->inHeight)*(is->inWidth))
+      continue;
+    for( n= l - xal; n< l + xau;  n++) {
+      if( n<0 || n>= (is->inWidth))
+	continue;
+      d1 = *(buf + m + n);
+      d = (d>d1 ? d : d1);
+    }
+  }
+  return d;
+}
+
+unsigned short *marTiffRead( isType *is) {
   TIFF *tf;
+  tsize_t sls;
+  unsigned short *buf;
+  int i;
+
+  TIFFSetErrorHandler( NULL);		// surpress annoying error messages 
+  TIFFSetWarningHandler( NULL);		// surpress annoying warning messages 
+  tf = TIFFOpen( is->fn, "r");		// open the file
+  if( tf == NULL) {
+    fprintf( stderr, "marTiffRead failed to open file '%s'\n", is->fn);
+    return NULL;
+  }
+  TIFFGetField( tf, TIFFTAG_IMAGELENGTH,   &(is->inHeight));
+  TIFFGetField( tf, TIFFTAG_IMAGEWIDTH,    &(is->inWidth));
+
+  sls = TIFFScanlineSize( tf);
+  buf  = malloc( sls * is->inHeight);
+  if( buf == NULL) {
+    fprintf( stderr, "marTiffRead: Out of memory.  malloc(%d) failed\n", sls * is->inHeight);
+    return NULL;
+  }
+    
+  //
+  // read the image
+  //
+
+  for( i=0; i<is->inHeight; i++) {
+    TIFFReadScanline( tf, buf + i*(is->inWidth), i, 0);
+  }
+  
+  //
+  // we are done
+  //
+  TIFFClose( tf);
+  
+  return buf;
+
+}
+
+
+void jerror_handler( j_common_ptr cp) {
+  fprintf( stderr, "Is that socket still there?  I think not!\n");  
+  longjmp( j_jumpHere, 1);
+}
+
+
+void marTiff2jpeg( isType *is ) {
   struct jpeg_compress_struct cinfo;
+  int cinfoSetup;
   struct jpeg_error_mgr jerr;
   unsigned short *buf;
   unsigned char  *bufo;
-  unsigned short d, d1;
+  unsigned char  *bp;
+  unsigned short d;
   unsigned char dout;
   unsigned int rslt;
-  unsigned int iheight, iwidth;
-  tsize_t sls;
-  int i, j, k, l, m, n;
-  float ya, xa;
-  FILE *jout;
+  int i, j;
+  int jmin, jmax;
+  double k, l;
+  int ya, xa;
   JSAMPROW jsp[1];
 
-  tf = TIFFOpen( filename, "r");
+
+  cinfoSetup = 0;
+  buf = NULL;
+  bufo = NULL;
+
+  if( setjmp( j_jumpHere)) {
+    if( cinfoSetup)
+      jpeg_destroy_compress( &cinfo);
+    if( buf != NULL)
+      free( buf);
+    if( bufo != NULL)
+      free( bufo);
+
+    return;
+  }
+
+
+
+  //
+  // get the data
+  buf = marTiffRead( is);
 
   cinfo.err = jpeg_std_error(&jerr);
+  cinfo.err->error_exit = jerror_handler;
   jpeg_create_compress(&cinfo);
+  cinfoSetup = 1;
 
-  if( fout == NULL)
-    jout = stdout;
-  else
-    jout = fout;
-
-  jpeg_stdio_dest(&cinfo, jout);
-  cinfo.image_width = xsize;		/* image width and height, in pixels */
-  cinfo.image_height = ysize;
+  jpeg_stdio_dest(&cinfo, is->fout);
+  cinfo.image_width = is->xsize;		/* image width and height, in pixels */
+  cinfo.image_height = is->ysize;
 
   cinfo.input_components = 3;		/* # of color components per pixel */
   cinfo.in_color_space = JCS_RGB;	/* colorspace of input image */
@@ -38,116 +151,101 @@ void marTiff2jpeg( ) {
 
   jpeg_start_compress(&cinfo, TRUE);
 
-  if( tf != NULL) {
-    TIFFGetField( tf, TIFFTAG_IMAGELENGTH,   &iheight);
-    TIFFGetField( tf, TIFFTAG_IMAGEWIDTH,    &iwidth);
+  bufo = calloc( 3 * is->ysize * is->xsize, sizeof(unsigned char) );
+  if( bufo == NULL) {
+    fprintf( stderr, "marTiff2jpeg: Out of memory.  calloc(%d) failed\n", 3*is->ysize*is->xsize*sizeof( unsigned char));
+    return;
+  }
 
-    //    fprintf( stderr, "iheight: %d  iwidth: %d\n", iheight, iwidth);
-    //    fprintf( stderr, "height: %d  width: %d\n", height, width);
-    //    fprintf( stderr, "xstart: %d  ystart: %d\n", xstart, ystart);
-    //    fprintf( stderr, "xsize: %d  ysize: %d\n", xsize, ysize);
+  //
+  // size of rectangle to search for the maximum pixel value
+  //
+  ya = (is->height)/(is->ysize);
+  xa = (is->width)/(is->xsize);
 
-    sls = TIFFScanlineSize( tf);
-    buf  = malloc( sls * height);
+  jmin = -(is->x)*(is->xsize)/(is->width);
+  jmax = ((is->inWidth)-(is->x)) * (is->xsize)/(is->width);
+  if( jmin < 0)
+    jmin = 0;
+  if( jmax > is->xsize)
+    jmax = is->xsize;
 
-    bufo = calloc( 3 * ysize * xsize, sizeof(unsigned char) );
+  //
+  // loop over pixels in the output image
+  //
+  // i index over output image height (is->ysize)
+  // j index over output image width  (is->xsize)
+  //
+  // double k maps i into the input image
+  // double l maps j into the input image
+  //
 
+  for( i=0; i< is->ysize; i++) {
     //
-    // size of rectangle to search for the maximum pixel value
+    // map pixel vert index to pixel index in input image
     //
-    ya = (double)height/(double)ysize;
-    xa = (double)width/(double)xsize;
+    k = (i * is->height)/(double)(is->ysize) + is->y;
 
-    //    fprintf( stderr, "ya: %f  xa: %f\n", ya, xa);
-
-
-    //
-    // read only the rows only that will appear in the final image
-    //
-    //    fprintf( stderr, "ystart-1: %d   ystart+height+1: %d\n", ystart-1, ystart+height+1);
-    for( i = (int)ystart - (int)1; i<(int)(ystart+height+1); i++) {
-      if( i<0 || i>=iheight)
-	continue;
-      TIFFReadScanline( tf, buf + i*iwidth, i, 0);
-    }
-
-    //
-    // loop over pixels in the new image
-    //
-    for( i=0; i<ysize; i++) {
-      //
-      // map pixel horz index in old image
-      k = i * height;
-      k /= ysize;
-      k += ystart;
-
-      for( j=0; j<xsize; j++) {
-	l = j * width;
-	l /= xsize;
-	l += xstart;
+    if( k<-0.5 || k >= (is->inHeight)-0.5) {
+      outputZeroScanline( is, &cinfo, bufo, i);
+    } else {
+      for( j=jmin; j<jmax; j++) {
+	//
+	// map pixel horz index to pixel index in intput image
+	//
+	l = j * is->width/(double)(is->xsize) + is->x;
+	//if( (int)(l+0.5) < 0  || (int)(l+0.5) >= is->inWidth)
+	//continue;
 
 	//
-	// default pixel has maximum value, er, zero
+	// default pixel value is 0;
 	//
 	d = 0;
-
-	if( l>=0 && k>=0 && l<iwidth && k<iheight) {
+      
+	if( ya <= 1 && xa <= 1) {
 	  //
-	  //  If we are on the orginal image, get the pixel value
+	  //  If we are on the orginal image, get the nearest pixel value
 	  //
-	  if( k>=0 && k<iheight) { 
-	    if( l>=0 && l<iwidth)
-	      d = *(buf + k*iwidth+l);
-	  }
-	  //	  fprintf( stderr, "l: %d  k: %d  d: %d\n", l, k, d);
-
-
+	  d = nearestValue( is, buf, k, l);
+	} else {
 	  //
 	  // Look around for the maximum value when the ouput image is
 	  // being reduced
 	  //
-	  if( ya>0. || xa>0.) {
-	    for( m=floor(k-ya/2.)*iwidth; m<ceil(k+ya/2.)*iwidth; m+=iwidth) {
-	      if( m<0 || m>=iheight*iwidth)
-		continue;
-	      for( n=floor(l-xa/2.); n<ceil(l+xa/2.); n++) {
-		if( n<0 || n>= iwidth)
-		  continue;
-		d1 = *(buf + m + n);
-		d = (d>d1 ? d : d1);
-	      }
-	    }
-	  }
+	  d = maxBox( is, buf, k, l, ya, xa);
 	}
-
-	if( d <= wpixel) {
+      
+	if( d <= is->wval) {
 	  dout = 0;
 	} else {
-	  if( d >= bpixel) {
+	  if( d >= is->contrast) {
 	    dout = 255;
 	  } else {
-	    rslt = (d - wpixel) * 255;
-	    dout = rslt/(bpixel-wpixel);
+	    rslt = (d - is->wval) * 255;
+	    dout = rslt/(is->contrast - is->wval);
 	  }
 	}
-
+      
+	bp = bufo + 3*i*(is->xsize) + 3*j;
 	if( d==65535) {
-	  *(bufo + 3*i*xsize + 3*j    ) = 255;
-	  *(bufo + 3*i*xsize + 3*j + 1) = 0;
-	  *(bufo + 3*i*xsize + 3*j + 2) = 0;
+	  *(bp++) = 255;
+	  *(bp++) = 0;
+	  *bp     = 0;
 	} else {
-	  *(bufo + 3*i*xsize + 3*j)     = 255 - dout;
-	  *(bufo + 3*i*xsize + 3*j + 1) = 255 - dout;
-	  *(bufo + 3*i*xsize + 3*j + 2) = 255 - dout;
+	  *(bp++)     = 255 - dout;
+	  *(bp++)     = 255 - dout;
+	  *(bp)       = 255 - dout;
 	}
       }
-
-      jsp[0] = bufo + 3*i*xsize;
-      jpeg_write_scanlines(&cinfo, jsp, 1);
     }
-    TIFFClose( tf);
-
-    jpeg_finish_compress(&cinfo);
-    fclose( jout);
+    
+    jsp[0] = bufo + 3*i*(is->xsize);
+    jpeg_write_scanlines(&cinfo, jsp, 1);
   }
+  jpeg_finish_compress(&cinfo);
+
+  //
+  // don't forget to free the memory!
+  free( buf);
+  free( bufo);
 }

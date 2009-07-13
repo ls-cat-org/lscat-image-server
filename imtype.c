@@ -2,7 +2,7 @@
 
 char *extensions[] = { ".img", ".mccd", ".mar3450", ".mar3000", ".mar2400", ".mar1800", ".mar2300", ".mar2000", ".mar1600", ".mar1200"};
 
-void typeDispatch() {
+void typeDispatch( isType *is) {
   int fd;		// file descriptor
   unsigned int f4;	// first 4 bytes in file
   unsigned short f2;	// first 2 byes in file
@@ -11,44 +11,32 @@ void typeDispatch() {
   int foundit;		// flag indicating we figured out what the file type is
   imtype_type *imp;	// pointer to images parsing info
   int i;		// loop counter
-  char tmpFilename[256];// used to find the real file name
 
   fd = -1;
-  fd =  open( filename, O_RDONLY, 0);
-  for( i=0; fd == -1 && i<sizeof( extensions)/sizeof( extensions[0]); i++) {
-    strncpy( tmpFilename, filename, sizeof( tmpFilename)-1-strlen(extensions[i]));
-    tmpFilename[sizeof( tmpFilename)-1] = 0;
-    strcat( tmpFilename, extensions[i]);
-    fd =  open( tmpFilename, O_RDONLY, 0);
-    if( fd > -1) {
-      strncpy( filename, tmpFilename, sizeof( filename)-1);
-      filename[sizeof(filename)-1] = 0;
-    }
-  }
-    
+  fd =  open( is->fn, O_RDONLY, 0);
 
   if( fd < 0) {
-    fprintf( stderr, "Could not open file %s\n", filename);
+    fprintf( stderr, "Could not open file %s\n", is->fn);
     exit( 1);
   }
 
   br = read( fd, (char *)&f4, 4);
   if( br != 4) {
-    fprintf( stderr, "Could not read 4 bytes from file %s\n", filename);
+    fprintf( stderr, "Could not read 4 bytes from file %s\n", is->fn);
     exit( 1);
   }
 
   lseek( fd, 0, SEEK_SET);
   br = read( fd, (char *)&f2, 2);
   if( br != 2) {
-    fprintf( stderr, "Could not read 2 bytes from file %s\n", filename);
+    fprintf( stderr, "Could not read 2 bytes from file %s\n", is->fn);
     exit( 1);
   }
 
   lseek( fd, 0, SEEK_SET);
   br = read( fd, (char *)&f1, 1);
   if( br != 1) {
-    fprintf( stderr, "Could not read 1 bytes from file %s\n", filename);
+    fprintf( stderr, "Could not read 1 bytes from file %s\n", is->fn);
     exit( 1);
   }
   close( fd);
@@ -73,8 +61,8 @@ void typeDispatch() {
   }
 
   if( foundit) {
-    (imp->cnvrt)();
+    (imp->cnvrt)( is);
   } else {
-    fprintf( stderr, "Unknown file type: %0x %0x %0x     %s\n", f1, f2, f4, filename);
+    fprintf( stderr, "Unknown file type: %0x %0x %0x     %s\n", f1, f2, f4, is->fn);
   }
 }

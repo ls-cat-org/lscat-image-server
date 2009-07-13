@@ -3,11 +3,6 @@
 //
 // Global variables used in the modules that actually do the work
 //
-unsigned int xsize, ysize, wpixel, bpixel, jpq, xstart, ystart, height, width;
-double zoom, xcen, ycen;
-char filename[256];
-char **spp;
-FILE *fout = NULL;
 
 
 static char usage[] = {
@@ -43,10 +38,18 @@ void isDaemon() {
   struct sockaddr_in theAddr;
   struct hostent *hostInfo;
   int outSoc;
+  char **spp;
+#ifdef PROFILE
+  int countdown;
+#endif
 
   dbInit();
   
+#ifdef PROFILE
+  for( countdown=16; countdown>0; countdown--) {
+#else
   while( 1) {
+#endif
     dbWait();
     gotOne = dbGet( &isInfo);
     if( gotOne != 1)
@@ -129,19 +132,8 @@ void isDaemon() {
     }
     fprintf( stderr, "test  uid of file: %d\n", sb.st_uid);
 
-    strcpy( filename, isInfo.fn);
-    xsize  = isInfo.xsize;
-    ysize  = isInfo.ysize;
-    xstart = isInfo.x;
-    ystart = isInfo.y;
-    bpixel = isInfo.contrast;
-    wpixel = isInfo.wval;
-    height = isInfo.height;
-    width  = isInfo.width;
-    jpq    = 100;
-
-    fout = fdopen( outSoc, "w");
-    typeDispatch();
+    isInfo.fout = fdopen( outSoc, "w");
+    typeDispatch( &isInfo);
 
     //write( outSoc, "Here I am\n", sizeof( "Here I am\n"));
     close( outSoc);
@@ -178,21 +170,22 @@ int main( int argc, char **argv) {
     {"help",          0, 0, '?'},
     { 0, 0, 0, 0}
   };
+  isType isInfo;
   int option_index;
-
   int showUsage;
   int daemonMode;
   int c;
+  char filename[256];
 
   filename[0] =0;
-  height = 4096;
-  width  = 4096;
-  xsize  = 256;
-  ysize  = 256;
-  xstart = 0;
-  ystart = 0;
-  bpixel = 65535;
-  wpixel = 0;
+  isInfo.height = 4096;
+  isInfo.width  = 4096;
+  isInfo.xsize  = 256;
+  isInfo.ysize  = 256;
+  isInfo.x      = 0;
+  isInfo.y       = 0;
+  isInfo.contrast = 65535;
+  isInfo.wval = 0;
   showUsage = 0;
   daemonMode = 0;
 
@@ -202,6 +195,7 @@ int main( int argc, char **argv) {
     case 'f':
       strncpy( filename, optarg, sizeof( filename)-1);
       filename[sizeof(filename)-1]=0;
+      isInfo.fn = filename;
       break;
       
     case '?':
@@ -209,35 +203,35 @@ int main( int argc, char **argv) {
       break;
 
     case 'W':
-      xsize = atoi( optarg);
+      isInfo.xsize = atoi( optarg);
       break;
 
     case 'H':
-      ysize = atoi( optarg);
+      isInfo.ysize = atoi( optarg);
       break;
 
     case 'x':
-      xstart = atoi( optarg);
+      isInfo.x = atoi( optarg);
       break;
 
     case 'y':
-      ystart = atoi( optarg);
+      isInfo.y = atoi( optarg);
       break;
 
     case 'w':
-      width = atoi( optarg);
+      isInfo.width = atoi( optarg);
       break;
 
     case 'h':
-      height = atoi( optarg);
+      isInfo.height = atoi( optarg);
       break;
 
     case 'c':
-      bpixel = atoi( optarg);
+      isInfo.contrast  = atoi( optarg);
       break;
 
     case 'p':
-      wpixel = atoi( optarg);
+      isInfo.wval = atoi( optarg);
       break;
 
     case 'd':
@@ -253,10 +247,12 @@ int main( int argc, char **argv) {
     exit( 1);
   }
 
-  if( daemonMode)
+  if( daemonMode) {
     isDaemon();
-  else
-    typeDispatch();
+  } else {
+    isInfo.fout = stdout;
+    typeDispatch( &isInfo);
+  }
 
   exit( 0);
 }

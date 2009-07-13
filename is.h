@@ -22,28 +22,25 @@
 #include <sys/socket.h>
 #include <netinet/ip.h>
 #include <netdb.h>
+#include <setjmp.h>
 
 extern int debug;
 
 //
 // Global variables used in the modules that actually do the work
 //
-extern unsigned int xsize, ysize, wpixel, bpixel, jpq, width, height, xstart, ystart;
-extern double zoom, xcen, ycen;
-extern char filename[256];
-extern FILE *fout;
 
-void typeDispatch( void);
-void marTiff2jpeg( void);
-//void mar3452jpeg( void);
-//void adsc2jpeg( void);
 
 typedef struct is_struct {
+  FILE *fout;	// output file pointer
   char *user;   // user name to run as
   int  esaf;	// esaf for the experiment
+  char *cmd;	// command to run
   char *ip;	// ip address of waiting image servee
   int port;	// the port to connect to
   char *fn;	// the file name
+  unsigned int inWidth;	// width of the input image
+  unsigned int inHeight;	// width of the input image
   int xsize;	// x size of final image
   int ysize;	// y size of final image
   int contrast;	// black pixel value
@@ -52,6 +49,11 @@ typedef struct is_struct {
   int y;	// y coordinate of upper left hand corner of original image segment
   int width;	// width of original image segment
   int height;	// height of original image segment
+  int pax;	// profile point a x coordinate
+  int pay;	// profile point a y coordinate
+  int pbx;	// profile point b x coordinate
+  int pby;	// profile point b y coordinate
+  int pw;	// profile width
 } isType;
 
 
@@ -67,7 +69,7 @@ typedef struct imtype_struct {
   unsigned short f2;
   unsigned int   f4;
   char *name;
-  void (*cnvrt)();
+  void (*cnvrt)( isType *is);
 } imtype_type;
 
 extern imtype_type *imTypeArray[];
@@ -123,3 +125,7 @@ typedef struct mar345_overflow_struct {
 extern void dbInit();
 extern void dbWait();
 extern int dbGet( isType *);
+
+
+void typeDispatch( isType *is);
+void marTiff2jpeg( isType *is);

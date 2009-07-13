@@ -84,10 +84,9 @@ int dbGet( isType *inf) {
     return 0;		// more than one row is bad, treat it as though it didn't find any
   }
 
-  // CREATE TYPE rmt.isType AS ( isuser text, isip inet, isport int, fn text, xsize int, ysize int, contrast int, wval int, x int, y int, width int, height int);
-
   inf->user      = PQgetvalue( res, 0, PQfnumber( res, "isuser"));
   inf->esaf      = atoi(PQgetvalue( res, 0, PQfnumber( res, "isesaf")));
+  inf->cmd       = PQgetvalue( res, 0, PQfnumber( res, "iscmd"));
   inf->ip        = PQgetvalue( res, 0, PQfnumber( res, "isip"));
   inf->port      = atoi(PQgetvalue( res, 0, PQfnumber( res, "isport")));
   inf->fn        = PQgetvalue( res, 0, PQfnumber( res, "fn"));
@@ -99,6 +98,11 @@ int dbGet( isType *inf) {
   inf->y         = atoi(PQgetvalue( res, 0, PQfnumber( res, "y")));
   inf->width     = atoi(PQgetvalue( res, 0, PQfnumber( res, "width")));
   inf->height    = atoi(PQgetvalue( res, 0, PQfnumber( res, "height")));
+  inf->pax       = atoi(PQgetvalue( res, 0, PQfnumber( res, "pax")));
+  inf->pay       = atoi(PQgetvalue( res, 0, PQfnumber( res, "pay")));
+  inf->pbx       = atoi(PQgetvalue( res, 0, PQfnumber( res, "pbx")));
+  inf->pby       = atoi(PQgetvalue( res, 0, PQfnumber( res, "pby")));
+  inf->pw        = atoi(PQgetvalue( res, 0, PQfnumber( res, "pw")));
 
 
 
