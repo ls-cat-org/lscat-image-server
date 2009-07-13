@@ -1,13 +1,6 @@
 #include "is.h"
 
-jmp_buf j_jumpHere;
-
-void outputZeroScanline( isType *is, struct jpeg_compress_struct *cp, unsigned char *bufo, int i) {
-  JSAMPROW jsp[1];
-
-  jsp[0] = bufo + 3*i*(is->xsize);
-  jpeg_write_scanlines(cp, jsp, 1);
-}
+static jmp_buf j_jumpHere;
 
 unsigned short nearestValue( isType *is, unsigned short *buf, double k, double l) {
   return *(buf + (int)(k+0.5)*(is->inWidth)+(int)(l+0.5));
@@ -23,12 +16,13 @@ unsigned short maxBox( isType *is, unsigned short *buf, double k, double l, int 
 
   d = 0;
 
-  for( m=(k-yal) * (is->inWidth); m < (k+yau) * (is->inWidth); m+=(is->inWidth)) {
-    for( n= l - xal; n< l + xau;  n++) {
-      d1 = *(buf + m + n);
+  for( m=k-yal; m < k+yau; m++) {
+    for( n=l-xal; n<l+xau; n++) {
+      d1 = *(buf + m*(is->inWidth) + n);
       d = (d>d1 ? d : d1);
     }
   }
+
   return d;
 }
 
@@ -182,9 +176,7 @@ void marTiff2jpeg( isType *is ) {
     //
     k = (i * is->height)/(double)(is->ysize) + is->y;
 
-    if( k<-0.5 || k >= (is->inHeight)-0.5) {
-      outputZeroScanline( is, &cinfo, bufo, i);
-    } else {
+    if( k-yal >= -0.5 && k+yau < (is->inHeight)-0.5) {
       for( j=jmin; j<jmax; j++) {
 	//
 	// map pixel horz index to pixel index in intput image

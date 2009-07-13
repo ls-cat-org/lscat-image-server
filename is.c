@@ -55,7 +55,7 @@ void isDaemon() {
     if( gotOne != 1)
       continue;
 
-    if( isInfo.esaf < 60000) {
+    if( isInfo.esaf < 50000) {
       fprintf( stderr, "esaf too small: %d\n", isInfo.esaf);
       continue;
     }
@@ -81,7 +81,6 @@ void isDaemon() {
 
     foundUidFlag = 0;
     for( spp = grInfo->gr_mem; *spp != NULL; spp++) {
-      fprintf( stderr, "group member: %s\n", *spp);
       if( strcmp( *spp, isInfo.user) == 0) {
 	foundUidFlag = 1;
 	break;
