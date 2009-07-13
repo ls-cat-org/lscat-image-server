@@ -17,24 +17,11 @@ unsigned short nearestValue( isType *is, unsigned short *buf, double k, double l
 /*
 ** returns the maximum value of ha xa by ya box centered on d,l
 */
-unsigned short maxBox( isType *is, unsigned short *buf, double k, double l, int ya, int xa) {
+unsigned short maxBox( isType *is, unsigned short *buf, double k, double l, int yal, int yau, int xal, int xau) {
   int m, n;
   unsigned short d, d1;
-  unsigned int yal, yau, xal, xau;
-  
 
   d = 0;
-  if( ya <= 0 && xa <= 0)
-    return 0;
-
-  yal = yau = ya/2;
-  if( (yal + yau) < ya)
-    yau++;
-
-  xal = xau = xa/2;
-  if( (xal+xau) < xa)
-    xau++;
-  
 
   for( m=(k-yal) * (is->inWidth); m < (k+yau) * (is->inWidth); m+=(is->inWidth)) {
     if( m<0 || m>=(is->inHeight)*(is->inWidth))
@@ -110,6 +97,7 @@ void marTiff2jpeg( isType *is ) {
   int jmin, jmax;
   double k, l;
   int ya, xa;
+  int yal, yau, xal, xau;
   JSAMPROW jsp[1];
 
 
@@ -127,8 +115,7 @@ void marTiff2jpeg( isType *is ) {
 
     return;
   }
-
-
+  
 
   //
   // get the data
@@ -159,12 +146,25 @@ void marTiff2jpeg( isType *is ) {
 
   //
   // size of rectangle to search for the maximum pixel value
+  // yal and xal are subtracted from ya and xa for the lower bound of the box and
+  // yau and xau are added to ya and xa for the upper bound of the box
   //
   ya = (is->height)/(is->ysize);
   xa = (is->width)/(is->xsize);
+  yal = yau = ya/2;
+  if( (yal + yau) < ya)
+    yau++;
 
-  jmin = -(is->x)*(is->xsize)/(is->width);
-  jmax = ((is->inWidth)-(is->x)) * (is->xsize)/(is->width);
+  xal = xau = xa/2;
+  if( (xal+xau) < xa)
+    xau++;
+
+  //
+  // compute the range of j, ignoring for now the j's that, considering the box, would lead to pixels off the input image
+  //
+
+  jmin = -(is->x)*(is->xsize)/(is->width) + xal;
+  jmax = ((is->inWidth)-(is->x)) * (is->xsize)/(is->width) - xau + 1;
   if( jmin < 0)
     jmin = 0;
   if( jmax > is->xsize)
@@ -212,7 +212,7 @@ void marTiff2jpeg( isType *is ) {
 	  // Look around for the maximum value when the ouput image is
 	  // being reduced
 	  //
-	  d = maxBox( is, buf, k, l, ya, xa);
+	  d = maxBox( is, buf, k, l, yal, yau, xal, xau);
 	}
       
 	if( d <= is->wval) {
