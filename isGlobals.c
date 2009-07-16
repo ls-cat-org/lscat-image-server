@@ -2,6 +2,14 @@
 
 int debug = 0;
 
+sem_t workerSem;
+pthread_mutex_t workerMutex;
+pthread_cond_t workerCond;
+
+isType isQueue;
+int    isQueueLength = 0;
+pthread_t kbt[NTHREADS];
+
 //imtype_type mar345 = {
 //  0, 0, 1, 0x00, 0x0000, 0x000004d2, "Mar 345", mar345
 //};

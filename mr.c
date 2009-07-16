@@ -1,7 +1,5 @@
 #include "is.h"
 
-static jmp_buf j_jumpHere;
-
 extern void marTiff2jpeg( isType *is);
 extern void marTiff2profile( isType *is);
 
@@ -14,13 +12,8 @@ void marTiff( isType *is) {
   }
 }
 
-
-
-
-
-
-unsigned short nearestValue( isType *is, unsigned short *buf, double k, double l) {
-  return *(buf + (int)(k+0.5)*(is->inWidth)+(int)(l+0.5));
+unsigned short nearestValue( isType *is, double k, double l) {
+  return *(is->buf + (int)(k+0.5)*(is->inWidth)+(int)(l+0.5));
 }
 
 
@@ -43,35 +36,47 @@ unsigned short maxBox( isType *is, unsigned short *buf, double k, double l, int 
   return d;
 }
 
-unsigned short *marTiffRead( isType *is) {
+void marTiffRead( isType *is) {
+  //
+  // is is the image structure we are getting all our info from
+  // pad is the amount of extra room to leave on the RHS
+  // in addtion to extra scans line at the top and bottom
+  //
   TIFF *tf;
-  tsize_t sls;
-  unsigned short *buf;
+  int sls;
   int i;
 
-  TIFFSetErrorHandler( NULL);		// surpress annoying error messages 
-  TIFFSetWarningHandler( NULL);		// surpress annoying warning messages 
+  //  TIFFSetErrorHandler( NULL);		// surpress annoying error messages 
+  //  TIFFSetWarningHandler( NULL);		// surpress annoying warning messages 
   tf = TIFFOpen( is->fn, "r");		// open the file
   if( tf == NULL) {
     fprintf( stderr, "marTiffRead failed to open file '%s'\n", is->fn);
-    return NULL;
+    return;
   }
   TIFFGetField( tf, TIFFTAG_IMAGELENGTH,   &(is->inHeight));
   TIFFGetField( tf, TIFFTAG_IMAGEWIDTH,    &(is->inWidth));
 
-  sls = TIFFScanlineSize( tf);
-  buf  = malloc( sls * is->inHeight);
-  if( buf == NULL) {
-    fprintf( stderr, "marTiffRead: Out of memory.  malloc(%d) failed\n", sls * is->inHeight);
-    return NULL;
+  // add the padding here
+  sls = sizeof(unsigned short) * (is->inWidth + is->pad);
+
+  // use calloc to be sure unassigned pixels have zero value
+  //
+  is->fullbuf  = calloc( sls * (is->inHeight + 2*is->pad), sizeof( unsigned short));
+  if( is->fullbuf == NULL) {
+    TIFFClose( tf);
+    fprintf( stderr, "marTiffRead: Out of memory.  malloc(%d) failed\n", sls * (is->inHeight+1));
+    return;
   }
+
+  // let the first scan line be blank
+  is->buf = is->fullbuf + sls*is->pad;
     
   //
   // read the image
   //
 
   for( i=0; i<is->inHeight; i++) {
-    TIFFReadScanline( tf, buf + i*(is->inWidth), i, 0);
+    TIFFReadScanline( tf, is->buf + i*(is->inWidth), i, 0);
   }
   
   //
@@ -79,20 +84,20 @@ unsigned short *marTiffRead( isType *is) {
   //
   TIFFClose( tf);
   
-  return buf;
-
+  return;
 }
 
 
 void jerror_handler( j_common_ptr cp) {
   fprintf( stderr, "Is that socket still there?  I think not!\n");  
-  longjmp( j_jumpHere, 1);
+  longjmp( *(jmp_buf *)cp->client_data, 1);
 }
 
 
 void marTiff2jpeg( isType *is ) {
   struct jpeg_compress_struct cinfo;
   int cinfoSetup;
+  jmp_buf j_jumpHere;
   struct jpeg_error_mgr jerr;
   unsigned short *buf;
   unsigned char  *bufo;
@@ -105,6 +110,7 @@ void marTiff2jpeg( isType *is ) {
   double k, l;
   int ya, xa;
   int yal, yau, xal, xau;
+  int tyal, tyau;
   JSAMPROW jsp[1];
 
 
@@ -116,7 +122,7 @@ void marTiff2jpeg( isType *is ) {
     if( cinfoSetup)
       jpeg_destroy_compress( &cinfo);
     if( buf != NULL)
-      free( buf);
+      free( is->fullbuf);
     if( bufo != NULL)
       free( bufo);
 
@@ -125,11 +131,29 @@ void marTiff2jpeg( isType *is ) {
   
 
   //
-  // get the data
-  buf = marTiffRead( is);
+  // size of rectangle to search for the maximum pixel value
+  // yal and xal are subtracted from ya and xa for the lower bound of the box and
+  // yau and xau are added to ya and xa for the upper bound of the box
+  //
+  ya = (is->height)/(is->ysize);
+  xa = (is->width)/(is->xsize);
+  yal = yau = ya/2;
+  if( (yal + yau) < ya)
+    yau++;
+
+  xal = xau = xa/2;
+  if( (xal+xau) < xa)
+    xau++;
+
+  //
+  // get the data, pad scan line by xal
+  is->pad = xal;
+  marTiffRead( is);
+  buf = is->buf;
 
   cinfo.err = jpeg_std_error(&jerr);
   cinfo.err->error_exit = jerror_handler;
+  cinfo.client_data    = &j_jumpHere;
   jpeg_create_compress(&cinfo);
   cinfoSetup = 1;
 
@@ -152,26 +176,11 @@ void marTiff2jpeg( isType *is ) {
   }
 
   //
-  // size of rectangle to search for the maximum pixel value
-  // yal and xal are subtracted from ya and xa for the lower bound of the box and
-  // yau and xau are added to ya and xa for the upper bound of the box
-  //
-  ya = (is->height)/(is->ysize);
-  xa = (is->width)/(is->xsize);
-  yal = yau = ya/2;
-  if( (yal + yau) < ya)
-    yau++;
-
-  xal = xau = xa/2;
-  if( (xal+xau) < xa)
-    xau++;
-
-  //
   // compute the range of j, ignoring for now the j's that, considering the box, would lead to pixels off the input image
   //
 
-  jmin = -(is->x)*(is->xsize)/(is->width) + xal;
-  jmax = ((is->inWidth)-(is->x)) * (is->xsize)/(is->width) - xau + 1;
+  jmin = -(is->x)*(is->xsize)/(is->width);
+  jmax = ((is->inWidth)-(is->x)) * (is->xsize)/(is->width);
   if( jmin < 0)
     jmin = 0;
   if( jmax > is->xsize)
@@ -192,15 +201,31 @@ void marTiff2jpeg( isType *is ) {
     // map pixel vert index to pixel index in input image
     //
     k = (i * is->height)/(double)(is->ysize) + is->y;
-
-    if( k-yal >= -0.5 && k+yau < (is->inHeight)-0.5) {
+    tyal = yal;
+    tyau = yau;
+    if( (int)(k-yal) < 0 && (int)(k+yau) >= 0) {
+      fprintf( stderr, "k: %f, yal: %d, yau: %d\n", k, yal, yau);
+      //
+      // at bottom edge.  Raise lower edge of box
+      //
+      while( (int)(k-tyal) < 0) tyal--;
+      fprintf( stderr, "  tyal: %d\n", tyal);
+    }
+    if( (int)(k-tyal) < (is->inHeight) && (int)(k+yau) > (is->inHeight)-1) {
+      fprintf( stderr, "k: %f, yal: %d, yau: %d\n", k, yal, yau);
+      //
+      // at top edge.  Lower top edge of box
+      //
+      while( (int)(k+tyau) > (is->inHeight)-1) tyau--;
+      fprintf( stderr, "  tyau: %d\n", tyau);
+    }
+    
+    if( (int)(k-tyal) >= 0 && (int)(k+tyau) < (is->inHeight)) {
       for( j=jmin; j<jmax; j++) {
 	//
 	// map pixel horz index to pixel index in intput image
 	//
 	l = j * is->width/(double)(is->xsize) + is->x;
-	//if( (int)(l+0.5) < 0  || (int)(l+0.5) >= is->inWidth)
-	//continue;
 
 	//
 	// default pixel value is 0;
@@ -211,13 +236,13 @@ void marTiff2jpeg( isType *is ) {
 	  //
 	  //  If we are on the orginal image, get the nearest pixel value
 	  //
-	  d = nearestValue( is, buf, k, l);
+	  d = nearestValue( is, k, l);
 	} else {
 	  //
 	  // Look around for the maximum value when the ouput image is
 	  // being reduced
 	  //
-	  d = maxBox( is, buf, k, l, yal, yau, xal, xau);
+	  d = maxBox( is, buf, k, l, tyal, tyau, xal, xau);
 	}
       
 	if( d <= is->wval) {
@@ -251,10 +276,42 @@ void marTiff2jpeg( isType *is ) {
 
   //
   // don't forget to free the memory!
-  free( buf);
+  //
+  free( is->fullbuf);
+  is->fullbuf = NULL;
   free( bufo);
 }
 
+
+
+//
+// lineMaxMinAve
+//
+// returns mx, mn, ave of is->pw points centered on k, l
+//
+void lineMaxMinAve( isType *is, unsigned short *mx, unsigned short *mn, unsigned short *ave, double k, double l, double mk, double ml) {
+  double x, y;
+  int t;		// parameter for parametric lines
+  int i;		// counter
+  unsigned short p;
+  double a;
+
+  *mx = 0;
+  *mn = -1;
+  *ave = 0;
+  a    = 0.0;
+  for( t = -(is->pw)/2, i=0; i < (is->pw); i++,t++) {
+    x = mk*t + k;
+    y = ml*t + l;
+    p = nearestValue( is, y, x);
+    a += p;
+    *mx = (*mx < p) ? p : *mx;
+    *mn = (*mn > p) ? p : *mn;
+  }
+  *ave = a/i;
+
+  return;
+}
 
 
 void marTiff2profile( isType *is) {
@@ -265,15 +322,32 @@ void marTiff2profile( isType *is) {
   int n;		// number of points to plot
   unsigned short *buf;	// our image buffer
   unsigned short *maxs; // array of maxima from the images
+  unsigned short *mins; // array of minima from the images
+  unsigned short *aves; // array of averages from the images
   unsigned short mx, mn;  // max and min for graph scaling
+  int err;		// return value from fprintf
 
-  buf = marTiffRead( is);
+  is->pad = is->pw;
+  marTiffRead( is);
+  buf = is->buf;
 
   // compute distance in input image to traverse and add one to get number of points from one end to the other
   n = sqrt( (double)(is->pbx - is->pax)*(is->pbx - is->pax) + (is->pby - is->pay)*(is->pby - is->pay)) + 1;
 
   maxs = (unsigned short *)calloc( n, sizeof( unsigned short));
   if( maxs == NULL) {
+    fprintf( stderr, "marTiff2profile: out of memory %d bytes\n", n * sizeof( unsigned short));
+    return;
+  }
+  
+  mins = (unsigned short *)calloc( n, sizeof( unsigned short));
+  if( mins == NULL) {
+    fprintf( stderr, "marTiff2profile: out of memory %d bytes\n", n * sizeof( unsigned short));
+    return;
+  }
+  
+  aves = (unsigned short *)calloc( n, sizeof( unsigned short));
+  if( aves == NULL) {
     fprintf( stderr, "marTiff2profile: out of memory %d bytes\n", n * sizeof( unsigned short));
     return;
   }
@@ -295,17 +369,40 @@ void marTiff2profile( isType *is) {
     l = ml * s + bl;
     
     if( (int)(k+0.5) >= 0 && (int)(k+0.5) < is->inHeight && (int)(l+0.5) >=0 && (int)(l+0.5) < is->inWidth) {
-      maxs[s] = nearestValue( is, buf, k, l);
+      lineMaxMinAve( is, (maxs + s), (mins + s), (aves + s), k, l, -ml, mk);
     } else {
       maxs[s] = 0;
+      mins[s] = 0;
+      aves[s] = 0;
     }
     mx = (maxs[s] > mx) ? maxs[s] : mx;
-    mn = (maxs[s] < mn) ? maxs[s] : mn;
+    mn = (mins[s] < mn) ? mins[s] : mn;
   }
+  free( is->fullbuf);
   
-  fprintf( is->fout, "<data xMin=\"%d\" xMax=\"%d\" yMin=\"%d\" yMax=\"%d\">\n", smin, smax, mn, mx);
-  for( s=smin; s<smax; s++) {
-    fprintf( is->fout, "<point x=\"%d\" y=\"%d\"/>\n", s, maxs[s]);
+  fprintf( stderr, "<data rqid=\"%s\" xMin=\"%d\" xMax=\"%d\" yMin=\"%d\" yMax=\"%d\">\n", is->rqid, smin, smax, mn, mx);
+
+  err = fprintf( is->fout, "<data rqid=\"%s\" xMin=\"%d\" xMax=\"%d\" yMin=\"%d\" yMax=\"%d\">\n", is->rqid, smin, smax, mn, mx);
+  if( err < 0) {
+    fprintf( stderr, "marTiff2profile: write failed: '%s'\n", strerror( errno));
+    return;
   }
-  fprintf( is->fout, "</data>\n");
+  for( s=smin; s<smax; s++) {
+    fprintf( stdout, "<point x=\"%d\" min=\"%u\" ave=\"%u\" max=\"%u\"/>\n", s, mins[s], aves[s], maxs[s]);
+
+    err = fprintf( is->fout, "<point x=\"%d\" min=\"%u\" ave=\"%u\" max=\"%u\"/>\n", s, mins[s], aves[s], maxs[s]);
+
+    if( err < 0) {
+      fprintf( stderr, "marTiff2profile: write failed: '%s'\n", strerror( errno));
+      return;
+    }
+  }
+  fprintf( stderr, "</data>\n");
+  err = fprintf( is->fout, "</data>\n");
+  if( err < 0) {
+    fprintf( stderr, "marTiff2profile: write failed: '%s'\n", strerror( errno));
+    return;
+  }
+
+  fflush( is->fout);
 }

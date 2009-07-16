@@ -84,12 +84,16 @@ int dbGet( isType *inf) {
     return 0;		// more than one row is bad, treat it as though it didn't find any
   }
 
-  inf->user      = PQgetvalue( res, 0, PQfnumber( res, "isuser"));
+  inf->buf       = NULL;
+  inf->fullbuf   = NULL;
+  inf->pad       = 0;
+  inf->user      = strdup(PQgetvalue( res, 0, PQfnumber( res, "isuser")));
+  inf->rqid      = strdup(PQgetvalue( res, 0, PQfnumber( res, "isrqid")));
   inf->esaf      = atoi(PQgetvalue( res, 0, PQfnumber( res, "isesaf")));
-  inf->cmd       = PQgetvalue( res, 0, PQfnumber( res, "iscmd"));
-  inf->ip        = PQgetvalue( res, 0, PQfnumber( res, "isip"));
+  inf->cmd       = strdup(PQgetvalue( res, 0, PQfnumber( res, "iscmd")));
+  inf->ip        = strdup(PQgetvalue( res, 0, PQfnumber( res, "isip")));
   inf->port      = atoi(PQgetvalue( res, 0, PQfnumber( res, "isport")));
-  inf->fn        = PQgetvalue( res, 0, PQfnumber( res, "fn"));
+  inf->fn        = strdup(PQgetvalue( res, 0, PQfnumber( res, "fn")));
   inf->xsize     = atoi(PQgetvalue( res, 0, PQfnumber( res, "xsize")));
   inf->ysize     = atoi(PQgetvalue( res, 0, PQfnumber( res, "ysize")));
   inf->contrast  = atoi(PQgetvalue( res, 0, PQfnumber( res, "contrast")));

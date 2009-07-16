@@ -2,7 +2,6 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <getopt.h>
-#include <tiffio.h>
 #include <jpeglib.h>
 #include <string.h>
 #include <strings.h>
@@ -23,8 +22,13 @@
 #include <netinet/ip.h>
 #include <netdb.h>
 #include <setjmp.h>
+#include <pthread.h>
+#include <semaphore.h>
+#include <signal.h>
 
-extern int debug;
+#define NTHREADS 16
+#define ISQUEUESIZE 1
+
 
 //
 // Global variables used in the modules that actually do the work
@@ -33,7 +37,13 @@ extern int debug;
 
 typedef struct is_struct {
   FILE *fout;	// output file pointer
+  unsigned short *buf;	   // buffer presented to other routines
+  unsigned short *fullbuf; // the actual pointer calloc'ed: an extra scan line is added at the top and "pad" short's added on the RHS
+  int pad;      // number of unsigned shorts that buf is padded by
   char *user;   // user name to run as
+  int uid;	// uid of user
+  int gid;	// gid of esaf
+  char *rqid;   // client's request id
   int  esaf;	// esaf for the experiment
   char *cmd;	// command to run
   char *ip;	// ip address of waiting image servee
@@ -56,6 +66,11 @@ typedef struct is_struct {
   int pw;	// profile width
 } isType;
 
+
+typedef struct kb_thread_struct {
+  pthread_t thread;
+  jmp_buf jumpHere;
+} kbThreadType;
 
 
 //
@@ -129,3 +144,12 @@ extern int dbGet( isType *);
 
 void typeDispatch( isType *is);
 void marTiff( isType *is);
+extern int debug;
+
+extern sem_t workerSem;
+extern pthread_mutex_t workerMutex;
+extern pthread_cond_t workerCond;
+extern isType isQueue;
+extern int isQueueLength;
+extern pthread_t kbt[];
+
