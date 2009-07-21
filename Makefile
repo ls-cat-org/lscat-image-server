@@ -1,4 +1,4 @@
-VERSION= 0.60
+VERSION= 2.00
 
 all: is isp mh isdebug
 
@@ -10,11 +10,6 @@ isp: is.c is.h mr.c isGlobals.c imtype.c pgConn.c ib.c Makefile
 
 isdebug: is.c is.h mr.c isGlobals.c imtype.c pgConn.c ib.c Makefile
 	gcc -Wall -g -ffast-math -o isdebug is.c isGlobals.c ib.c mr.c imtype.c pgConn.c  -ltiff -ljpeg -lm -lpq
-
-
-
-mh: mh.c
-	gcc -Wall -o mh mh.c
 
 clean:
 	rm -f is *.jpeg *.o *~
