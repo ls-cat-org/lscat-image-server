@@ -61,7 +61,8 @@ void typeDispatch( isType *is) {
   }
 
   if( foundit) {
-    (imp->cnvrt)( is);
+    is->b->getHeader = imp->getHeader;
+    is->b->getData   = imp->getData;
   } else {
     fprintf( stderr, "Unknown file type: %0x %0x %0x     %s\n", f1, f2, f4, is->fn);
   }

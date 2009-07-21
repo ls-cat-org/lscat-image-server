@@ -34,68 +34,210 @@ void DieDieDie( ) {
   exit(-1);
 }
 
+void ibInit( imBufType *ib) {
+  //
+  // clear the entire structure
+  //
+  memset( ib, 0, sizeof( imBufType));
+  //
+  ib->magic = IBMAGIC;
+  if( pthread_rwlock_init( &(ib->headlock), NULL)) {
+    fprintf( stderr, "ibInit: rwlock init failed\n");
+    exit( -1);
+  }
+  if( pthread_rwlock_init( &(ib->datalock), NULL)) {
+    fprintf( stderr, "ibInit: rwlock init failed\n");
+    exit( -1);
+  }
+}
+
+void imBufGarbageCollect( imBufType *ib) {
+  int nuse;
+
+  if( ib->magic == IBMAGIC) {
+    pthread_rwlock_wrlock( &(ib->headlock));	// lock the header
+    pthread_rwlock_wrlock( &(ib->datalock));	// lock the data
+
+
+    pthread_mutex_lock( &ibUseMutex);
+    nuse = ib->nuse;
+    pthread_mutex_unlock( &ibUseMutex);
+
+    if( nuse <= 0) {
+      if( ib->fn != NULL) {
+	free( ib->fn);
+	ib->fn = NULL;
+      }
+      if( ib->h_filename != NULL) {
+	free( ib->h_filename);
+	ib->h_filename = NULL;
+      }
+      if( ib->h_dir != NULL) {
+	free( ib->h_dir);
+	ib->h_dir = NULL;
+      }
+      if( ib->fullbuf != NULL) {
+	free( ib->fullbuf);
+	ib->fullbuf = NULL;
+	ib->buf     = NULL;
+      }
+    }
+    pthread_rwlock_unlock( &(ib->datalock));
+    pthread_rwlock_unlock( &(ib->headlock));
+  }    
+}
+
+//
+// return an image buffer
+//
+imBufType *imBufGet( char *fn) {
+  int i;
+  int foundIt;
+  int nuse;
+
+  foundIt = 0;
+  for( i=0; i<NIBUFS; i++) {
+    if( ibs[i].fn == NULL || strcmp( ibs[i].fn, fn) == 0) {
+      pthread_mutex_lock( &ibUseMutex);
+      ibs[i].nuse++;			// someone else is using the buffer, better lock out nuse while we change it
+      pthread_mutex_unlock( &ibUseMutex);
+      return( &ibs[i]);
+    }
+  }
+  //
+  // Here means we'll need to actually read the file:
+  // find an unused buffer
+  //
+  for( i=0; i<NIBUFS; i++) {
+    pthread_mutex_lock( &ibUseMutex);
+    nuse = ibs[i].nuse;
+    pthread_mutex_unlock( &ibUseMutex);
+    if( nuse <=0) {
+      imBufGarbageCollect( &ibs[i]);
+      ibs[i].nuse = 1;			// At this point no other process is using this buffer, no locks needed
+      return( &ibs[i]);			// If someone else can allocate a buffer we'll need to add the locks
+    }
+  }
+  //
+  // Here means we don't have enough image buffers.  Perhaps NTHEADS > NIBUFS?
+  // return null as an error and think about a different line of work.
+  return( NULL);
+}
+
+
 //
 // returns memory malloc'ed for the image structure
 //  The corresponding create routine is dbGet
 //
 void isTypeDestroy( isType *is) {
-  if( is->fullbuf != NULL) {
-    free( is->fullbuf);
-    is->fullbuf = NULL;
-    is->buf     = NULL;
+  //
+  // Don't mess with this structure until we know it's safe to
+  //
+  pthread_rwlock_wrlock( &isTypeChangeLock);
+
+  if( is->magic == ISMAGIC) {
+    is->nuse--;
+    if( is->nuse <=0 ) {
+      is->b = NULL;
+
+      if( is->user != NULL) {
+	free( is->user);
+	is->user = NULL;
+      }
+      if( is->rqid != NULL) {
+	free( is->rqid);
+	is->rqid = NULL;
+      }
+      if( is->cmd != NULL) {
+	free( is->cmd);
+	is->cmd = NULL;
+      }
+      if( is->ip != NULL) {
+	free( is->ip);
+	is->ip = NULL;
+      }
+      if( is->fn != NULL) {
+	free( is->fn);
+	is->fn = NULL;
+      }
+    }
   }
-  if( is->user != NULL) {
-    free( is->user);
-    is->user = NULL;
-  }
-  if( is->rqid != NULL) {
-    free( is->rqid);
-    is->rqid = NULL;
-  }
-  if( is->cmd != NULL) {
-    free( is->cmd);
-    is->cmd = NULL;
-  }
-  if( is->ip != NULL) {
-    free( is->ip);
-    is->ip = NULL;
-  }
-  if( is->fn != NULL) {
-    free( is->fn);
-    is->fn = NULL;
-  }
+  //
+  // Don't mess with this structure until we know it's safe to
+  //
+  pthread_rwlock_unlock( &isTypeChangeLock);
 }
 
 void popIsQueue( isType *is) {
-  
-  if( sem_post( &workerSem) != 0) {
-    fprintf( stderr, "popIsQueue: sem post failed\n");
-    DieDieDie();
+  int readNeeded;
+
+  if( is != NULL) {
+    isTypeDestroy( is);
   }
 
-  if( pthread_mutex_lock( &workerMutex) != 0) {
-    fprintf( stderr, "popIsQueue: mutex lock failed\n");
-    DieDieDie();
-  }
+  sem_post( &workerSem);		// give up our semaphore
 
-  while( isQueueLength == 0) {
-    if( pthread_cond_wait( &workerCond, &workerMutex) != 0) {
-      fprintf( stderr, "popIsQueue: cond wait failed\n");
-      DieDieDie();
-    }
+  pthread_mutex_lock( &workerMutex);	// grab the worker mutex to set up the signal
+
+  while( isQueueLength == 0) {				// Loop to eliminate spurious signals
+    pthread_cond_wait( &workerCond, &workerMutex);	// wait for isDaemon to signal ready
   }
   
-  if( sem_wait( &workerSem) != 0) {
-    fprintf( stderr, "popIsQueue: sem wait failed: %s\n", strerror( errno));
-    DieDieDie();
-  }
+  sem_wait( &workerSem);		// grab a semaphore: isDaemon has alread checked to make sure this will not hang
   
+  // The actual work is a little anticlimatic
+  //
   memcpy( is, &isQueue, sizeof( isQueue));
   isQueueLength = 0;
 
-  if( pthread_mutex_unlock( &workerMutex) != 0) {
-    fprintf( stderr, "popIsQueue: mutex unlock failed\n");
-    DieDieDie();
+  pthread_mutex_lock( &ibUseMutex);	// lock access to headerRead
+
+  readNeeded = 0;
+  if( is->b->headerRead == 0) {
+    // We'll need to read the image header first: get write lock (to write to the buffer)
+    pthread_rwlock_wrlock( &(is->b->headlock));
+    is->b->headerRead = 1;		// Mark that it's read: this keeps a second thead from deciding to load the header data also
+    readNeeded = 1;
+    is->b->fn = strdup( is->fn);
+  }
+
+  pthread_mutex_unlock( &ibUseMutex);	// done messing with headerRead
+
+  pthread_mutex_unlock( &workerMutex);
+
+  //
+  // At this point other workers can be, well, working
+  // 
+  if( readNeeded) {
+    typeDispatch( is);				// find out what we are
+    is->b->getHeader( is);				// Everyone needs the header
+    pthread_rwlock_unlock( &(is->b->headlock));	// done loading the header into the buffer
+  }
+  //
+  // NOW grab the read lock in case a different thread was doing the writing:
+  // we don't want to go on until at least the header is there
+  pthread_rwlock_rdlock( &(is->b->headlock));
+}
+
+void ibWorkerDone( isType *is) {
+  // mark our lack of interest in this buffer
+  pthread_mutex_lock( &ibUseMutex);
+  is->b->nuse--;
+  pthread_mutex_unlock( &ibUseMutex);
+
+  // let the writers have their way
+  //
+  pthread_rwlock_unlock( &(is->b->headlock));
+  pthread_rwlock_unlock( &(is->b->datalock));
+}
+
+void cmdDispatch( isType *is) {
+  if( strcmp( is->cmd, "jpeg") == 0) {
+    ib2jpeg( is);
+  } else if( strcmp( is->cmd, "profile") == 0) {
+      ib2profile( is);
+  } else if( strcmp( is->cmd, "header") == 0) {
+    ib2header( is);
   }
 }
 
@@ -104,16 +246,12 @@ void *worker( void *dummy) {
   isType isInfo;
   int outSoc;
   struct sockaddr_in theAddr;
-  struct stat sb;
 
   //
   // decrement (wait) the semaphore before starting the loop
   // since the first thing we need to do is increment (post) it in popIsQueue
   //
-  if( sem_wait( &workerSem) != 0) {
-    fprintf( stderr, "popIsQueue: sem post failed\n");
-    DieDieDie();
-  }
+  sem_wait( &workerSem);
 
   while( 1) {
     popIsQueue( &isInfo); 
@@ -138,48 +276,17 @@ void *worker( void *dummy) {
       continue;
     }
 
-    if( setegid( isInfo.gid) == -1) {
-      fprintf( stderr, "setgid to %d error: %s\n", isInfo.gid, strerror( errno));
-      continue;
-    }
-
-    if( seteuid( isInfo.uid) == -1) {
-      fprintf( stderr, "seteuid to %d error: %s\n", isInfo.uid, strerror( errno));
-      continue;
-    }
-
-    fprintf( stderr, "Running as uid=%d, gid=%d\n", getuid(), getgid());
-    fprintf( stderr, "Running as euid=%d, egid=%d\n", geteuid(), getegid());
-
-
-    if( stat( isInfo.fn, &sb) == -1) {
-      fprintf( stderr, "stat error: %s on file '%s'\n", strerror( errno), isInfo.fn);
-      continue;
-    }
-    fprintf( stderr, "test  uid of file: %d\n", sb.st_uid);
-
     isInfo.fout = fdopen( outSoc, "w");
-    typeDispatch( &isInfo);
-
-    //write( outSoc, "Here I am\n", sizeof( "Here I am\n"));
+    cmdDispatch( &isInfo);
     close( outSoc);
 
-
-    if( seteuid( 0) == -1) {
-      fprintf( stderr, "seteuid to %d error: %s\n", 0, strerror( errno));
-      continue;
-    }
-
-    if( setegid( 0) == -1) {
-      fprintf( stderr, "setgid to %d error: %s\n", 0, strerror( errno));
-      continue;
-    }
+    ibWorkerDone( &isInfo);
   }
   return 0;
 }
 
 
-[<int checkWhosUp() {
+int checkWhosUp() {
   int i;
   int rtn;
 
@@ -201,6 +308,13 @@ void pushIsQueue( isType *is) {
     fprintf( stderr, "pushIsQueue: mutex lock failed\n");
     DieDieDie();
   }
+
+  is->b = imBufGet( is->fn);
+  if( is->b == NULL) {
+    fprintf( stderr, "pushIsQueue: received null image buffer.  I can't live with this shame.\n");
+    DieDieDie();
+  }
+
   //
   //  Queue should never need to be bigger.
   //
@@ -265,7 +379,7 @@ void isDaemon() {
   int foundUidFlag;
   struct passwd *pwInfo;
   struct group *grInfo;
-
+  struct stat sb;
   char **spp;
 #ifdef PROFILE
   int countdown;
@@ -276,20 +390,11 @@ void isDaemon() {
   //
   // set up mutex, condition, and semaphore to handle thread synchronization
   //
-  if( pthread_mutex_init( &workerMutex, NULL) != 0) {
-    fprintf( stderr, "isDaemon: mutex init failed: %s\n", strerror( errno));
-    exit(1);
-  }
-
-  if( pthread_cond_init( &workerCond, NULL) != 0) {
-    fprintf( stderr, "isDaemon: cond init failed: %s\n", strerror( errno));
-    exit(1);
-  }
-
-  if( sem_init( &workerSem, 0, NTHREADS) != 0) {
-    fprintf( stderr, "isDaemon: sem init failed: %s\n", strerror( errno));
-    exit(1);
-  }
+  pthread_rwlock_init( &isTypeChangeLock, NULL);
+  pthread_mutex_init( &ibUseMutex, NULL);
+  pthread_mutex_init( &workerMutex, NULL);
+  pthread_cond_init( &workerCond, NULL);
+  sem_init( &workerSem, 0, NTHREADS);
 
   //
   // Launch the threads
@@ -316,26 +421,25 @@ void isDaemon() {
     //
     // Check the semaphore to be sure there is at least 1 thread willing to run for us
     //
-    if( sem_wait( &workerSem) != 0) {
-      fprintf( stderr, "isDaemon: sem wait failed: %s\n", strerror( errno));
-      DieDieDie();
-    }
+    sem_wait( &workerSem);
+
     //
     // Give back the semaphore: we don't want it for ourselves
     //
-    if( sem_post( &workerSem) != 0) {
-      fprintf( stderr, "isDaemon: sem wait failed: %s\n", strerror( errno));
-      DieDieDie();
-      DieDieDie();
-    }
+    sem_post( &workerSem);
 
     dbWait();
     gotOne = dbGet( &isInfo);
     if( gotOne != 1)
       continue;
 
-    if( isInfo.esaf < 50000) {
-      fprintf( stderr, "esaf too small: %d\n", isInfo.esaf);
+    if( stat( isInfo.fn, &sb) == -1) {
+      fprintf( stderr, "stat error: %s on file '%s'\n", strerror( errno), isInfo.fn);
+      continue;
+    }
+
+    if( sb.st_gid < 5000000) {
+      fprintf( stderr, "gid too small for an LS-CAT image: %d\n", sb.st_gid);
       continue;
     }
 
@@ -353,7 +457,7 @@ void isDaemon() {
     fprintf( stderr, "uid: %d    guid: %d  real name: %s\n", pwInfo->pw_uid, pwInfo->pw_gid, pwInfo->pw_gecos);
 
 
-    isInfo.gid = isInfo.esaf * 100;
+    isInfo.gid = sb.st_gid;
     grInfo = getgrgid( isInfo.gid);
     if( grInfo == NULL) {
       continue;
@@ -374,12 +478,20 @@ void isDaemon() {
 
 
     //
-    // That's all we're going to do.  Let a child thread do the rest
+    // We assume the this is a regular file owned by the esaf with group read permissions
     //
-    pushIsQueue( &isInfo);
-
+    if( (sb.st_mode & S_IFREG) && (sb.st_uid == isInfo.gid)  && (sb.st_mode & S_IRGRP)) {
+      //
+      // That's all we're going to do.  Let a child thread do the rest
+      //
+      pushIsQueue( &isInfo);
+    } else {
+      fprintf( stderr, "File read failed because the following:\n%s%s%s\n", (sb.st_mode & S_IFREG) ? "" : "   Not a regular file\n", (sb.st_uid == isInfo.gid) ? "":"   Wrong group ownership\n", (sb.st_mode & S_IRGRP) ? "":"   Not group readable\n");
+    }
   }
 }
+
+
 
 
 
@@ -480,8 +592,10 @@ int main( int argc, char **argv) {
     isDaemon();
   } else {
     isInfo.fout = stdout;
-    typeDispatch( &isInfo);
+    cmdDispatch( &isInfo);
   }
 
   exit( 0);
 }
+
+

@@ -1,42 +1,272 @@
 #include "is.h"
 
-extern void marTiff2jpeg( isType *is);
-extern void marTiff2profile( isType *is);
-
-void marTiff( isType *is) {
-  if( strcmp( is->cmd, "jpeg") == 0) {
-    marTiff2jpeg( is);
-  } else {
-    if( strcmp( is->cmd, "profile") == 0)
-    marTiff2profile( is);
-  }
-}
-
-unsigned short nearestValue( isType *is, double k, double l) {
-  return *(is->buf + (int)(k+0.5)*(is->inWidth)+(int)(l+0.5));
-}
-
-
+#define UINT16	unsigned short
+#define INT16	short
+#define UINT32	unsigned int
+#define INT32	int
 /*
-** returns the maximum value of ha xa by ya box centered on d,l
+   Currently frames are always written as defined below:
+	 origin=UPPER_LEFT
+	 orientation=HFAST
+	 view_direction=FROM_SOURCE
 */
-unsigned short maxBox( isType *is, unsigned short *buf, double k, double l, int yal, int yau, int xal, int xau) {
-  int m, n;
-  unsigned short d, d1;
 
-  d = 0;
+/* This number is  written into the byte_order fields in the
+   native byte order of the machine writing the file */
+//#define LITTLE_ENDIAN	1234
+//#define BIG_ENDIAN	4321
 
-  for( m=k-yal; m < k+yau; m++) {
-    for( n=l-xal; n<l+xau; n++) {
-      d1 = *(buf + m*(is->inWidth) + n);
-      d = (d>d1 ? d : d1);
-    }
+/* possible orientations of frame data (stored in orienation field) */
+#define HFAST			0	 /* Horizontal axis is fast */
+#define VFAST			1	 /* Vertical axis is fast */
+
+/* possible origins of frame data (stored in origin field) */
+#define UPPER_LEFT		0
+#define LOWER_LEFT		1
+#define UPPER_RIGHT		2
+#define LOWER_RIGHT		3
+
+/* possible view directions of frame data for
+   the given orientation and origin (stored in view_direction field) */
+#define FROM_SOURCE		0
+#define TOWARD_SOURCE		1
+
+#define MAXIMAGES 9
+
+typedef struct frame_header_type {
+	/* File/header format parameters (256 bytes) */
+	UINT32        header_type;	/* flag for header type  (can be used as magic number) */
+	char header_name[16];		/* header name (MARCCD) */
+	UINT32        header_major_version;	/* header_major_version (n.) */
+	UINT32        header_minor_version; 	/* header_minor_version (.n) */
+	UINT32        header_byte_order;/* BIG_ENDIAN (Motorola,MIPS); LITTLE_ENDIAN (DEC, Intel) */
+	UINT32        data_byte_order;	/* BIG_ENDIAN (Motorola,MIPS); LITTLE_ENDIAN (DEC, Intel) */
+	UINT32        header_size;	/* in bytes			*/
+	UINT32        frame_type;	/* flag for frame type */
+	UINT32        magic_number;	/* to be used as a flag - usually to indicate new file */
+	UINT32        compression_type;	/* type of image compression    */
+	UINT32        compression1;	/* compression parameter 1 */
+	UINT32        compression2;	/* compression parameter 2 */
+	UINT32        compression3;	/* compression parameter 3 */
+	UINT32        compression4;	/* compression parameter 4 */
+	UINT32        compression5;	/* compression parameter 4 */
+	UINT32        compression6;	/* compression parameter 4 */
+	UINT32        nheaders;	        /* total number of headers 	*/
+ 	UINT32        nfast;		/* number of pixels in one line */
+ 	UINT32        nslow;		/* number of lines in image     */
+ 	UINT32        depth;		/* number of bytes per pixel    */
+ 	UINT32        record_length;	/* number of pixels between succesive rows */
+ 	UINT32        signif_bits;	/* true depth of data, in bits  */
+ 	UINT32        data_type;	/* (signed,unsigned,float...) */
+ 	UINT32        saturated_value;	/* value marks pixel as saturated */
+	UINT32        sequence;	        /* TRUE or FALSE */
+	UINT32        nimages;	        /* total number of images - size of each is nfast*(nslow/nimages) */
+ 	UINT32        origin;		/* corner of origin 		*/
+ 	UINT32        orientation;	/* direction of fast axis 	*/
+        UINT32        view_direction;   /* direction to view frame      */
+	UINT32        overflow_location;/* FOLLOWING_HEADER, FOLLOWING_DATA */
+	UINT32        over_8_bits;	/* # of pixels with counts > 255 */
+	UINT32        over_16_bits;	/* # of pixels with count > 65535 */
+	UINT32        multiplexed;	/* multiplex flag */
+	UINT32        nfastimages;	/* # of images in fast direction */
+	UINT32        nslowimages;	/* # of images in slow direction */
+	UINT32        darkcurrent_applied; /* flags correction has been applied - hold magic number ? */
+	UINT32        bias_applied;	  /* flags correction has been applied - hold magic number ? */
+	UINT32        flatfield_applied;  /* flags correction has been applied - hold magic number ? */
+	UINT32        distortion_applied; /* flags correction has been applied - hold magic number ? */
+	UINT32        original_header_type;	/* Header/frame type from file that frame is read from */
+	UINT32        file_saved;         /* Flag that file has been saved, should be zeroed if modified */
+	UINT32        n_valid_pixels;     /* Number of pixels holding valid data - first N pixels */
+	UINT32        defectmap_applied; /* flags correction has been applied - hold magic number ? */
+	UINT32        subimage_nfast; 	    /* when divided into subimages (eg. frameshifted) */
+	UINT32        subimage_nslow;       /* when divided into subimages (eg. frameshifted) */
+	UINT32        subimage_origin_fast; /* when divided into subimages (eg. frameshifted) */
+	UINT32        subimage_origin_slow; /* when divided into subimages (eg. frameshifted) */
+	UINT32        readout_pattern;      /* BIT Code - 1 = A, 2 = B, 4 = C, 8 = D */
+ 	UINT32        saturation_level;	    /* at this value and above, data are not reliable */
+ 	UINT32        orientation_code;	    /* Describes how this frame needs to be rotated to make it "right" */
+ 	UINT32        frameshift_multiplexed;  /* frameshift multiplex flag */
+	char reserve1[(64-50)*sizeof(INT32)-16]; 
+
+	/* Data statistics (128) */
+	UINT32        total_counts[2];	/* 64 bit integer range = 1.85E19*/
+	UINT32        special_counts1[2];
+	UINT32        special_counts2[2];
+	UINT32        min;
+	UINT32        max;
+	UINT32        mean;			/* mean * 1000 */
+	UINT32        rms;			/* rms * 1000 */
+	UINT32        n_zeros;			/* number of pixels with 0 value  - not included in stats in unsigned data */
+	UINT32        n_saturated;		/* number of pixels with saturated value - not included in stats */
+	UINT32        stats_uptodate;		/* Flag that stats OK - ie data not changed since last calculation */
+        UINT32        pixel_noise[MAXIMAGES];		/* 1000*base noise value (ADUs) */
+	char reserve2[(32-13-MAXIMAGES)*sizeof(INT32)];
+
+#if 0
+	/* More statistics (256) */
+	UINT16 percentile[128];
+#else
+	/* Sample Changer info */
+	char          barcode[16];
+	UINT32        barcode_angle;
+	UINT32        barcode_status;
+	/* Pad to 256 bytes */
+	char reserve2a[(64-6)*sizeof(INT32)];
+#endif
+
+
+	/* Goniostat parameters (128 bytes) */
+        INT32 xtal_to_detector;		/* 1000*distance in millimeters */
+        INT32 beam_x;			/* 1000*x beam position (pixels) */
+        INT32 beam_y;			/* 1000*y beam position (pixels) */
+        INT32 integration_time;		/* integration time in milliseconds */
+        INT32 exposure_time;		/* exposure time in milliseconds */
+        INT32 readout_time;		/* readout time in milliseconds */
+        INT32 nreads;			/* number of readouts to get this image */
+        INT32 start_twotheta;		/* 1000*two_theta angle */
+        INT32 start_omega;		/* 1000*omega angle */
+        INT32 start_chi;			/* 1000*chi angle */
+        INT32 start_kappa;		/* 1000*kappa angle */
+        INT32 start_phi;			/* 1000*phi angle */
+        INT32 start_delta;		/* 1000*delta angle */
+        INT32 start_gamma;		/* 1000*gamma angle */
+        INT32 start_xtal_to_detector;	/* 1000*distance in mm (dist in um)*/
+        INT32 end_twotheta;		/* 1000*two_theta angle */
+        INT32 end_omega;			/* 1000*omega angle */
+        INT32 end_chi;			/* 1000*chi angle */
+        INT32 end_kappa;			/* 1000*kappa angle */
+        INT32 end_phi;			/* 1000*phi angle */
+        INT32 end_delta;			/* 1000*delta angle */
+        INT32 end_gamma;			/* 1000*gamma angle */
+        INT32 end_xtal_to_detector;	/* 1000*distance in mm (dist in um)*/
+        INT32 rotation_axis;		/* active rotation axis (index into above ie. 0=twotheta,1=omega...) */
+        INT32 rotation_range;		/* 1000*rotation angle */
+        INT32 detector_rotx;		/* 1000*rotation of detector around X */
+        INT32 detector_roty;		/* 1000*rotation of detector around Y */
+        INT32 detector_rotz;		/* 1000*rotation of detector around Z */
+        INT32 total_dose;		/* Hz-sec (counts) integrated over full exposure */
+	char reserve3[(32-29)*sizeof(INT32)]; /* Pad Gonisotat parameters to 128 bytes */
+
+	/* Detector parameters (128 bytes) */
+	INT32 detector_type;		/* detector type */
+	INT32 pixelsize_x;		/* pixel size (nanometers) */
+	INT32 pixelsize_y;		/* pixel size (nanometers) */
+        INT32 mean_bias;			/* 1000*mean bias value */
+        INT32 photons_per_100adu;	/* photons / 100 ADUs */
+        INT32 measured_bias[MAXIMAGES];	/* 1000*mean bias value for each image*/
+        INT32 measured_temperature[MAXIMAGES];	/* Temperature of each detector in milliKelvins */
+        INT32 measured_pressure[MAXIMAGES];	/* Pressure of each chamber in microTorr */
+	/* Retired reserve4 when MAXIMAGES set to 9 from 16 and two fields removed, and temp and pressure added
+	char reserve4[(32-(5+3*MAXIMAGES))*sizeof(INT32)];
+	*/
+
+	/* X-ray source and optics parameters (128 bytes) */
+	/* X-ray source parameters (14*4 bytes) */
+        INT32 source_type;		/* (code) - target, synch. etc */
+        INT32 source_dx;			/* Optics param. - (size microns) */
+        INT32 source_dy;			/* Optics param. - (size microns) */
+        INT32 source_wavelength;		/* wavelength (femtoMeters) */
+        INT32 source_power;		/* (Watts) */
+        INT32 source_voltage;		/* (Volts) */
+        INT32 source_current;		/* (microAmps) */
+        INT32 source_bias;		/* (Volts) */
+        INT32 source_polarization_x;	/* () */
+        INT32 source_polarization_y;	/* () */
+        INT32 source_intensity_0;	/* (arbitrary units) */
+        INT32 source_intensity_1;	/* (arbitrary units) */
+	char reserve_source[2*sizeof(INT32)];
+
+	/* X-ray optics_parameters (8*4 bytes) */
+        INT32 optics_type;		/* Optics type (code)*/
+        INT32 optics_dx;			/* Optics param. - (size microns) */
+        INT32 optics_dy;			/* Optics param. - (size microns) */
+        INT32 optics_wavelength;		/* Optics param. - (size microns) */
+        INT32 optics_dispersion;		/* Optics param. - (*10E6) */
+        INT32 optics_crossfire_x;	/* Optics param. - (microRadians) */
+        INT32 optics_crossfire_y;	/* Optics param. - (microRadians) */
+        INT32 optics_angle;		/* Optics param. - (monoch. 2theta - microradians) */
+        INT32 optics_polarization_x;	/* () */
+        INT32 optics_polarization_y;	/* () */
+	char reserve_optics[4*sizeof(INT32)];
+
+	char reserve5[((32-28)*sizeof(INT32))]; /* Pad X-ray parameters to 128 bytes */
+
+	/* File parameters (1024 bytes) */
+	char filetitle[128];		/* Title 				*/
+	char filepath[128];		/* path name for data file		*/
+	char filename[64];		/* name of data file			*/
+        char acquire_timestamp[32];	/* date and time of acquisition		*/
+        char header_timestamp[32];	/* date and time of header update	*/
+        char save_timestamp[32];	/* date and time file saved 		*/
+        char file_comment[512];	/* comments  - can be used as desired 	*/
+	char reserve6[1024-(128+128+64+(3*32)+512)]; /* Pad File parameters to 1024 bytes */
+
+	/* Dataset parameters (512 bytes) */
+        char dataset_comment[512];	/* comments  - can be used as desired 	*/
+
+	/* Reserved for user definable data - will not be used by Mar! */
+	char user_data[512];
+
+	/* char pad[----] USED UP! */     /* pad out to 3072 bytes */
+
+} frame_header;
+
+
+void marTiffGetHeader( isType *is) {
+  //
+  // is is the image structure we are getting all our info from
+  // pad is the amount of extra room to leave on the RHS
+  // in addtion to extra scans line at the top and bottom
+  //
+  FILE *f;
+  frame_header fh;
+
+  // Get the hreader
+  //
+  f = fopen( is->fn, "r");
+  if( f == NULL) {
+    fprintf( stderr, "marTiffRead failed to open file '%s'\n", is->fn);
+    return;
   }
 
-  return d;
+
+  fseek( f, 1024, SEEK_SET);
+
+  fread( &fh, sizeof(frame_header), 1, f);
+  fclose( f);
+
+  is->magic			= ISMAGIC;
+  is->nuse			= 1;
+  is->b->h_filename              = strdup( fh.filename);
+  is->b->h_dir                   = strdup( fh.filepath);
+  is->b->h_dist                  = fh.xtal_to_detector/1000.0;
+  is->b->h_rotationRange         = fh.rotation_range/1000.0;
+  is->b->h_startPhi              = fh.start_phi/1000.0;
+  is->b->h_wavelength            = fh.source_wavelength/100000.0;
+  is->b->h_beamX                 = fh.beam_x/1000.0;
+  is->b->h_beamY                 = fh.beam_y/1000.0;
+  is->b->h_imagesizeX            = fh.nfast;
+  is->b->h_imagesizeY            = fh.nslow;
+  is->b->h_pixelsizeX            = fh.pixelsize_x/1000.0;
+  is->b->h_pixelsizeY            = fh.pixelsize_y/1000.0;
+  is->b->h_integrationTime       = fh.integration_time/1000.0;
+  is->b->h_exposureTime          = fh.exposure_time/1000.0;
+  is->b->h_readoutTime           = fh.readout_time/1000.0;
+  is->b->h_saturation            = fh.saturation_level;
+  is->b->h_minValue              = fh.min;
+  is->b->h_maxValue              = fh.max;
+  is->b->h_meanValue             = fh.mean/1000.0;
+  is->b->h_rmsValue              = fh.rms/1000.0;
+  is->b->h_nSaturated            = fh.n_saturated;
+
+  pthread_mutex_lock( &ibUseMutex);
+  is->b->headerRead = 1;
+  pthread_mutex_unlock( &ibUseMutex);
 }
 
-void marTiffRead( isType *is) {
+
+
+void marTiffGetData( isType *is) {
   //
   // is is the image structure we are getting all our info from
   // pad is the amount of extra room to leave on the RHS
@@ -46,363 +276,43 @@ void marTiffRead( isType *is) {
   int sls;
   int i;
 
+
   //  TIFFSetErrorHandler( NULL);		// surpress annoying error messages 
-  //  TIFFSetWarningHandler( NULL);		// surpress annoying warning messages 
-  tf = TIFFOpen( is->fn, "r");		// open the file
+  TIFFSetWarningHandler( NULL);		// surpress annoying warning messages 
+  tf = TIFFOpen( is->b->fn, "r");		// open the file
   if( tf == NULL) {
     fprintf( stderr, "marTiffRead failed to open file '%s'\n", is->fn);
     return;
   }
-  TIFFGetField( tf, TIFFTAG_IMAGELENGTH,   &(is->inHeight));
-  TIFFGetField( tf, TIFFTAG_IMAGEWIDTH,    &(is->inWidth));
+  TIFFGetField( tf, TIFFTAG_IMAGELENGTH,   &(is->b->inHeight));
+  TIFFGetField( tf, TIFFTAG_IMAGEWIDTH,    &(is->b->inWidth));
 
   // add the padding here
-  sls = sizeof(unsigned short) * (is->inWidth + is->pad);
+  is->b->pad = ISPADSIZE;
+  sls = sizeof(unsigned short) * (is->b->inWidth + is->b->pad);
 
   // use calloc to be sure unassigned pixels have zero value
   //
-  is->fullbuf  = calloc( sls * (is->inHeight + 2*is->pad), sizeof( unsigned short));
-  if( is->fullbuf == NULL) {
+  is->b->fullbuf  = calloc( sls * (is->b->inHeight + 2*is->b->pad), sizeof( unsigned short));
+  if( is->b->fullbuf == NULL) {
     TIFFClose( tf);
-    fprintf( stderr, "marTiffRead: Out of memory.  malloc(%d) failed\n", sls * (is->inHeight+1));
+    fprintf( stderr, "marTiffRead: Out of memory.  malloc(%d) failed\n", sls * (is->b->inHeight+1));
     return;
   }
 
   // let the first scan line be blank
-  is->buf = is->fullbuf + sls*is->pad;
+  is->b->buf = is->b->fullbuf + sls*is->b->pad;
     
   //
   // read the image
   //
 
-  for( i=0; i<is->inHeight; i++) {
-    TIFFReadScanline( tf, is->buf + i*(is->inWidth), i, 0);
+  for( i=0; i<is->b->inHeight; i++) {
+    TIFFReadScanline( tf, is->b->buf + i*(is->b->inWidth), i, 0);
   }
   
   //
   // we are done
   //
   TIFFClose( tf);
-  
-  return;
-}
-
-
-void jerror_handler( j_common_ptr cp) {
-  fprintf( stderr, "Is that socket still there?  I think not!\n");  
-  longjmp( *(jmp_buf *)cp->client_data, 1);
-}
-
-
-void marTiff2jpeg( isType *is ) {
-  struct jpeg_compress_struct cinfo;
-  int cinfoSetup;
-  jmp_buf j_jumpHere;
-  struct jpeg_error_mgr jerr;
-  unsigned short *buf;
-  unsigned char  *bufo;
-  unsigned char  *bp;
-  unsigned short d;
-  unsigned char dout;
-  unsigned int rslt;
-  int i, j;
-  int jmin, jmax;
-  double k, l;
-  int ya, xa;
-  int yal, yau, xal, xau;
-  int tyal, tyau;
-  JSAMPROW jsp[1];
-
-
-  cinfoSetup = 0;
-  buf = NULL;
-  bufo = NULL;
-
-  if( setjmp( j_jumpHere)) {
-    if( cinfoSetup)
-      jpeg_destroy_compress( &cinfo);
-    if( buf != NULL)
-      free( is->fullbuf);
-    if( bufo != NULL)
-      free( bufo);
-
-    return;
-  }
-  
-
-  //
-  // size of rectangle to search for the maximum pixel value
-  // yal and xal are subtracted from ya and xa for the lower bound of the box and
-  // yau and xau are added to ya and xa for the upper bound of the box
-  //
-  ya = (is->height)/(is->ysize);
-  xa = (is->width)/(is->xsize);
-  yal = yau = ya/2;
-  if( (yal + yau) < ya)
-    yau++;
-
-  xal = xau = xa/2;
-  if( (xal+xau) < xa)
-    xau++;
-
-  //
-  // get the data, pad scan line by xal
-  is->pad = xal;
-  marTiffRead( is);
-  buf = is->buf;
-
-  cinfo.err = jpeg_std_error(&jerr);
-  cinfo.err->error_exit = jerror_handler;
-  cinfo.client_data    = &j_jumpHere;
-  jpeg_create_compress(&cinfo);
-  cinfoSetup = 1;
-
-  jpeg_stdio_dest(&cinfo, is->fout);
-  cinfo.image_width = is->xsize;		/* image width and height, in pixels */
-  cinfo.image_height = is->ysize;
-
-  cinfo.input_components = 3;		/* # of color components per pixel */
-  cinfo.in_color_space = JCS_RGB;	/* colorspace of input image */
-
-  jpeg_set_defaults(&cinfo);
-  jpeg_set_quality( &cinfo, 100, TRUE);
-
-  jpeg_start_compress(&cinfo, TRUE);
-
-  bufo = calloc( 3 * is->ysize * is->xsize, sizeof(unsigned char) );
-  if( bufo == NULL) {
-    fprintf( stderr, "marTiff2jpeg: Out of memory.  calloc(%d) failed\n", 3*is->ysize*is->xsize*sizeof( unsigned char));
-    return;
-  }
-
-  //
-  // compute the range of j, ignoring for now the j's that, considering the box, would lead to pixels off the input image
-  //
-
-  jmin = -(is->x)*(is->xsize)/(is->width);
-  jmax = ((is->inWidth)-(is->x)) * (is->xsize)/(is->width);
-  if( jmin < 0)
-    jmin = 0;
-  if( jmax > is->xsize)
-    jmax = is->xsize;
-
-  //
-  // loop over pixels in the output image
-  //
-  // i index over output image height (is->ysize)
-  // j index over output image width  (is->xsize)
-  //
-  // double k maps i into the input image
-  // double l maps j into the input image
-  //
-
-  for( i=0; i< is->ysize; i++) {
-    //
-    // map pixel vert index to pixel index in input image
-    //
-    k = (i * is->height)/(double)(is->ysize) + is->y;
-    tyal = yal;
-    tyau = yau;
-    if( (int)(k-yal) < 0 && (int)(k+yau) >= 0) {
-      fprintf( stderr, "k: %f, yal: %d, yau: %d\n", k, yal, yau);
-      //
-      // at bottom edge.  Raise lower edge of box
-      //
-      while( (int)(k-tyal) < 0) tyal--;
-      fprintf( stderr, "  tyal: %d\n", tyal);
-    }
-    if( (int)(k-tyal) < (is->inHeight) && (int)(k+yau) > (is->inHeight)-1) {
-      fprintf( stderr, "k: %f, yal: %d, yau: %d\n", k, yal, yau);
-      //
-      // at top edge.  Lower top edge of box
-      //
-      while( (int)(k+tyau) > (is->inHeight)-1) tyau--;
-      fprintf( stderr, "  tyau: %d\n", tyau);
-    }
-    
-    if( (int)(k-tyal) >= 0 && (int)(k+tyau) < (is->inHeight)) {
-      for( j=jmin; j<jmax; j++) {
-	//
-	// map pixel horz index to pixel index in intput image
-	//
-	l = j * is->width/(double)(is->xsize) + is->x;
-
-	//
-	// default pixel value is 0;
-	//
-	d = 0;
-      
-	if( ya <= 1 && xa <= 1) {
-	  //
-	  //  If we are on the orginal image, get the nearest pixel value
-	  //
-	  d = nearestValue( is, k, l);
-	} else {
-	  //
-	  // Look around for the maximum value when the ouput image is
-	  // being reduced
-	  //
-	  d = maxBox( is, buf, k, l, tyal, tyau, xal, xau);
-	}
-      
-	if( d <= is->wval) {
-	  dout = 0;
-	} else {
-	  if( d >= is->contrast) {
-	    dout = 255;
-	  } else {
-	    rslt = (d - is->wval) * 255;
-	    dout = rslt/(is->contrast - is->wval);
-	  }
-	}
-      
-	bp = bufo + 3*i*(is->xsize) + 3*j;
-	if( d==65535) {
-	  *(bp++) = 255;
-	  *(bp++) = 0;
-	  *bp     = 0;
-	} else {
-	  *(bp++)     = 255 - dout;
-	  *(bp++)     = 255 - dout;
-	  *(bp)       = 255 - dout;
-	}
-      }
-    }
-    
-    jsp[0] = bufo + 3*i*(is->xsize);
-    jpeg_write_scanlines(&cinfo, jsp, 1);
-  }
-  jpeg_finish_compress(&cinfo);
-
-  //
-  // don't forget to free the memory!
-  //
-  free( is->fullbuf);
-  is->fullbuf = NULL;
-  free( bufo);
-}
-
-
-
-//
-// lineMaxMinAve
-//
-// returns mx, mn, ave of is->pw points centered on k, l
-//
-void lineMaxMinAve( isType *is, unsigned short *mx, unsigned short *mn, unsigned short *ave, double k, double l, double mk, double ml) {
-  double x, y;
-  int t;		// parameter for parametric lines
-  int i;		// counter
-  unsigned short p;
-  double a;
-
-  *mx = 0;
-  *mn = -1;
-  *ave = 0;
-  a    = 0.0;
-  for( t = -(is->pw)/2, i=0; i < (is->pw); i++,t++) {
-    x = mk*t + k;
-    y = ml*t + l;
-    p = nearestValue( is, y, x);
-    a += p;
-    *mx = (*mx < p) ? p : *mx;
-    *mn = (*mn > p) ? p : *mn;
-  }
-  *ave = a/i;
-
-  return;
-}
-
-
-void marTiff2profile( isType *is) {
-  double k, l;		// double version of row (k), column (l) indices in the input image
-  double mk, bk, ml, bl;  // slope and offset of map from s to k and l
-  int s;		// parametric 'index' along line
-  int smin, smax;	// limit of s
-  int n;		// number of points to plot
-  unsigned short *buf;	// our image buffer
-  unsigned short *maxs; // array of maxima from the images
-  unsigned short *mins; // array of minima from the images
-  unsigned short *aves; // array of averages from the images
-  unsigned short mx, mn;  // max and min for graph scaling
-  int err;		// return value from fprintf
-
-  is->pad = is->pw;
-  marTiffRead( is);
-  buf = is->buf;
-
-  // compute distance in input image to traverse and add one to get number of points from one end to the other
-  n = sqrt( (double)(is->pbx - is->pax)*(is->pbx - is->pax) + (is->pby - is->pay)*(is->pby - is->pay)) + 1;
-
-  maxs = (unsigned short *)calloc( n, sizeof( unsigned short));
-  if( maxs == NULL) {
-    fprintf( stderr, "marTiff2profile: out of memory %d bytes\n", n * sizeof( unsigned short));
-    return;
-  }
-  
-  mins = (unsigned short *)calloc( n, sizeof( unsigned short));
-  if( mins == NULL) {
-    fprintf( stderr, "marTiff2profile: out of memory %d bytes\n", n * sizeof( unsigned short));
-    return;
-  }
-  
-  aves = (unsigned short *)calloc( n, sizeof( unsigned short));
-  if( aves == NULL) {
-    fprintf( stderr, "marTiff2profile: out of memory %d bytes\n", n * sizeof( unsigned short));
-    return;
-  }
-  
-  smin = 0;
-  smax = n;
-
-  mx = 0;
-  mn = -1;
-
-  mk = (double)(is->pbx - is->pax)/(double)n;
-  bk = is->pax;
-
-  ml = (double)(is->pby - is->pay)/(double)n;
-  bl = is->pay;
-  
-  for( s=smin; s<smax; s++) {
-    k = mk * s + bk;
-    l = ml * s + bl;
-    
-    if( (int)(k+0.5) >= 0 && (int)(k+0.5) < is->inHeight && (int)(l+0.5) >=0 && (int)(l+0.5) < is->inWidth) {
-      lineMaxMinAve( is, (maxs + s), (mins + s), (aves + s), k, l, -ml, mk);
-    } else {
-      maxs[s] = 0;
-      mins[s] = 0;
-      aves[s] = 0;
-    }
-    mx = (maxs[s] > mx) ? maxs[s] : mx;
-    mn = (mins[s] < mn) ? mins[s] : mn;
-  }
-  free( is->fullbuf);
-  
-  fprintf( stderr, "<data rqid=\"%s\" xMin=\"%d\" xMax=\"%d\" yMin=\"%d\" yMax=\"%d\">\n", is->rqid, smin, smax, mn, mx);
-
-  err = fprintf( is->fout, "<data rqid=\"%s\" xMin=\"%d\" xMax=\"%d\" yMin=\"%d\" yMax=\"%d\">\n", is->rqid, smin, smax, mn, mx);
-  if( err < 0) {
-    fprintf( stderr, "marTiff2profile: write failed: '%s'\n", strerror( errno));
-    return;
-  }
-  for( s=smin; s<smax; s++) {
-    fprintf( stdout, "<point x=\"%d\" min=\"%u\" ave=\"%u\" max=\"%u\"/>\n", s, mins[s], aves[s], maxs[s]);
-
-    err = fprintf( is->fout, "<point x=\"%d\" min=\"%u\" ave=\"%u\" max=\"%u\"/>\n", s, mins[s], aves[s], maxs[s]);
-
-    if( err < 0) {
-      fprintf( stderr, "marTiff2profile: write failed: '%s'\n", strerror( errno));
-      return;
-    }
-  }
-  fprintf( stderr, "</data>\n");
-  err = fprintf( is->fout, "</data>\n");
-  if( err < 0) {
-    fprintf( stderr, "marTiff2profile: write failed: '%s'\n", strerror( errno));
-    return;
-  }
-
-  fflush( is->fout);
 }

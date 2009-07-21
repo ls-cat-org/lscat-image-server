@@ -84,9 +84,7 @@ int dbGet( isType *inf) {
     return 0;		// more than one row is bad, treat it as though it didn't find any
   }
 
-  inf->buf       = NULL;
-  inf->fullbuf   = NULL;
-  inf->pad       = 0;
+  inf->b         = NULL;
   inf->user      = strdup(PQgetvalue( res, 0, PQfnumber( res, "isuser")));
   inf->rqid      = strdup(PQgetvalue( res, 0, PQfnumber( res, "isrqid")));
   inf->esaf      = atoi(PQgetvalue( res, 0, PQfnumber( res, "isesaf")));

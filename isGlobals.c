@@ -3,12 +3,15 @@
 int debug = 0;
 
 sem_t workerSem;
+pthread_mutex_t ibUseMutex;
+pthread_rwlock_t isTypeChangeLock;
 pthread_mutex_t workerMutex;
 pthread_cond_t workerCond;
 
 isType isQueue;
 int    isQueueLength = 0;
 pthread_t kbt[NTHREADS];
+imBufType ibs[NIBUFS];
 
 //imtype_type mar345 = {
 //  0, 0, 1, 0x00, 0x0000, 0x000004d2, "Mar 345", mar345
@@ -19,11 +22,11 @@ pthread_t kbt[NTHREADS];
 //};
 
 imtype_type martiff = {
-  0, 0, 1, 0x00, 0x0000, 0x002a4949, "Mar 165", marTiff
+  0, 0, 1, 0x00, 0x0000, 0x002a4949, "Mar 165", marTiffGetHeader, marTiffGetData
 };
 
 imtype_type martiffBS = {
-  0, 0, 1, 0x00, 0x0000, 0x49492a00, "Mar 165 Byte Swapped", marTiff
+  0, 0, 1, 0x00, 0x0000, 0x49492a00, "Mar 165 Byte Swapped", marTiffGetHeader, marTiffGetData
 };
 
 //imtype_type adsc = {
