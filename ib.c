@@ -67,6 +67,9 @@ void ib2jpeg( isType *is ) {
   pthread_rwlock_rdlock( &(is->b->datalock));
 
 
+  //
+  // Setup the jpeg stuff
+  //
   cinfoSetup = 0;
   buf = NULL;
   bufo = NULL;
@@ -83,6 +86,12 @@ void ib2jpeg( isType *is ) {
   }
   
 
+  // Refuse to make really, really, really small images
+  //
+  is->xsize = is->xsize < 8 ? 8 : is->xsize;
+  is->ysize = is->ysize < 8 ? 8 : is->ysize;
+
+
   //
   // size of rectangle to search for the maximum pixel value
   // yal and xal are subtracted from ya and xa for the lower bound of the box and
@@ -98,9 +107,17 @@ void ib2jpeg( isType *is ) {
   if( (xal+xau) < xa)
     xau++;
 
+  // Make sure that xal, xau, yal, and yau are all <= the image pad
+  xal = xal > ISPADSIZE ? ISPADSIZE : xal;
+  xau = xau > ISPADSIZE ? ISPADSIZE : xau;
+
+  yal = yal > ISPADSIZE ? ISPADSIZE : yal;
+  yau = yau > ISPADSIZE ? ISPADSIZE : yau;
+
+
   //
-  // get the data, pad scan line by xal
-  is->b->pad = xal;
+  // Data should already be here
+  //
   buf = is->b->buf;
 
   cinfo.err = jpeg_std_error(&jerr);
@@ -249,12 +266,16 @@ void lineMaxMinAve( isType *is, unsigned short *mx, unsigned short *mn, unsigned
   int i;		// counter
   unsigned short p;
   double a;
+  int ll, ul;		// lower limit and upper limit of line
+
+  ll = -(is->pw/2) < -ISPADSIZE ? -ISPADSIZE : -(is->pw/2);
+  ul = is->pw + ll > ISPADSIZE ? ISPADSIZE : is->pw;
 
   *mx = 0;
   *mn = -1;
   *ave = 0;
   a    = 0.0;
-  for( t = -(is->pw)/2, i=0; i < (is->pw); i++,t++) {
+  for( t = ll, i=0; i < ul; i++,t++) {
     x = mk*t + k;
     y = ml*t + l;
     p = nearestValue( is, y, x);
@@ -393,7 +414,7 @@ void ib2profile( isType *is) {
 void ib2header( isType *is) {
   int dataread;
 
-  fprintf( is->fout, "<marheader");
+  fprintf( is->fout, "<imageheader");
 
   fprintf( is->fout, " success=\"true\"");
   fprintf( is->fout, " rqid=\"%s\"",	        is->rqid);

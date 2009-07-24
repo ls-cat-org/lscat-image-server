@@ -52,39 +52,42 @@ void ibInit( imBufType *ib) {
 }
 
 void imBufGarbageCollect( imBufType *ib) {
-  int nuse;
+  if( ib->magic != IBMAGIC) {
+    fprintf( stderr, "imBufGarbageCollect: corrupt image buffer!\n");
+    exit( -1);
+  }
+  pthread_rwlock_wrlock( &(ib->headlock));	// lock the header
+  pthread_rwlock_wrlock( &(ib->datalock));	// lock the data
 
-  if( ib->magic == IBMAGIC) {
-    pthread_rwlock_wrlock( &(ib->headlock));	// lock the header
-    pthread_rwlock_wrlock( &(ib->datalock));	// lock the data
 
+  pthread_mutex_lock( &ibUseMutex);
 
-    pthread_mutex_lock( &ibUseMutex);
-    nuse = ib->nuse;
-    pthread_mutex_unlock( &ibUseMutex);
+  ib->dataRead = 0;
+  ib->headerRead = 0;
 
-    if( nuse <= 0) {
-      if( ib->fn != NULL) {
-	free( ib->fn);
-	ib->fn = NULL;
-      }
-      if( ib->h_filename != NULL) {
-	free( ib->h_filename);
-	ib->h_filename = NULL;
-      }
-      if( ib->h_dir != NULL) {
-	free( ib->h_dir);
-	ib->h_dir = NULL;
-      }
-      if( ib->fullbuf != NULL) {
-	free( ib->fullbuf);
-	ib->fullbuf = NULL;
-	ib->buf     = NULL;
-      }
+  if( ib->nuse <= 0) {
+    if( ib->fn != NULL) {
+      free( ib->fn);
+      ib->fn = NULL;
     }
-    pthread_rwlock_unlock( &(ib->datalock));
-    pthread_rwlock_unlock( &(ib->headlock));
-  }    
+    if( ib->h_filename != NULL) {
+      free( ib->h_filename);
+      ib->h_filename = NULL;
+    }
+    if( ib->h_dir != NULL) {
+      free( ib->h_dir);
+      ib->h_dir = NULL;
+    }
+    if( ib->fullbuf != NULL) {
+      free( ib->fullbuf);
+      ib->fullbuf = NULL;
+      ib->buf     = NULL;
+    }
+  }
+  pthread_mutex_unlock( &ibUseMutex);
+
+  pthread_rwlock_unlock( &(ib->datalock));
+  pthread_rwlock_unlock( &(ib->headlock));
 }
 
 //
@@ -97,13 +100,15 @@ imBufType *imBufGet( char *fn) {
 
   foundIt = 0;
   for( i=0; i<NIBUFS; i++) {
-    if( ibs[i].fn == NULL || strcmp( ibs[i].fn, fn) == 0) {
-      pthread_mutex_lock( &ibUseMutex);
+    pthread_mutex_lock( &ibUseMutex);
+    if( ibs[i].fn != NULL && strcmp( ibs[i].fn, fn) == 0) {
       ibs[i].nuse++;			// someone else is using the buffer, better lock out nuse while we change it
       pthread_mutex_unlock( &ibUseMutex);
       return( &ibs[i]);
     }
+    pthread_mutex_unlock( &ibUseMutex);
   }
+
   //
   // Here means we'll need to actually read the file:
   // find an unused buffer
@@ -114,7 +119,10 @@ imBufType *imBufGet( char *fn) {
     pthread_mutex_unlock( &ibUseMutex);
     if( nuse <=0) {
       imBufGarbageCollect( &ibs[i]);
+      pthread_mutex_lock( &ibUseMutex);
       ibs[i].nuse = 1;			// At this point no other process is using this buffer, no locks needed
+      ibs[i].fn = strdup( fn);
+      pthread_mutex_unlock( &ibUseMutex);
       return( &ibs[i]);			// If someone else can allocate a buffer we'll need to add the locks
     }
   }
@@ -198,7 +206,6 @@ void popIsQueue( isType *is) {
     pthread_rwlock_wrlock( &(is->b->headlock));
     is->b->headerRead = 1;		// Mark that it's read: this keeps a second thead from deciding to load the header data also
     readNeeded = 1;
-    is->b->fn = strdup( is->fn);
   }
 
   pthread_mutex_unlock( &ibUseMutex);	// done messing with headerRead
@@ -228,7 +235,6 @@ void ibWorkerDone( isType *is) {
   // let the writers have their way
   //
   pthread_rwlock_unlock( &(is->b->headlock));
-  pthread_rwlock_unlock( &(is->b->datalock));
 }
 
 void cmdDispatch( isType *is) {
@@ -252,6 +258,9 @@ void *worker( void *dummy) {
   // since the first thing we need to do is increment (post) it in popIsQueue
   //
   sem_wait( &workerSem);
+
+  // initialize isInfo;
+  memset( &isInfo, 0, sizeof( isType));
 
   while( 1) {
     popIsQueue( &isInfo); 
@@ -385,7 +394,15 @@ void isDaemon() {
   int countdown;
 #endif
 
+  // initialize the database connection
   dbInit();
+
+  // initialize the image buffers
+  for( i=0; i<NIBUFS; i++) {
+    ibInit( &(ibs[i]));
+  }
+
+
 
   //
   // set up mutex, condition, and semaphore to handle thread synchronization
