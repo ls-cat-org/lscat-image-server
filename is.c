@@ -274,6 +274,10 @@ void *worker( void *dummy) {
 
     // Set up output socket
     outSoc = socket( AF_INET, SOCK_STREAM, 0);
+    if( outSoc == -1) {
+      fprintf( stderr, "socket call failed: %s\n", strerror( errno));
+      continue;
+    }
     
     theAddr.sin_family   = AF_INET;
     theAddr.sin_port     = htons( (unsigned short int)isInfo.port);
@@ -286,6 +290,10 @@ void *worker( void *dummy) {
     }
 
     isInfo.fout = fdopen( outSoc, "w");
+    if( isInfo.fout == NULL) {
+      fprintf( stderr, "fdopen failed: %s\n", strerror( errno));
+      continue;
+    }
     cmdDispatch( &isInfo);
     close( outSoc);
 
