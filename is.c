@@ -168,6 +168,14 @@ void isTypeDestroy( isType *is) {
 	free( is->fn);
 	is->fn = NULL;
       }
+      if( is->ifn1 != NULL) {
+	free( is->ifn1);
+	is->ifn1 = NULL;
+      }
+      if( is->ifn2 != NULL) {
+	free( is->ifn2);
+	is->ifn2 = NULL;
+      }
     }
   }
   //
@@ -179,21 +187,27 @@ void isTypeDestroy( isType *is) {
 void popIsQueue( isType *is) {
   int readNeeded;
 
-  if( is != NULL) {
-    isTypeDestroy( is);
-  }
+  //
+  // recover previously allocated space, if any
+  //
+  isTypeDestroy( is);
 
   sem_post( &workerSem);		// give up our semaphore
 
   pthread_mutex_lock( &workerMutex);	// grab the worker mutex to set up the signal
 
+  //
+  // Here we sit waiting for a request to come in
+  //
   while( isQueueLength == 0) {				// Loop to eliminate spurious signals
     pthread_cond_wait( &workerCond, &workerMutex);	// wait for isDaemon to signal ready
   }
   
-  sem_wait( &workerSem);		// grab a semaphore: isDaemon has alread checked to make sure this will not hang
-  
+  sem_wait( &workerSem);		// grab a semaphore: isDaemon has already checked to make sure this will not hang
+
+  //  
   // The actual work is a little anticlimatic
+  // Just copy the next (only) item in the queue
   //
   memcpy( is, &isQueue, sizeof( isQueue));
   isQueueLength = 0;
@@ -210,6 +224,9 @@ void popIsQueue( isType *is) {
 
   pthread_mutex_unlock( &ibUseMutex);	// done messing with headerRead
 
+  //
+  // Allow other threads to start up
+  //
   pthread_mutex_unlock( &workerMutex);
 
   //
@@ -244,14 +261,18 @@ void cmdDispatch( isType *is) {
       ib2profile( is);
   } else if( strcmp( is->cmd, "header") == 0) {
     ib2header( is);
+  } else if( strcmp( is->cmd, "download") == 0) {
+    ib2download( is);
+  } else if( strcmp( is->cmd, "indexing") == 0) {
+    ib2indexing( is);
   }
 }
 
 void *worker( void *dummy) {
   struct hostent *hostInfo;
   isType isInfo;
-  int outSoc;
   struct sockaddr_in theAddr;
+  int firstTime;
 
   //
   // decrement (wait) the semaphore before starting the loop
@@ -262,7 +283,20 @@ void *worker( void *dummy) {
   // initialize isInfo;
   memset( &isInfo, 0, sizeof( isType));
 
+  // Don't try to unlock image buffer the first time out
+  //
+  firstTime = 1;
+
   while( 1) {
+    //
+    // Don't mess with isInfo the first time through the loop
+    //
+    if( !firstTime) {
+      ibWorkerDone( &isInfo);
+    } else {
+      firstTime = 0;
+    }
+
     popIsQueue( &isInfo); 
 
     hostInfo = gethostbyname( isInfo.ip);
@@ -273,8 +307,8 @@ void *worker( void *dummy) {
 
 
     // Set up output socket
-    outSoc = socket( AF_INET, SOCK_STREAM, 0);
-    if( outSoc == -1) {
+    isInfo.fd = socket( AF_INET, SOCK_STREAM, 0);
+    if( isInfo.fd == -1) {
       fprintf( stderr, "socket call failed: %s\n", strerror( errno));
       continue;
     }
@@ -284,20 +318,19 @@ void *worker( void *dummy) {
     memset( &theAddr.sin_addr.s_addr, 0, sizeof( theAddr.sin_addr.s_addr));
     theAddr.sin_addr.s_addr = ((struct in_addr *) hostInfo->h_addr_list[0])->s_addr;
 
-    if( connect( outSoc,(struct sockaddr *) &theAddr, sizeof( theAddr)) == -1) {
+    if( connect( isInfo.fd,(struct sockaddr *) &theAddr, sizeof( theAddr)) == -1) {
       fprintf( stderr, "connect to %s failed: %s\n", isInfo.ip, strerror( errno));
       continue;
     }
 
-    isInfo.fout = fdopen( outSoc, "w");
+    isInfo.fout = fdopen( isInfo.fd, "w");
     if( isInfo.fout == NULL) {
       fprintf( stderr, "fdopen failed: %s\n", strerror( errno));
       continue;
     }
     cmdDispatch( &isInfo);
-    close( outSoc);
-
-    ibWorkerDone( &isInfo);
+    if( isInfo.fd >= 0)
+      close( isInfo.fd);
   }
   return 0;
 }

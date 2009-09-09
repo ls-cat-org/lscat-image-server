@@ -26,14 +26,22 @@ void typeDispatch( isType *is) {
     exit( 1);
   }
 
-  lseek( fd, 0, SEEK_SET);
+  if( lseek( fd, 0, SEEK_SET) < 0L) {
+    fprintf( stderr, "lseek 4 failed:  %s\n   %s\n", is->fn, strerror( errno));
+    exit( 1);
+  }
+
   br = read( fd, (char *)&f2, 2);
   if( br != 2) {
     fprintf( stderr, "Could not read 2 bytes from file %s\n", is->fn);
     exit( 1);
   }
 
-  lseek( fd, 0, SEEK_SET);
+  if( lseek( fd, 0, SEEK_SET) < 0L) {
+    fprintf( stderr, "lseek 2 failed:  %s\n   %s\n", is->fn, strerror( errno));
+    exit( 1);
+  }
+
   br = read( fd, (char *)&f1, 1);
   if( br != 1) {
     fprintf( stderr, "Could not read 1 bytes from file %s\n", is->fn);

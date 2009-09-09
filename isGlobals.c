@@ -63,3 +63,11 @@ imtype_type *imTypeArray[] = {
 //mar345_ascii_header_type *theMar345AsciiHeader = NULL;
 
 //mar345_bin_header_type theMar345BinHeader;
+
+
+cmdDispatchType cmdDispatches[] = {
+  { "jpeg", ib2jpeg},
+  { "header", ib2header},
+  { "profile", ib2profile},
+  { "download", ib2download}
+};

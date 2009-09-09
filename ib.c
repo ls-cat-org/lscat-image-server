@@ -81,7 +81,9 @@ void ib2jpeg( isType *is ) {
       free( bufo);
 
     pthread_rwlock_unlock( &(is->b->datalock));
-    fclose( is->fout);
+    close( is->fd);
+    is->fd = -1;
+    is->fout = NULL;
     return;
   }
   
@@ -142,7 +144,9 @@ void ib2jpeg( isType *is ) {
   if( bufo == NULL) {
     fprintf( stderr, "ib2jpeg: Out of memory.  calloc(%d) failed\n", 3*is->ysize*is->xsize*sizeof( unsigned char));
     pthread_rwlock_unlock( &(is->b->datalock));
-    fclose( is->fout);
+    close( is->fd);
+    is->fd = -1;
+    is->fout = NULL;
     return;
   }
 
@@ -250,7 +254,9 @@ void ib2jpeg( isType *is ) {
   //
   free( bufo);
   pthread_rwlock_unlock( &(is->b->datalock));
-  fclose( is->fout);
+  close( is->fd);
+  is->fd = -1;
+  is->fout = NULL;
 }
 
 
@@ -327,7 +333,9 @@ void ib2profile( isType *is) {
   maxs = (unsigned short *)calloc( n, sizeof( unsigned short));
   if( maxs == NULL) {
     fprintf( stderr, "ib2profile: out of memory %d bytes\n", n * sizeof( unsigned short));
-    fclose( is->fout);
+    close( is->fd);
+    is->fd = -1;
+    is->fout = NULL;
     pthread_rwlock_unlock( &(is->b->datalock));
     return;
   }
@@ -335,7 +343,9 @@ void ib2profile( isType *is) {
   mins = (unsigned short *)calloc( n, sizeof( unsigned short));
   if( mins == NULL) {
     fprintf( stderr, "ib2profile: out of memory %d bytes\n", n * sizeof( unsigned short));
-    fclose( is->fout);
+    close( is->fd);
+    is->fd = -1;
+    is->fout = NULL;
     pthread_rwlock_unlock( &(is->b->datalock));
     return;
   }
@@ -343,7 +353,9 @@ void ib2profile( isType *is) {
   aves = (unsigned short *)calloc( n, sizeof( unsigned short));
   if( aves == NULL) {
     fprintf( stderr, "ib2profile: out of memory %d bytes\n", n * sizeof( unsigned short));
-    fclose( is->fout);
+    close( is->fd);
+    is->fd = -1;
+    is->fout = NULL;
     pthread_rwlock_unlock( &(is->b->datalock));
     return;
   }
@@ -380,7 +392,9 @@ void ib2profile( isType *is) {
   err = fprintf( is->fout, "<data rqid=\"%s\" xMin=\"%d\" xMax=\"%d\" yMin=\"%d\" yMax=\"%d\">\n", is->rqid, smin, smax, mn, mx);
   if( err < 0) {
     fprintf( stderr, "ib2profile: write failed: '%s'\n", strerror( errno));
-    fclose( is->fout);
+    close( is->fd);
+    is->fd = -1;
+    is->fout = NULL;
     pthread_rwlock_unlock( &(is->b->datalock));
     return;
   }
@@ -391,7 +405,9 @@ void ib2profile( isType *is) {
 
     if( err < 0) {
       fprintf( stderr, "ib2profile: write failed: '%s'\n", strerror( errno));
-      fclose( is->fout);
+      close( is->fd);
+      is->fd = -1;
+      is->fout = NULL;
       pthread_rwlock_unlock( &(is->b->datalock));
       return;
     }
@@ -400,13 +416,17 @@ void ib2profile( isType *is) {
   err = fprintf( is->fout, "</data>\n");
   if( err < 0) {
     fprintf( stderr, "ib2profile: write failed: '%s'\n", strerror( errno));
-    fclose( is->fout);
+    close( is->fd);
+    is->fd = -1;
+    is->fout = NULL;
     pthread_rwlock_unlock( &(is->b->datalock));
     return;
   }
 
   fflush( is->fout);
-  fclose( is->fout);
+  close( is->fd);
+  is->fd = -1;
+  is->fout = NULL;
   pthread_rwlock_unlock( &(is->b->datalock));
 }
 
@@ -441,7 +461,9 @@ void ib2header( isType *is) {
   fprintf( is->fout, " nSaturated=\"%d\"",        is->b->h_nSaturated);
   fprintf( is->fout, "/>\n");
   fflush( is->fout);
-  fclose( is->fout);
+  close( is->fd);
+  is->fd = -1;
+  is->fout = NULL;
 
   // Now that the header is done, let's read the data too, unless someone else beat us to it
 
@@ -457,4 +479,79 @@ void ib2header( isType *is) {
     is->b->getData( is);
     pthread_rwlock_unlock( &(is->b->datalock));
   }
+}
+
+void ib2download( isType *is) {
+  int fd;
+  int cnt;
+  int wcnt;
+  char buf[1024];
+
+  //
+  // Don't need data or header, just user and groups (and file name)
+  //
+
+  if( fork() != 0) {
+    //
+    // In Parent
+    //
+    close( is->fd);
+    is->fd = -1;
+    is->fout = NULL;
+    return;
+  }
+  //
+  // In Child
+  //
+  setgid( is->gid);
+  setuid( is->uid);
+  fd = open( is->fn, O_RDONLY);
+  while( 1) {
+    cnt = read( fd, buf, sizeof(buf));
+    if( cnt <= 0)
+      break;
+    wcnt = write( is->fd, buf, cnt);
+    if( cnt != wcnt)
+      break;
+  }
+  close( fd);
+  close( is->fd);
+  exit( 0);
+}
+
+void ib2indexing( isType *is) {
+  int chld;
+  int status;
+  //
+  // Don't need data or header, just user and groups (and file names ifn1 and ifn2)
+  //
+
+  if( (chld=fork()) != 0) {
+    //
+    // In Parent
+    //
+    close( is->fd);
+    is->fd = -1;
+    is->fout = NULL;
+    waitpid( chld, &status, 0);
+    return;
+  }
+  //
+  // In Child
+  //
+  setgid( is->gid);
+  setuid( is->uid);
+
+
+  close( 1);	// close stdout
+  dup( is->fd);	// make our file descriptor the new stdout
+  //
+  // Call the indexing routine
+  //
+  execl( "/pf/bin/lsIndexing.py", "/pf/bin/lsIndexing.py", is->ifn1, is->ifn2, (const char *)NULL);
+
+  //  printf( "Here I am\n");
+
+  close( is->fd);
+  exit( 0);
 }

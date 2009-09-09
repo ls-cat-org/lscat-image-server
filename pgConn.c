@@ -68,8 +68,10 @@ int dbGet( isType *inf) {
   // Query the database to find our information
   //
   res = PQexec( db, "select * from rmt.popIs() where isuser is not null");
-  if( res == NULL)
+
+  if( res == NULL) {
     return rtn;
+  }
   
   status = PQresultStatus( res);
   if( status != PGRES_TUPLES_OK) {
@@ -105,7 +107,8 @@ int dbGet( isType *inf) {
   inf->pbx       = atoi(PQgetvalue( res, 0, PQfnumber( res, "pbx")));
   inf->pby       = atoi(PQgetvalue( res, 0, PQfnumber( res, "pby")));
   inf->pw        = atoi(PQgetvalue( res, 0, PQfnumber( res, "pw")));
-
+  inf->ifn1      = strdup(PQgetvalue( res, 0, PQfnumber( res, "ifn1")));
+  inf->ifn2      = strdup(PQgetvalue( res, 0, PQfnumber( res, "ifn2")));
 
 
   //

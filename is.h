@@ -25,6 +25,7 @@
 #include <pthread.h>
 #include <semaphore.h>
 #include <signal.h>
+#include <wait.h>
 
 #define NTHREADS 16
 #define NIBUFS 16
@@ -99,7 +100,8 @@ typedef struct is_struct {
   char *user;			// user name to run as
   int uid;			// uid of user
   int gid;			// uid of the file
-  FILE *fout;			// output file pointer
+  int fd;			// file descriptor
+  FILE *fout;			// output file pointer corresponding to fd
   char *rqid;			// client's request id
   int  esaf;			// esaf for the experiment
   char *cmd;			// command to run
@@ -125,6 +127,11 @@ typedef struct is_struct {
   int pbx;	// profile point b x coordinate
   int pby;	// profile point b y coordinate
   int pw;	// profile width
+  //
+  // indexing filenames
+  //
+  char *ifn1;	// file name 1 for the indexing routine
+  char *ifn2;	// file name 1 for the indexing routine
 } isType;
 
 
@@ -210,6 +217,8 @@ void marTiffGetData( isType *is);
 void ib2header( isType *is);
 void ib2jpeg( isType *is);
 void ib2profile( isType *is);
+void ib2download( isType *is);
+void ib2indexing( isType *is);
 extern int debug;
 
 extern sem_t workerSem;
@@ -221,3 +230,11 @@ extern isType isQueue;
 extern int isQueueLength;
 extern pthread_t kbt[];
 extern imBufType ibs[];
+
+
+typedef struct cmdDispatchStruct {
+  char *name;
+  void (*func)( isType *);
+} cmdDispatchType;
+
+extern cmdDispatchType cmdDispatches[];
