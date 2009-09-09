@@ -1,9 +1,0 @@
-#! /bin/bash
-#
-# Wrapper for the mar header xml server (/usr/local/bin/mh)
-# used to call the image server as a inetd service
-#
-read fn rqid
-
-/usr/local/bin/mh $fn  ${rqid:0} 2>/dev/null
-
