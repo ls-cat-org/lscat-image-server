@@ -437,8 +437,8 @@ void isDaemon() {
 #endif
 
   // put our pid into /var/run/ls-cat/is
-  mkdir( "/var/run/ls-cat");
-  pidfile = fopen( "/var/run/ls-cat/is.pid");
+  mkdir( "/var/run/ls-cat", 0777);
+  pidfile = fopen( "/var/run/ls-cat/is.pid", "w");
   if( pidfile != NULL) {
     fprintf( pidfile, "%d", getpid());
     fclose( pidfile);
