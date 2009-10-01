@@ -431,7 +431,7 @@ void isDaemon() {
   struct group *grInfo;
   struct stat sb;
   char **spp;
-  File *pidfile;
+  FILE *pidfile;
 #ifdef PROFILE
   int countdown;
 #endif
