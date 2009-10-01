@@ -142,7 +142,7 @@ void ib2jpeg( isType *is ) {
 
   bufo = calloc( 3 * is->ysize * is->xsize, sizeof(unsigned char) );
   if( bufo == NULL) {
-    fprintf( stderr, "ib2jpeg: Out of memory.  calloc(%d) failed\n", 3*is->ysize*is->xsize*sizeof( unsigned char));
+    fprintf( stderr, "ib2jpeg: Out of memory.  calloc(%ul) failed\n", 3*is->ysize*is->xsize*sizeof( unsigned char));
     pthread_rwlock_unlock( &(is->b->datalock));
     close( is->fd);
     is->fd = -1;
@@ -332,7 +332,7 @@ void ib2profile( isType *is) {
 
   maxs = (unsigned short *)calloc( n, sizeof( unsigned short));
   if( maxs == NULL) {
-    fprintf( stderr, "ib2profile: out of memory %d bytes\n", n * sizeof( unsigned short));
+    fprintf( stderr, "ib2profile: out of memory %ul bytes\n", n * sizeof( unsigned short));
     close( is->fd);
     is->fd = -1;
     is->fout = NULL;
@@ -342,7 +342,7 @@ void ib2profile( isType *is) {
   
   mins = (unsigned short *)calloc( n, sizeof( unsigned short));
   if( mins == NULL) {
-    fprintf( stderr, "ib2profile: out of memory %d bytes\n", n * sizeof( unsigned short));
+    fprintf( stderr, "ib2profile: out of memory %ul bytes\n", n * sizeof( unsigned short));
     close( is->fd);
     is->fd = -1;
     is->fout = NULL;
@@ -352,7 +352,7 @@ void ib2profile( isType *is) {
   
   aves = (unsigned short *)calloc( n, sizeof( unsigned short));
   if( aves == NULL) {
-    fprintf( stderr, "ib2profile: out of memory %d bytes\n", n * sizeof( unsigned short));
+    fprintf( stderr, "ib2profile: out of memory %ul bytes\n", n * sizeof( unsigned short));
     close( is->fd);
     is->fd = -1;
     is->fout = NULL;
