@@ -22,4 +22,5 @@ dist:
 
 install: is
 	install is /pf/bin/linux-x86_64
+	install -d /usr/lib/ocf/resource.d/ls-cat
 	install -t /usr/lib/ocf/resource.d/ls-cat  ImageServer.py 
