@@ -55,7 +55,7 @@ This resource controls the LS-CAT image server.
 """
 
       def monitor( self):
-          if isRunning():
+          if self.isRunning():
               return 0          # ocf_success
 
           return 7              # ocf_not_running
