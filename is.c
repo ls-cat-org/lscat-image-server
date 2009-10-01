@@ -431,9 +431,18 @@ void isDaemon() {
   struct group *grInfo;
   struct stat sb;
   char **spp;
+  File *pidfile;
 #ifdef PROFILE
   int countdown;
 #endif
+
+  // put our pid into /var/run/ls-cat/is
+  mkdir( "/var/run/ls-cat");
+  pidfile = fopen( "/var/run/ls-cat/is.pid");
+  if( pidfile != NULL) {
+    fprintf( pidfile, "%d", getpid());
+    fclose( pidfile);
+  }
 
   // initialize the database connection
   dbInit();
