@@ -1,6 +1,6 @@
 VERSION= 2.00
 
-all: is isp mh isdebug
+all: is isp isdebug Makefile
 
 is: is.c is.h mr.c isGlobals.c imtype.c pgConn.c ib.c Makefile
 	gcc -Wall -O3 -ffast-math -o is is.c isGlobals.c ib.c mr.c imtype.c pgConn.c  -ltiff -ljpeg -lm -lpq
@@ -21,6 +21,6 @@ dist:
 	rm -f is-$(VERSION)
 
 install: is
-	install mh /usr/local/bin
-	install is /usr/local/bin
+	install is /pf/bin/linux-x86_64
+
 
