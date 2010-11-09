@@ -1,3 +1,12 @@
+/*
+** isGlobals.c
+**
+** global storage for LS-CAT image server routines
+**
+** Copyright 2009-2010 by Keith Brister
+** All rights reserved.
+**
+*/
 #include "is.h"
 
 int debug = 0;

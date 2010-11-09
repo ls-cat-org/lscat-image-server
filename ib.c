@@ -1,3 +1,13 @@
+/*
+** ib.c
+**
+** Routines that operate on the image buffer
+**
+** Copyright (C) 2009-2010 by Keith Brister
+** All rights reserved.
+**
+*/
+
 #include "is.h"
 
 unsigned short nearestValue( isType *is, double k, double l) {

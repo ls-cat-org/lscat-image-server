@@ -1,6 +1,14 @@
-#include "is.h"
+/*
+** imtype.c
+**
+** Set up image buffer based on the type of file to be read
+**
+** Copyright (C) 2009-2010 by Keith Brister
+** All rights reserved.
+**
+*/
 
-char *extensions[] = { ".img", ".mccd", ".mar3450", ".mar3000", ".mar2400", ".mar1800", ".mar2300", ".mar2000", ".mar1600", ".mar1200"};
+#include "is.h"
 
 void typeDispatch( isType *is) {
   int fd;		// file descriptor

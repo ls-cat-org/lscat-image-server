@@ -1,6 +1,12 @@
-VERSION= 2.00
+Version=2.10
 
-all: is isp isdebug Makefile
+all: copyright is isp isdebug Makefile
+
+copyright:
+	@echo " "
+	@echo "Copyright (C) 2009-2010 by Keith Brister"
+	@echo "All rights reserved."
+	@echo " "
 
 is: is.c is.h mr.c isGlobals.c imtype.c pgConn.c ib.c Makefile
 	gcc -Wall -O3 -ffast-math -o is is.c isGlobals.c ib.c mr.c imtype.c pgConn.c  -ltiff -ljpeg -lm -lpq

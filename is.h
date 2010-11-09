@@ -1,3 +1,13 @@
+/*
+** is.h
+**
+** Common includes for the LS-CAT image server
+**
+** Copyright (C) 2009-2010 by Keith Brister
+** All rights reserved.
+**
+*/
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>

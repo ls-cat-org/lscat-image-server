@@ -1,5 +1,17 @@
 #! /usr/bin/python
-import sys, os, subprocess, time
+#
+# OFC resource to support running
+# the LS-CAT Image Server "is"
+# through pacemaker
+#
+# Copyright (C) 2009, 2010 by Keith Brister
+# All rights reserved.
+#
+
+import sys
+import os
+import subprocess
+import time
 
 class ImageServer:
       

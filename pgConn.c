@@ -1,3 +1,13 @@
+/*
+** pgConn.c
+**
+** Routines to support Postgres connections to the LS-CAT image server.
+**
+** Copyright (C) 2009-2010 by Keith Brister
+** All rights reserved.
+**
+*/
+
 #include "is.h"
 
 PGconn *db=NULL;

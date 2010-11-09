@@ -1,3 +1,15 @@
+/*
+** mr.c
+**
+** The frame structure and definitions may be covered by 
+** copyrights owned by Rayonix LLC.
+**
+** Modifications for support by the LS-CAT image server:
+** Copyright (C) 2009-2010 by Keith Brister
+** All rights reserved.
+**
+*/
+
 #include "is.h"
 
 #define UINT16	unsigned short

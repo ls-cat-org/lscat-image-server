@@ -1,3 +1,12 @@
+/*
+** is.c
+**
+** LS-CAT image server command line support
+**
+** Copyright (C) 2009-2010 by Keith Brister
+** All rights reserved.
+**
+*/
 #include "is.h"
 
 //
@@ -6,7 +15,8 @@
 
 
 static char usage[] = {
-  "Usage:\n\
+  "Copyright (C) 2009-2010 by Keith Brister. All rights reserved.\n\
+    Usage:\n\
     is [options]\n\
 This program converts diffraction images into a jpeg image for display.\n\
 \n\
