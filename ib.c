@@ -77,8 +77,10 @@ void ib2jpeg( isType *is ) {
   if( setjmp( j_jumpHere)) {
     if( cinfoSetup)
       jpeg_destroy_compress( &cinfo);
-    if( bufo != NULL)
+    if( bufo != NULL) {
       free( bufo);
+      bufo = NULL;
+    }
 
     pthread_rwlock_unlock( &(is->b->datalock));
     close( is->fd);
@@ -252,7 +254,10 @@ void ib2jpeg( isType *is ) {
   //
   // don't forget to free the memory!
   //
-  free( bufo);
+  if( bufo != NULL) {
+    free( bufo);
+    bufo = NULL;
+  }
   pthread_rwlock_unlock( &(is->b->datalock));
   close( is->fd);
   is->fd = -1;

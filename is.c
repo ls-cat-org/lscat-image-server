@@ -430,11 +430,22 @@ void isDaemon() {
   struct passwd *pwInfo;
   struct group *grInfo;
   struct stat sb;
+  struct sigaction sigact;
   char **spp;
   FILE *pidfile;
 #ifdef PROFILE
   int countdown;
 #endif
+
+  // Ignore SIGPIPE
+  // When the connection dies it might happen
+  // while writing causing a SIGPIPE which has the
+  // default action of killing the program
+  //
+  sigact.sa_handler = SIG_IGN;
+  sigact.sa_sigaction = NULL;
+  sigact.sa_flags = 0;
+  sigaction( SIGPIPE, &sigact, NULL);
 
   // put our pid into /var/run/ls-cat/is
   mkdir( "/var/run/ls-cat", 0777);
