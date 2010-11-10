@@ -287,13 +287,33 @@ void marTiffGetData( isType *is) {
   TIFF *tf;
   int sls;
   int i;
+  struct sigaction signew;
+  struct sigaction sigold;
+  jmp_buf jmpenv;
 
+  void sigbusHandler( int sig) {
+    longjmp( jmpenv, 1);
+  }
+
+  if( setjmp( jmpenv)) {
+    fprintf( stderr, "Caught bus error, trying to recover\n");
+    fflush( stderr);
+    sleep( 1);
+  }
+
+  signew.sa_handler = sigbusHandler;
+  signew.sa_sigaction = NULL;
+  if(  sigaction( SIGBUS, &signew, &sigold) != 0) {
+    fprintf( stderr, "Error setting sigaction\n");
+  }
 
   //  TIFFSetErrorHandler( NULL);		// surpress annoying error messages 
   TIFFSetWarningHandler( NULL);		// surpress annoying warning messages 
   tf = TIFFOpen( is->b->fn, "r");		// open the file
   if( tf == NULL) {
     fprintf( stderr, "marTiffRead failed to open file '%s'\n", is->fn);
+    signew.sa_handler = SIG_DFL;
+    sigaction( SIGBUS, &signew, NULL);
     return;
   }
   TIFFGetField( tf, TIFFTAG_IMAGELENGTH,   &(is->b->inHeight));
@@ -309,6 +329,8 @@ void marTiffGetData( isType *is) {
   if( is->b->fullbuf == NULL) {
     TIFFClose( tf);
     fprintf( stderr, "marTiffRead: Out of memory.  malloc(%d) failed\n", sls * (is->b->inHeight+1));
+    signew.sa_handler = SIG_DFL;
+    sigaction( SIGBUS, &signew, NULL);
     return;
   }
 
@@ -327,4 +349,6 @@ void marTiffGetData( isType *is) {
   // we are done
   //
   TIFFClose( tf);
+  signew.sa_handler = SIG_DFL;
+  sigaction( SIGBUS, &signew, NULL);
 }

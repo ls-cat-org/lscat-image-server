@@ -338,6 +338,9 @@ void *worker( void *dummy) {
       fprintf( stderr, "fdopen failed: %s\n", strerror( errno));
       continue;
     }
+
+    //usleep( 400000);	// Kludge to wait for lustre to actually deliver the files
+
     cmdDispatch( &isInfo);
     if( isInfo.fd >= 0)
       close( isInfo.fd);
