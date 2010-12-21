@@ -1,8 +1,9 @@
 /*
 ** mr.c
 **
-** The frame structure and definitions may be covered by 
-** copyrights owned by Rayonix LLC.
+** The frame structure and definitions may be covered by copyrights
+** owned by Rayonix LLC.  Used at LS-CAT by permission of MarUSA Inc.,
+** now Rayonix LLC.
 **
 ** Modifications for support by the LS-CAT image server:
 ** Copyright (C) 2009-2010 by Keith Brister
