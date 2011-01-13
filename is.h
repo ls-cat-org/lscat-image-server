@@ -142,6 +142,10 @@ typedef struct is_struct {
   //
   char *ifn1;	// file name 1 for the indexing routine
   char *ifn2;	// file name 1 for the indexing routine
+  //
+  // Tarball parameter(s)
+  //
+  char *dspid;
 } isType;
 
 

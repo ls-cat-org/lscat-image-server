@@ -186,6 +186,10 @@ void isTypeDestroy( isType *is) {
 	free( is->ifn2);
 	is->ifn2 = NULL;
       }
+      if( is->dspid != NULL) {
+	free( is->dspid);
+	is->dspid = NULL;
+      }
     }
   }
   //

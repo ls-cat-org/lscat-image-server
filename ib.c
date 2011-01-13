@@ -534,6 +534,55 @@ void ib2download( isType *is) {
   exit( 0);
 }
 
+void ib2tarball( isType *is) {
+  //
+  // Don't need data or header, just user, groups, and dspid
+  //
+  if( fork() != 0) {
+    //
+    // In Parent
+    //
+    close( is->fd);
+    is->fd = -1;
+    is->fout = NULL;
+    return;
+  }
+  //
+  // In Child
+  //
+  // Prevent death of the parent from killing us too
+  //
+  {
+    struct sigaction sa;
+
+    sa.sa_handler = SIG_IGN;
+    sa.sa_mask = 0;
+    sa.sa_flags = 0;
+    sigaction( SIGHUP, &sa, NULL);
+
+    //
+    // Become the user
+    //
+    setgid( is->gid);
+    setuid( is->uid);
+
+    //
+    // fix stdout
+    //
+    close( 1);		// close stdout
+    dup( is->fd);	// the new stdout is at hand
+
+    //
+    // This is where we exec into the tarball script
+    //
+    execl( "/pf/bin/lsMakeDataTar.py", "lsMakeDataTar.py", is->dspid, NULL);
+
+    close( is->fd);
+    exit( 0);
+  }
+}
+
+
 void ib2indexing( isType *is) {
   int chld;
   int status;
@@ -570,3 +619,4 @@ void ib2indexing( isType *is) {
   close( is->fd);
   exit( 0);
 }
+

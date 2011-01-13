@@ -78,5 +78,6 @@ cmdDispatchType cmdDispatches[] = {
   { "jpeg", ib2jpeg},
   { "header", ib2header},
   { "profile", ib2profile},
-  { "download", ib2download}
+  { "download", ib2download},
+  { "tarball", ib2tarball}
 };
