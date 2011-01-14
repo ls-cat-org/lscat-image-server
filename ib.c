@@ -556,7 +556,7 @@ void ib2tarball( isType *is) {
     struct sigaction sa;
 
     sa.sa_handler = SIG_IGN;
-    sa.sa_mask = 0;
+    sigemptyset( &sa.sa_mask);
     sa.sa_flags = 0;
     sigaction( SIGHUP, &sa, NULL);
 
@@ -575,7 +575,7 @@ void ib2tarball( isType *is) {
     //
     // This is where we exec into the tarball script
     //
-    execl( "/pf/bin/lsMakeDataTar.py", "lsMakeDataTar.py", is->dspid, NULL);
+    execl( "/pf/bin/lsMakeDataTar.py", "/pf/bin/lsMakeDataTar.py", is->dspid, (const char *)NULL);
 
     close( is->fd);
     exit( 0);

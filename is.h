@@ -233,6 +233,7 @@ void ib2jpeg( isType *is);
 void ib2profile( isType *is);
 void ib2download( isType *is);
 void ib2indexing( isType *is);
+void ib2tarball( isType *is);
 extern int debug;
 
 extern sem_t workerSem;

@@ -279,6 +279,8 @@ void cmdDispatch( isType *is) {
     ib2download( is);
   } else if( strcmp( is->cmd, "indexing") == 0) {
     ib2indexing( is);
+  } else if( strcmp( is->cmd, "tarball") == 0) {
+    ib2tarball( is);
   }
 }
 

@@ -119,6 +119,7 @@ int dbGet( isType *inf) {
   inf->pw        = atoi(PQgetvalue( res, 0, PQfnumber( res, "pw")));
   inf->ifn1      = strdup(PQgetvalue( res, 0, PQfnumber( res, "ifn1")));
   inf->ifn2      = strdup(PQgetvalue( res, 0, PQfnumber( res, "ifn2")));
+  inf->dspid	 = strdup(PQgetvalue( res, 0, PQfnumber( res, "dspid")));
 
 
   //
@@ -146,6 +147,7 @@ int dbGet( isType *inf) {
     zz.fieldName = NULL;
 
     PQprint( stderr, res, &zz);
+    fflush( stderr);
   }
 
   return rtn;
