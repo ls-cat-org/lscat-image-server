@@ -12,7 +12,6 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <getopt.h>
-#include <jpeglib.h>
 #include <string.h>
 #include <strings.h>
 #include <ctype.h>

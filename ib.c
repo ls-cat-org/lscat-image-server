@@ -614,8 +614,6 @@ void ib2indexing( isType *is) {
   //
   execl( "/pf/bin/lsIndexing.py", "/pf/bin/lsIndexing.py", is->ifn1, is->ifn2, (const char *)NULL);
 
-  //  printf( "Here I am\n");
-
   close( is->fd);
   exit( 0);
 }

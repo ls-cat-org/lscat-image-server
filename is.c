@@ -52,11 +52,11 @@ void ibInit( imBufType *ib) {
   //
   ib->magic = IBMAGIC;
   if( pthread_rwlock_init( &(ib->headlock), NULL)) {
-    fprintf( stderr, "ibInit: rwlock init failed\n");
+    fprintf( stderr, "ibInit: headlock init failed\n");
     exit( -1);
   }
   if( pthread_rwlock_init( &(ib->datalock), NULL)) {
-    fprintf( stderr, "ibInit: rwlock init failed\n");
+    fprintf( stderr, "ibInit: datalock init failed\n");
     exit( -1);
   }
 }
@@ -120,7 +120,7 @@ imBufType *imBufGet( char *fn) {
   }
 
   //
-  // Here means we'll need to actually read the file:
+  // Here means we'll need to read the file:
   // find an unused buffer
   //
   for( i=0; i<NIBUFS; i++) {
@@ -285,7 +285,9 @@ void cmdDispatch( isType *is) {
 }
 
 void *worker( void *dummy) {
-  struct hostent *hostInfo;
+  struct hostent *hostInfo, hostInfoBuffer;
+  int hostInfoErrno;
+  char hostInfoAuxBuff[512];
   isType isInfo;
   struct sockaddr_in theAddr;
   int firstTime;
@@ -315,7 +317,8 @@ void *worker( void *dummy) {
 
     popIsQueue( &isInfo); 
 
-    hostInfo = gethostbyname( isInfo.ip);
+    gethostbyname_r( isInfo.ip, &hostInfoBuffer, hostInfoAuxBuff, sizeof(hostInfoAuxBuff), &hostInfo, &hostInfoErrno);
+
     if( hostInfo == NULL) {
       fprintf( stderr, "Couldn't find host %s\n", isInfo.ip);
       continue;
