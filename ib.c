@@ -58,7 +58,16 @@ void ib2jpeg( isType *is ) {
   int yal, yau, xal, xau;
   int tyal, tyau;
   JSAMPROW jsp[1];
+  sigset_t sigset;
 
+  //
+  // Ignore sigpipe
+  // This forces the jpeg error handler to
+  // deal with bad sockets
+  //
+  sigemptyset( &sigset);
+  sigaddset( &sigset, SIGPIPE);
+  sigprocmask( SIG_BLOCK, &sigset, NULL);
 
   // Make sure we have data
   pthread_mutex_lock( &ibUseMutex);

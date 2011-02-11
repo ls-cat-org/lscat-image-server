@@ -465,7 +465,7 @@ void isDaemon() {
   // default action of killing the program
   //
   sigact.sa_handler = SIG_IGN;
-  sigact.sa_sigaction = NULL;
+  sigemptyset( &sigact.sa_mask);
   sigact.sa_flags = 0;
   sigaction( SIGPIPE, &sigact, NULL);
 
