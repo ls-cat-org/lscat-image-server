@@ -461,9 +461,11 @@ void ib2header( isType *is) {
   fprintf( is->fout, "<imageheader");
 
   fprintf( is->fout, " success=\"true\"");
-  fprintf( is->fout, " rqid=\"%s\"",	        is->rqid);
+  fprintf( is->fout, " rqid=\"%s\"",	          is->rqid);
   fprintf( is->fout, " filename=\"%s\"",          is->b->h_filename);
   fprintf( is->fout, " dir=\"%s\"",               is->b->h_dir);
+  fprintf( is->fout, " detector=\"%s\"",	  is->b->h_detector);
+  fprintf( is->fout, " beamline=\"%s\"",	  is->b->h_beamline);
   fprintf( is->fout, " dist=\"%.3f\"",            is->b->h_dist);
   fprintf( is->fout, " rotationRange=\"%.3f\"",   is->b->h_rotationRange);
   fprintf( is->fout, " startPhi=\"%.3f\"",        is->b->h_startPhi);

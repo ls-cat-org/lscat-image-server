@@ -88,6 +88,18 @@ void imBufGarbageCollect( imBufType *ib) {
       free( ib->h_dir);
       ib->h_dir = NULL;
     }
+    if( ib->h_comment != NULL) {
+      free( ib->h_comment);
+      ib->h_comment = NULL;
+    }
+    if( ib->h_detector != NULL) {
+      free( ib->h_detector);
+      ib->h_detector = NULL;
+    }
+    if( ib->h_beamline != NULL) {
+      free( ib->h_beamline);
+      ib->h_beamline = NULL;
+    }
     if( ib->fullbuf != NULL) {
       free( ib->fullbuf);
       ib->fullbuf = NULL;

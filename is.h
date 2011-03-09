@@ -72,6 +72,9 @@ typedef struct im_buf_struct {
   //
   char *h_filename;
   char *h_dir;
+  char *h_comment;
+  char *h_detector;
+  char *h_beamline;
   float h_dist;
   float h_rotationRange;
   float h_startPhi;

@@ -225,6 +225,45 @@ typedef struct frame_header_type {
 } frame_header;
 
 
+//
+// The comment string might look something like this:
+//    detector='Rayonix MX-225 s/n 001' LS_CAT_Beamline='21-ID-E' kappa=0.0 omega=235.0
+//
+// This routine attemps to parse out the detector or LS_CAT_Beamline parameters and return them in a malloc char array
+//
+char *parseComment( char const *cp, char const *needle) {
+  char *p;	// pointer into the comment string
+  char *rtn;	// our return value
+  int i;	// index into comment
+  int j;	// index into detector info
+
+  p = strstr( cp, needle);
+  if( p == NULL)
+    //
+    // Not found
+    //
+    return NULL;
+
+
+  rtn = malloc( strlen( cp));		// a little too much memory is allocated, better that way then the other way around
+  if( rtn == NULL) {
+    fprintf( stderr, "Out of memory: parseComment\n");
+    return NULL;
+  }
+
+  //
+  // Simple parser, assume that needle includes the opening single quote and we stop and the next one we see
+  // Probably we should make the fancier.  TODO: make this work with more complicated input.
+  //
+
+  for( i=strlen(needle), j=0; p[i] && p[i] != '\''; i++, j++) {
+    rtn[j] = p[i];
+  }
+  rtn[j] = 0;		// terminate the string;
+
+  return rtn;
+}
+
 void marTiffGetHeader( isType *is) {
   //
   // is is the image structure we are getting all our info from
@@ -252,6 +291,26 @@ void marTiffGetHeader( isType *is) {
   is->nuse			= 1;
   is->b->h_filename              = strdup( fh.filename);
   is->b->h_dir                   = strdup( fh.filepath);
+  is->b->h_comment		 = strdup( fh.file_comment);
+  is->b->h_detector              = parseComment( is->b->h_comment, "detector='");
+
+  //
+  // Old images (pre 3/9/2011) do not have the dector parameter, guess
+  //
+  if( is->b->h_detector == NULL) {
+    if( fh.nslow == 3072 || fh.nslow == 1536 || fh.nslow == 768)
+      is->b->h_detector = strdup( "Rayonix MX-225");
+    else if( fh.nslow == 4096 || fh.nslow == 2048 || fh.nslow == 1024)
+      is->b->h_detector = strdup( "Rayonix MX-300");
+    else
+      is->b->h_detector = strdup( "Unknown");
+  }
+
+  is->b->h_beamline		 = parseComment( is->b->h_comment, "LS_CAT_Beamline='");
+  if( is->b->h_beamline == NULL) {
+    is->b->h_beamline = strdup( "21-ID");
+  }
+
   is->b->h_dist                  = fh.xtal_to_detector/1000.0;
   is->b->h_rotationRange         = fh.rotation_range/1000.0;
   is->b->h_startPhi              = fh.start_phi/1000.0;
