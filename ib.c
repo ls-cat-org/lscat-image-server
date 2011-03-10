@@ -617,13 +617,16 @@ void ib2indexing( isType *is) {
   setgid( is->gid);
   setuid( is->uid);
 
-
   close( 1);	// close stdout
   dup( is->fd);	// make our file descriptor the new stdout
+
+  chdir( is->hd);	// go to the user's home directory
+  
+
   //
   // Call the indexing routine
   //
-  execl( "/pf/bin/lsIndexing.py", "/pf/bin/lsIndexing.py", is->ifn1, is->ifn2, (const char *)NULL);
+  execl( "/pf/bin/lsIndexing.py", "/pf/bin/lsIndexing.py", is->ifn1, is->ifn2, is->b->h_detector, (const char *)NULL);
 
   close( is->fd);
   exit( 0);

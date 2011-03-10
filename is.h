@@ -112,6 +112,7 @@ typedef struct is_struct {
   char *user;			// user name to run as
   int uid;			// uid of user
   int gid;			// uid of the file
+  char *hd;			// user's home directory
   int fd;			// file descriptor
   FILE *fout;			// output file pointer corresponding to fd
   char *rqid;			// client's request id

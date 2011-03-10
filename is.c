@@ -174,6 +174,10 @@ void isTypeDestroy( isType *is) {
 	free( is->user);
 	is->user = NULL;
       }
+      if( is->hd != NULL) {
+	free( is->hd);
+	is->hd = NULL;
+      }
       if( is->rqid != NULL) {
 	free( is->rqid);
 	is->rqid = NULL;
@@ -574,6 +578,12 @@ void isDaemon() {
     if( grInfo == NULL) {
       continue;
     }
+
+    isInfo.hd = strdup(pwInfo->pw_dir);
+    if( isInfo.hd == NULL) {
+      continue;
+    }
+
 
     foundUidFlag = 0;
     for( spp = grInfo->gr_mem; *spp != NULL; spp++) {
