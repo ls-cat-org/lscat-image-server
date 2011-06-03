@@ -36,8 +36,8 @@
 #include <signal.h>
 #include <wait.h>
 
-#define NTHREADS 16
-#define NIBUFS 16
+#define NTHREADS 64
+#define NIBUFS 64
 #define ISQUEUESIZE 1
 #define ISPADSIZE   128
 
