@@ -1,10 +1,10 @@
-Version=2.10
+Version=2.11
 
 all: copyright is isp isdebug Makefile
 
 copyright:
 	@echo " "
-	@echo "Copyright (C) 2009-2010 by Keith Brister"
+	@echo "Copyright (C) 2009-2011 by Keith Brister"
 	@echo "All rights reserved."
 	@echo " "
 

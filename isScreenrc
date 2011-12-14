@@ -1,0 +1,2 @@
+shell /bin/bash
+screen -r "Image Server" 0 /bin/bash "i=0; while [[ 1 ]]; do let i=$i+1; echo $i; ./is -d; done"
