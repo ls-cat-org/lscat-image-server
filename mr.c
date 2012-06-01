@@ -295,7 +295,7 @@ void marTiffGetHeader( isType *is) {
   is->b->h_detector              = parseComment( is->b->h_comment, "detector='");
 
   //
-  // Old images (pre 3/9/2011) do not have the dector parameter, guess
+  // Old images (pre 3/9/2011) do not have the detector parameter, guess
   //
   if( is->b->h_detector == NULL) {
     if( fh.nslow == 3072 || fh.nslow == 1536 || fh.nslow == 768)
