@@ -4,7 +4,7 @@ all: copyright is isp isdebug Makefile
 
 copyright:
 	@echo " "
-	@echo "Copyright (C) 2009-2011 by Keith Brister"
+	@echo "Copyright (C) 2009-2013 by Keith Brister"
 	@echo "All rights reserved."
 	@echo " "
 
