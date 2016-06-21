@@ -218,50 +218,50 @@ void ib2jpeg( isType *is ) {
     
     if( (int)(k-tyal) >= 0 && (int)(k+tyau) < (is->b->inHeight)) {
       for( j=jmin; j<jmax; j++) {
-	//
-	// map pixel horz index to pixel index in intput image
-	//
-	l = j * is->width/(double)(is->xsize) + is->x;
-
-	//
-	// default pixel value is 0;
-	//
-	d = 0;
-      
-	if( ya <= 1 && xa <= 1) {
-	  //
-	  //  If we are on the orginal image, get the nearest pixel value
-	  //
-	  d = nearestValue( is, k, l);
-	} else {
-	  //
-	  // Look around for the maximum value when the ouput image is
-	  // being reduced
-	  //
-	  d = maxBox( is, buf, k, l, tyal, tyau, xal, xau);
-	}
-      
-	if( d <= is->wval) {
-	  dout = 0;
-	} else {
-	  if( d >= is->contrast) {
-	    dout = 255;
-	  } else {
-	    rslt = (d - is->wval) * 255;
-	    dout = rslt/(is->contrast - is->wval);
-	  }
-	}
-      
-	bp = bufo + 3*i*(is->xsize) + 3*j;
-	if( d==65535) {
-	  *(bp++) = 255;
-	  *(bp++) = 0;
-	  *bp     = 0;
-	} else {
-	  *(bp++)     = 255 - dout;
-	  *(bp++)     = 255 - dout;
-	  *(bp)       = 255 - dout;
-	}
+        //
+        // map pixel horz index to pixel index in intput image
+        //
+        l = j * is->width/(double)(is->xsize) + is->x;
+        
+        //
+        // default pixel value is 0;
+        //
+        d = 0;
+        
+        if( ya <= 1 && xa <= 1) {
+          //
+          //  If we are on the orginal image, get the nearest pixel value
+          //
+          d = nearestValue( is, k, l);
+        } else {
+          //
+          // Look around for the maximum value when the ouput image is
+          // being reduced
+          //
+          d = maxBox( is, buf, k, l, tyal, tyau, xal, xau);
+        }
+        
+        if( d <= is->wval) {
+          dout = 0;
+        } else {
+          if( d >= is->contrast) {
+            dout = 255;
+          } else {
+            rslt = (d - is->wval) * 255;
+            dout = rslt/(is->contrast - is->wval);
+          }
+        }
+        
+        bp = bufo + 3*i*(is->xsize) + 3*j;
+        if( d==65535) {
+          *(bp++) = 255;
+          *(bp++) = 0;
+          *bp     = 0;
+        } else {
+          *(bp++)     = 255 - dout;
+          *(bp++)     = 255 - dout;
+          *(bp)       = 255 - dout;
+        }
       }
     }
     
