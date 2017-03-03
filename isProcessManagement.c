@@ -78,14 +78,6 @@ void isStartProcess(isProcessListType *p) {
   fprintf(stdout, "Starting sub process: uid=%d, gid=%d, dir: %s,  User: %s\n", uid, gid, homeDirectory, userName);
 
   errno = 0;
-  err = pipe2(p->req_pipe, O_NONBLOCK);
-  //  err = pipe2(p->req_pipe, 0);
-  if (err != 0) {
-    fprintf(stderr, "Could not open pipes: %s\n", strerror(errno));
-    exit (-1);
-  }
-
-  errno = 0;
   child = fork();
   if (child == -1) {
     fprintf(stderr, "Could not start sub process: %s\n", strerror(errno));
@@ -96,15 +88,11 @@ void isStartProcess(isProcessListType *p) {
     // In parent.
     //
     p->processID = child;
-    close(p->req_pipe[0]);                      // close the unused read end
-    p->req_fout = fdopen(p->req_pipe[1],"w");   // need a FILE pointer for json_dumpf
-
     return;
   }
   //
   // In child
   //
-  close(p->req_pipe[1]);           // close unused write end
 
   errno = 0;
   err = setgid(gid);
@@ -146,11 +134,7 @@ isProcessListType *isCreateProcessListItem(json_t *isAuth_obj) {
   rtn->isAuth_obj = isAuth_obj;
   json_incref(rtn->isAuth_obj);
     
-  rtn->job_on = 0;
-  rtn->job_off = 0;
   rtn->do_not_call = 0;
-  pthread_mutex_init(&rtn->job_mutex, NULL);
-  pthread_cond_init( &rtn->job_cond, NULL);
 
   rtn->next = firstProcessListItem;
   firstProcessListItem = rtn;
@@ -213,17 +197,16 @@ void isProcessDoNotCall( const char *pid) {
   }
 }
 
-void isRun(json_t *isAuth_obj, json_t *isRequest) {
+void isRun(json_t *isAuth) {
   isProcessListType *p;
   ENTRY item;
   ENTRY *item_return;
   int err;
-  char *jobstr;
 
   //
   // See if we already have this process going
   //
-  item.key  = (char *)json_string_value(json_object_get(isRequest, "pid"));
+  item.key  = (char *)json_string_value(json_object_get(isAuth, "pid"));
   item.data = NULL;
   item_return = NULL;
   errno = 0;
@@ -236,7 +219,7 @@ void isRun(json_t *isAuth_obj, json_t *isRequest) {
   if (err == 0) {
     fprintf( stderr, "isRun: Could not find key %s: %s\n", item.key, strerror(errno));
 
-    if (isAuth_obj == NULL) {
+    if (isAuth == NULL) {
       fprintf(stderr, "isRun: Cannot start new process without isAuth\n");
       return;
     }
@@ -244,7 +227,7 @@ void isRun(json_t *isAuth_obj, json_t *isRequest) {
     //
     // Process was not found
     //
-    p = isCreateProcessListItem(isAuth_obj);
+    p = isCreateProcessListItem(isAuth);
     item.key  = (char *)p->key;
     item.data = p;
     item_return = NULL;
@@ -256,16 +239,4 @@ void isRun(json_t *isAuth_obj, json_t *isRequest) {
       remakeProcessList();
     }
   }
-
-  //
-  // If I understand the hsearch man page correctly then item_return
-  // should point to our desired process regardless of which path we
-  // took to get here.
-  //
-  p = item_return->data;
-
-  jobstr = json_dumps(isRequest, JSON_COMPACT | JSON_INDENT(0));
-  fprintf(p->req_fout, "%s\n", jobstr);
-  fprintf(stdout, "queued job to process %d: %s\n", p->processID, jobstr);
-  free(jobstr);
 }

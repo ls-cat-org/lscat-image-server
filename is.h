@@ -29,14 +29,7 @@ typedef struct isProcessListStruct {
   const char *key;
   pid_t processID;
   json_t *isAuth_obj;
-  int req_pipe[2];
-  FILE *req_fout;       // FILE version of req_pipe[1] so we can use json_dumpf
-  char *job_queue[IS_JOB_QUEUE_LENGTH];
-  int job_on;
-  int job_off;
   int do_not_call;
-  pthread_mutex_t job_mutex;
-  pthread_cond_t  job_cond;
   pthread_t threads[N_WORKER_THREADS];
 } isProcessListType;
 
@@ -93,5 +86,5 @@ extern json_t *decryptIsAuth(gpgme_ctx_t gpg_ctx, const char *isAuth);
 extern int isHasProcess(const char *pid);
 extern void isSupervisor(isProcessListType *p);
 extern void isProcessDoNotCall( const char *pid);
-extern void isRun(json_t *isAuth_obj, json_t *isRequest);
+extern void isRun(json_t *isAuth_obj);
 extern void isProcessListInit();

@@ -1,34 +1,17 @@
 #include "is.h"
 
-void isJobQueuePush( isProcessListType *p, json_t *job) {
-  // Called from parent
-  //
-  json_incref(job);
 
-  pthread_mutex_lock(&p->job_mutex);
-  p->job_queue[(p->job_on++) % IS_JOB_QUEUE_LENGTH] = json_dumps(job, JSON_COMPACT | JSON_INDENT(0) | JSON_SORT_KEYS);
-
-  pthread_cond_signal(&p->job_cond);
-  pthread_mutex_unlock(&p->job_mutex);
-}
-
-json_t *isJobQueuePop(isProcessListType *p) {
-  json_t *rtn;
-  json_error_t jerr;
-  char *job;
-
-
-
-
-  return rtn;
-}
-
-
-void *isWorker(void *p) {
+void *isWorker(void *voidp) {
+  isProcessListType *p;
+  redisContext *rc;
   redisReply *reply;
   redisReply *subreply;
   json_t *job;
+  json_error_t jerr;
   char *jobstr;
+
+  // make gcc happy
+  p = voidp;
 
   //
   // setup redis
@@ -100,23 +83,10 @@ void isSupervisor(isProcessListType *p) {
   //
   // In child process running as user in home directory
   //
-  static char buf[4096];  // buffer set to a fixed size that should be plenty big.  TODO: dynamically increase size if need be.
-  struct pollfd pfds;
-  int nread;
-  char *in;
-  char *out;
-  json_t *command_obj;
-  json_error_t jerr;
-  int bytes_to_move;
-  int fd;
   int i;
   int err;
 
   fprintf(stderr, "isSupervisor for process %s\n", p->key);
-
-  fd =  p->req_pipe[0];
-  in  = buf;
-  out = buf;
 
   // Start up some workers
   for (i=0; i<N_WORKER_THREADS; i++) {
@@ -130,7 +100,7 @@ void isSupervisor(isProcessListType *p) {
 
   // Wait for the workers to stop
   for (i=0; i<N_WORKER_THREADS; i++) {
-    err = pthread_join(&(p->threads[i]));
+    err = pthread_join(p->threads[i], NULL);
     switch(err) {
     case EDEADLK:
       fprintf(stderr, "isSupervisor: deadlock detected on join\n");
@@ -141,7 +111,6 @@ void isSupervisor(isProcessListType *p) {
     case ESRCH:
       fprintf(stderr, "isSupervisor: thread could not be found\n");
       break;
-    default:
     }
   }
   return;

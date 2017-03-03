@@ -34,6 +34,7 @@
 int main(int argc, char **argv) {
   json_t  *isRequest;
   redisContext *rc;
+  redisContext *rcLocal;
   json_t *isAuth_obj;
   json_error_t jerr;
   redisReply *reply;
@@ -42,6 +43,7 @@ int main(int argc, char **argv) {
   gpgme_ctx_t gpg_ctx;
   gpgme_error_t gpg_err;
   char *pid;
+  char *jobstr;
 
   isProcessListInit();
 
@@ -52,6 +54,16 @@ int main(int argc, char **argv) {
   if (rc == NULL || rc->err) {
     if (rc) {
       fprintf(stderr, "Failed to connect to redis: %s\n", rc->errstr);
+    } else {
+      fprintf(stderr, "Failed to get redis context\n");
+    }
+    exit (-1);
+  }
+
+  rcLocal = redisConnect("127.0.0.1", 6379);
+  if (rcLocal == NULL || rcLocal->err) {
+    if (rcLocal) {
+      fprintf(stderr, "Failed to connect to redis: %s\n", rcLocal->errstr);
     } else {
       fprintf(stderr, "Failed to get redis context\n");
     }
@@ -183,6 +195,7 @@ int main(int argc, char **argv) {
         json_decref(isAuth_obj);
         continue;
       }
+      isRun(isAuth_obj);
     } else {
       //
       // Here we've authenticated this pid (perhaps some time ago).  We
@@ -215,7 +228,19 @@ int main(int argc, char **argv) {
       freeReplyObject(reply);
     }
 
-    isRun(isAuth_obj, isRequest);
+    jobstr = json_dumps(isRequest, JSON_SORT_KEYS | JSON_INDENT(0) | JSON_COMPACT);
+    reply = redisCommand(rcLocal, "LPUSH %s %s", pid, jobstr);
+    if (reply == NULL) {
+      fprintf(stderr, "Redis error (lpush job): %s\n", rc->errstr);
+      exit(-1);
+    }
+      
+    if (reply->type == REDIS_REPLY_ERROR) {
+      fprintf(stderr, "Reids lpush job produced an error: %s\n", reply->str);
+      exit(-1);
+    }
+    freeReplyObject(reply);
+
 
     json_decref(isRequest);
     if (isAuth_obj != NULL) {
