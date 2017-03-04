@@ -1,5 +1,5 @@
 #include "is.h"
 
-void isBlank(isRequestType *in, isResponseType *out) {
-
-};
+void isBlankJpeg(json_t *job) {
+  //  fprintf(stderr, "isBlankJpeg: Here I am\n");
+}

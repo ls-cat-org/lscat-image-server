@@ -35,7 +35,7 @@ int main(int argc, char **argv) {
   json_t  *isRequest;
   redisContext *rc;
   redisContext *rcLocal;
-  json_t *isAuth_obj;
+  json_t *isAuth;
   json_error_t jerr;
   redisReply *reply;
   redisReply *subreply;
@@ -44,6 +44,8 @@ int main(int argc, char **argv) {
   gpgme_error_t gpg_err;
   char *pid;
   char *jobstr;
+  int esaf;
+  const char *process_key;
 
   isProcessListInit();
 
@@ -53,9 +55,9 @@ int main(int argc, char **argv) {
   rc = redisConnect("10.1.253.10", 6379);
   if (rc == NULL || rc->err) {
     if (rc) {
-      fprintf(stderr, "Failed to connect to redis: %s\n", rc->errstr);
+      fprintf(stderr, "isMain: Failed to connect to redis: %s\n", rc->errstr);
     } else {
-      fprintf(stderr, "Failed to get redis context\n");
+      fprintf(stderr, "isMain: Failed to get redis context\n");
     }
     exit (-1);
   }
@@ -63,9 +65,9 @@ int main(int argc, char **argv) {
   rcLocal = redisConnect("127.0.0.1", 6379);
   if (rcLocal == NULL || rcLocal->err) {
     if (rcLocal) {
-      fprintf(stderr, "Failed to connect to redis: %s\n", rcLocal->errstr);
+      fprintf(stderr, "isMain: Failed to connect to redis: %s\n", rcLocal->errstr);
     } else {
-      fprintf(stderr, "Failed to get redis context\n");
+      fprintf(stderr, "isMain: Failed to get redis context\n");
     }
     exit (-1);
   }
@@ -74,23 +76,23 @@ int main(int argc, char **argv) {
   // Setup gpg
   //
   gpg_version = gpgme_check_version(NULL);
-  fprintf(stderr, "Using gpg version %s\n", gpg_version);
+  fprintf(stderr, "isMain: Using gpg version %s\n", gpg_version);
 
   gpg_err = gpgme_new(&gpg_ctx);
   if (gpg_err != GPG_ERR_NO_ERROR) {
-    fprintf(stderr, "gpg error creating context: %s\n", gpgme_strerror(gpg_err));
+    fprintf(stderr, "isMain: gpg error creating context: %s\n", gpgme_strerror(gpg_err));
     exit (-1);
   }
 
   gpg_err = gpgme_set_protocol(gpg_ctx, GPGME_PROTOCOL_OpenPGP);
   if (gpg_err != GPG_ERR_NO_ERROR) {
-    fprintf(stderr, "Could not set gpg protocol: %s\n", gpgme_strerror(gpg_err));
+    fprintf(stderr, "isMain: Could not set gpg protocol: %s\n", gpgme_strerror(gpg_err));
     exit (-1);
   }
 
   gpg_err = gpgme_ctx_set_engine_info(gpg_ctx, GPGME_PROTOCOL_OpenPGP, "/usr/bin/gpg", "/pf/people/edu/northwestern/k-brister/.gnupg");
   if (gpg_err != GPG_ERR_NO_ERROR) {
-    fprintf(stderr, "Could not set gpg engine info: %s\n", gpgme_strerror(gpg_err));
+    fprintf(stderr, "isMain: Could not set gpg engine info: %s\n", gpgme_strerror(gpg_err));
     exit (-1);
   }
 
@@ -114,64 +116,70 @@ int main(int argc, char **argv) {
     //
 
     if (reply == NULL) {
-      fprintf(stderr, "Redis error: %s\n", rc->errstr);
+      fprintf(stderr, "isMain: Redis error: %s\n", rc->errstr);
       exit (-1);
     }
 
     if (reply->type == REDIS_REPLY_ERROR) {
-      fprintf(stderr, "Redis brpop command produced an error: %s\n", reply->str);
+      fprintf(stderr, "isMain: Redis brpop command produced an error: %s\n", reply->str);
       exit (-1);
     }
   
     if (reply->type != REDIS_REPLY_ARRAY) {
-      fprintf(stderr, "Redis brpop did not return an array, got type %d\n", reply->type);
+      fprintf(stderr, "isMain: Redis brpop did not return an array, got type %d\n", reply->type);
       exit(-1);
     }
     
     if (reply->elements != 2) {
-      fprintf(stderr, "Redis bulk reply length should have been 2 but instead was %d\n", (int)reply->elements);
+      fprintf(stderr, "isMain: Redis bulk reply length should have been 2 but instead was %d\n", (int)reply->elements);
       exit(-1);
     }
     subreply = reply->element[1];
     if (subreply->type != REDIS_REPLY_STRING) {
-      fprintf(stderr, "Redis brpop did not return a string, got type %d\n", subreply->type);
+      fprintf(stderr, "isMain: Redis brpop did not return a string, got type %d\n", subreply->type);
       exit (-1);
     }
 
     isRequest = json_loads(subreply->str, 0, &jerr);
     if (isRequest == NULL) {
-      fprintf(stderr, "Failed to parse '%s': %s\n", subreply->str, jerr.text);
+      fprintf(stderr, "isMain: Failed to parse '%s': %s\n", subreply->str, jerr.text);
       continue;
     }
     freeReplyObject(reply);
 
     pid = (char *)json_string_value(json_object_get(isRequest, "pid"));
     if (pid == NULL) {
-      fprintf(stderr, "isRequest without pid\n");
+      fprintf(stderr, "isMain: isRequest without pid\n");
 
       json_decref(isRequest);
       continue;
     }
 
-    isAuth_obj = NULL;
-    if (!isHasProcess(pid)) {
+    esaf = json_integer_value(json_object_get(isRequest, "esaf"));
+
+    isAuth = NULL;
+    process_key = isFindProcess(pid, esaf);
+    if (process_key == NULL) {
       //
       // Here we've not yet authenticated this pid.
       //
       reply = redisCommand(rc, "HGET %s isAuth", pid);
       if (reply == NULL) {
-        fprintf(stderr, "Redis error (isAuth): %s\n", rc->errstr);
+        fprintf(stderr, "isMain: Redis error (isAuth): %s\n", rc->errstr);
         exit(-1);
       }
     
       if (reply->type == REDIS_REPLY_ERROR) {
-        fprintf(stderr, "Reids hget isAuth produced an error: %s\n", reply->str);
+        fprintf(stderr, "isMain: Reids hget isAuth produced an error: %s\n", reply->str);
         exit(-1);
       }
 
       if (reply->type != REDIS_REPLY_STRING) {
-        fprintf(stderr, "Redis hget isAuth did not return a string, got type %d\n", reply->type);
-
+        if (reply->type == REDIS_REPLY_NIL) {
+          fprintf(stderr, "isMain: Process %s is not active\n", pid);
+        } else {
+          fprintf(stderr, "isMain: Redis hget isAuth did not return a string, got type %d\n", reply->type);
+        }
         json_decref(isRequest);
         freeReplyObject(reply);
         continue;
@@ -182,20 +190,20 @@ int main(int argc, char **argv) {
       // installed the required certs) go ahead and verify that the
       // message signature is tracable to LS CA.
       //
-      isAuth_obj = decryptIsAuth( gpg_ctx, reply->str);
-      fprintf(stdout, "isAuth_obj:\n");
-      json_dumpf(isAuth_obj, stdout, JSON_INDENT(0)|JSON_COMPACT|JSON_SORT_KEYS);
+      isAuth = decryptIsAuth( gpg_ctx, reply->str);
+      fprintf(stdout, "isMain: isAuth:\n");
+      json_dumpf(isAuth, stdout, JSON_INDENT(0)|JSON_COMPACT|JSON_SORT_KEYS);
       fprintf(stdout, "\n");
       freeReplyObject(reply);
 
-      if (strcmp(pid, json_string_value(json_object_get(isAuth_obj, "pid"))) != 0) {
-        fprintf(stderr, "pid from request does not match pid from isAuth: '%s' vs '%s'\n", pid, json_string_value(json_object_get(isAuth_obj, "pid")));
+      if (strcmp(pid, json_string_value(json_object_get(isAuth, "pid"))) != 0) {
+        fprintf(stderr, "isMain: pid from request does not match pid from isAuth: '%s' vs '%s'\n", pid, json_string_value(json_object_get(isAuth, "pid")));
 
         json_decref(isRequest);
-        json_decref(isAuth_obj);
+        json_decref(isAuth);
         continue;
       }
-      isRun(isAuth_obj);
+      process_key = isRun(isAuth, esaf);
     } else {
       //
       // Here we've authenticated this pid (perhaps some time ago).  We
@@ -203,23 +211,23 @@ int main(int argc, char **argv) {
       //
       reply = redisCommand(rc, "EXISTS %s", pid);
       if (reply == NULL) {
-        fprintf(stderr, "Redis error (exists pid): %s\n", rc->errstr);
+        fprintf(stderr, "isMain: Redis error (exists pid): %s\n", rc->errstr);
         exit(-1);
       }
       
       if (reply->type == REDIS_REPLY_ERROR) {
-        fprintf(stderr, "Reids exists pid produced an error: %s\n", reply->str);
+        fprintf(stderr, "isMain: Reids exists pid produced an error: %s\n", reply->str);
         exit(-1);
       }
 
       if (reply->type != REDIS_REPLY_INTEGER) {
-        fprintf(stderr, "Redis exists pid did not return an integer, got type %d\n", reply->type);
+        fprintf(stderr, "isMain: Redis exists pid did not return an integer, got type %d\n", reply->type);
         exit (-1);
       }
 
       if (reply->integer != 1) {
-        isProcessDoNotCall(pid);
-        fprintf(stderr, "Process %s is no longer active\n", pid);
+        isProcessDoNotCall(pid, esaf);  // TODO: search for all process with this pid, not just for this esaf
+        fprintf(stderr, "isMain: Process %s is no longer active\n", pid);
 
         freeReplyObject(reply);
         json_decref(isRequest);
@@ -229,23 +237,23 @@ int main(int argc, char **argv) {
     }
 
     jobstr = json_dumps(isRequest, JSON_SORT_KEYS | JSON_INDENT(0) | JSON_COMPACT);
-    reply = redisCommand(rcLocal, "LPUSH %s %s", pid, jobstr);
+    reply = redisCommand(rcLocal, "LPUSH %s %s", process_key, jobstr);
     if (reply == NULL) {
-      fprintf(stderr, "Redis error (lpush job): %s\n", rc->errstr);
+      fprintf(stderr, "isMain: Redis error (lpush job): %s\n", rc->errstr);
       exit(-1);
     }
       
     if (reply->type == REDIS_REPLY_ERROR) {
-      fprintf(stderr, "Reids lpush job produced an error: %s\n", reply->str);
+      fprintf(stderr, "isMain: Reids lpush job produced an error: %s\n", reply->str);
       exit(-1);
     }
     freeReplyObject(reply);
 
 
     json_decref(isRequest);
-    if (isAuth_obj != NULL) {
-      json_decref(isAuth_obj);
-      isAuth_obj = NULL;
+    if (isAuth != NULL) {
+      json_decref(isAuth);
+      isAuth = NULL;
     }
   }
 

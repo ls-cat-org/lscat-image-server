@@ -56,13 +56,15 @@ void remakeProcessList() {
 void isStartProcess(isProcessListType *p) {
   int child;
   struct passwd *pwds;
+  struct passwd *esaf_pwds;
   int uid;
   int gid;
   const char *userName;
   const char *homeDirectory;
   int err;
+  char esafUser[16];
 
-  userName = json_string_value(json_object_get(p->isAuth_obj, "uid"));
+  userName = json_string_value(json_object_get(p->isAuth, "uid"));
 
   errno = 0;
   pwds = getpwnam(userName);
@@ -72,8 +74,22 @@ void isStartProcess(isProcessListType *p) {
   }
 
   uid = pwds->pw_uid;
-  gid = pwds->pw_gid;
-  homeDirectory = strdup(pwds->pw_dir);
+  if (p->esaf > 40000) {
+    snprintf(esafUser, sizeof(esafUser)-1, "e%d", p->esaf);
+    esafUser[sizeof(esafUser)-1] = 0;
+
+    errno = 0;
+    esaf_pwds = getpwnam(esafUser);
+    if (esaf_pwds == NULL) {
+      fprintf(stderr, "isStartProcess: bad esaf user name '%s':%s\n", esafUser, strerror(errno));
+      return;
+    }
+    gid = esaf_pwds->pw_gid;
+    homeDirectory = strdup(esaf_pwds->pw_dir);
+  } else {
+    gid = pwds->pw_gid;
+    homeDirectory = strdup(pwds->pw_dir);
+  }
 
   fprintf(stdout, "Starting sub process: uid=%d, gid=%d, dir: %s,  User: %s\n", uid, gid, homeDirectory, userName);
 
@@ -118,8 +134,15 @@ void isStartProcess(isProcessListType *p) {
   isSupervisor(p);
 }
 
-isProcessListType *isCreateProcessListItem(json_t *isAuth_obj) {
+isProcessListType *isCreateProcessListItem(json_t *isAuth, int esaf) {
+  char ourKey[128];
+  char *pid;
   isProcessListType *rtn;
+
+  pid = (char *)json_string_value(json_object_get(isAuth, "pid"));
+
+  snprintf(ourKey, sizeof(ourKey)-1, "%s-%d", pid, esaf);
+  ourKey[sizeof(ourKey)-1] = 0;
 
   rtn = calloc(1, sizeof(*rtn));
   if (rtn == NULL) {
@@ -127,12 +150,13 @@ isProcessListType *isCreateProcessListItem(json_t *isAuth_obj) {
     exit (-1);
   }
 
-  fprintf(stderr, "   Creating process list with key %s\n", json_string_value(json_object_get(isAuth_obj,"pid")));
+  fprintf(stderr, "   Creating process list with key %s\n", json_string_value(json_object_get(isAuth,"pid")));
 
-  rtn->key = json_string_value(json_object_get(isAuth_obj, "pid"));
+  rtn->key = strdup(ourKey);
   rtn->processID = 0;
-  rtn->isAuth_obj = isAuth_obj;
-  json_incref(rtn->isAuth_obj);
+  rtn->esaf = esaf;
+  rtn->isAuth = isAuth;
+  json_incref(rtn->isAuth);
     
   rtn->do_not_call = 0;
 
@@ -140,39 +164,46 @@ isProcessListType *isCreateProcessListItem(json_t *isAuth_obj) {
   firstProcessListItem = rtn;
 
   isStartProcess(rtn);
-
-  {
-    isProcessListType *pp;
-    int i;
-
-    for (i=1, pp = firstProcessListItem; pp != NULL; pp = pp->next, i++) {
-      fprintf(stderr, "isCreateProcessListItem: item %d: %s\n", i, pp->key);
-    }
-  }
-
-
   return rtn;
 }
 
-int isHasProcess(const char *pid) {
+void listProcesses() {
+  isProcessListType *pp;
+  int i;
+
+  for (i=1, pp=firstProcessListItem; pp!=NULL; i++, pp=pp->next) {
+    fprintf(stdout, "listProcesses: %d: %s\n", i, pp->key);
+  }
+}
+
+const char *isFindProcess(const char *pid, int esaf) {
+  char ourKey[128];
+  isProcessListType *p;
   ENTRY item;
   ENTRY *item_return;
   int err;
 
-  item.key = (char *)pid;
+  snprintf(ourKey, sizeof(ourKey)-1, "%s-%d", pid, esaf);
+  ourKey[sizeof(ourKey)-1] = 0;
 
+  item.key = ourKey;
+  item.data = NULL;
   item_return = NULL;
   errno = 0;
   err = hsearch_r(item, FIND, &item_return, &worker_table);
-
   if (err == 0) {
-    return 0;
+    return NULL;
   }
-
-  return 1;
+  p = item_return->data;
+  if (p == NULL) {
+    fprintf(stderr, "isFindProcesses: hsearch succeeded but returned null data for key %s\n", ourKey);
+    listProcesses();
+    return NULL;
+  }
+  return p->key;
 }
 
-void isProcessDoNotCall( const char *pid) {
+void isProcessDoNotCall( const char *pid, int esaf) {
   //
   // Flag for our garbage collection routine.  When do_not_call is
   // true and we have no processes left under this pid then we
@@ -181,12 +212,16 @@ void isProcessDoNotCall( const char *pid) {
   // TODO: write the garbage collector
   //
 
+  char ourKey[128];
   ENTRY item;
   ENTRY *item_return;
   isProcessListType *p;
   int err;
 
-  item.key = (char *)pid;
+  snprintf(ourKey, sizeof(ourKey)-1, "%s-%d", pid, esaf);
+  ourKey[sizeof(ourKey)-1] = 0;
+
+  item.key = ourKey;
 
   errno = 0;
   item_return = NULL;
@@ -197,7 +232,9 @@ void isProcessDoNotCall( const char *pid) {
   }
 }
 
-void isRun(json_t *isAuth) {
+const char *isRun(json_t *isAuth, int esaf) {
+  char ourKey[128];
+  char *pid;
   isProcessListType *p;
   ENTRY item;
   ENTRY *item_return;
@@ -206,37 +243,35 @@ void isRun(json_t *isAuth) {
   //
   // See if we already have this process going
   //
-  item.key  = (char *)json_string_value(json_object_get(isAuth, "pid"));
+  pid = (char *)json_string_value(json_object_get(isAuth, "pid"));
+  snprintf(ourKey, sizeof(ourKey)-1, "%s-%d", pid, esaf);
+  ourKey[sizeof(ourKey)-1] = 0;
+
+  item.key  = ourKey;
   item.data = NULL;
   item_return = NULL;
   errno = 0;
   err = hsearch_r(item, FIND, &item_return, &worker_table);
   if (err != 0) {
     p = item_return->data;
-    fprintf(stderr, "isRun: Found key %s\n", p->key);
+    //    fprintf(stderr, "isRun: Found key '%s'\n", p->key);
+    return p->key;
   }
 
+  //  fprintf( stderr, "isRun: Could not find key %s: %s\n", ourKey, strerror(errno));
+  //
+  // Process was not found
+  //
+  p = isCreateProcessListItem(isAuth, esaf);
+  item.key  = (char *)p->key;
+  item.data = p;
+
+  errno = 0;
+  err = hsearch_r(item, ENTER, &item_return, &worker_table);
+  p = item_return->data;
   if (err == 0) {
-    fprintf( stderr, "isRun: Could not find key %s: %s\n", item.key, strerror(errno));
-
-    if (isAuth == NULL) {
-      fprintf(stderr, "isRun: Cannot start new process without isAuth\n");
-      return;
-    }
-
-    //
-    // Process was not found
-    //
-    p = isCreateProcessListItem(isAuth);
-    item.key  = (char *)p->key;
-    item.data = p;
-    item_return = NULL;
-    errno = 0;
-    err = hsearch_r(item, ENTER, &item_return, &worker_table);
-    if (err == 0) {
-      fprintf( stderr, "isRun: Could not ENTER key %s: %s\n", item.key, strerror(errno));
-      item_return = &item;
-      remakeProcessList();
-    }
+    fprintf( stderr, "isRun: Could not ENTER key %s: %s\n", p->key, strerror(errno));
+    remakeProcessList();
   }
+  return p->key;
 }

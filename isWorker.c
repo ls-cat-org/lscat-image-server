@@ -1,5 +1,51 @@
 #include "is.h"
 
+void isWorkerJpeg(json_t *job) {
+  const char *fn;       // file name from job.
+  image_access_type file_access;       // file descriptor for this file
+  image_file_type   file_type;
+
+  fn = json_string_value(json_object_get(job, "fn"));
+  if (fn == NULL) {
+    fprintf(stderr, "isWorkerJpeg: Could not find file name parameter (fn) in job.\n");
+
+    json_decref(job);
+    return;
+  }
+
+  file_access = NOACCESS;
+  file_type   = BLANK;
+  if (strlen(fn) > 0) {
+    file_access = isFindFile(fn);
+    if (file_access == NOACCESS) {
+      fprintf(stderr, "isWorkerJpeg: Can not access file %s\n", fn);
+      return;
+    }
+    file_type = isFileType(fn);
+  }
+  
+  switch (file_type) {
+  case HDF5:
+    isH5Jpeg(job);
+    break;
+    
+  case RAYONIX:
+  case RAYONIX_BS:
+    isRayonixJpeg(job);
+    break;
+
+  case BLANK:
+    isBlankJpeg(job);
+    break;
+
+  case UNKNOWN:
+  default:
+    fprintf(stderr, "isWorkerJpeg: Ignoring unknown file type %s\n", fn);
+  }
+
+  json_decref(job);
+  return;
+}
 
 void *isWorker(void *voidp) {
   isProcessListType *p;
@@ -9,6 +55,7 @@ void *isWorker(void *voidp) {
   json_t *job;
   json_error_t jerr;
   char *jobstr;
+  const char *job_type;
 
   // make gcc happy
   p = voidp;
@@ -25,8 +72,6 @@ void *isWorker(void *voidp) {
     }
     exit (-1);
   }
-
-  fprintf(stderr, "isWorker: **** Here I am\n");
 
   while (1) {
     //
@@ -71,8 +116,25 @@ void *isWorker(void *voidp) {
 
     jobstr = json_dumps(job, JSON_INDENT(0) | JSON_COMPACT | JSON_SORT_KEYS);
     fprintf(stdout, "In Worker with Job '%s'\n", jobstr);
-    free(jobstr);
+    
+    job_type = json_string_value(json_object_get(job, "type"));
+    if (job_type == NULL) {
+      fprintf(stderr, "No type parameter in job %s\n", jobstr);
 
+      free(jobstr);
+      json_decref(job);
+      continue;
+    }
+
+    // Cheapo command parser.  Probably the best way to go considering
+    // the small number of commands we'll likely have to service.
+    if (strcasecmp("jpeg", job_type) == 0) {
+      isWorkerJpeg(job);
+    } else {
+      fprintf(stderr, "Unknown job type '%s' in job '%s'\n", job_type, jobstr);
+    }
+
+    free(jobstr);
     json_decref(job);
   }
 

@@ -131,3 +131,108 @@ json_t *decryptIsAuth(gpgme_ctx_t gpg_ctx, const char *isAuth) {
   gpgme_data_release(plaintext);
   return rtn;
 }
+
+image_access_type isFindFile(const char *fn) {
+  struct stat buf;
+  image_file_type rtn;
+  int fd;
+  int err;
+  int stat_errno;
+
+  errno = 0;
+  fd = open(fn, O_RDONLY);
+  if (fd < 0) {
+    fprintf(stderr, "Could not open file %s: %s\n", fn, strerror(errno));
+    return NOACCESS;
+  }
+
+  errno = 0;
+  err = fstat(fd, &buf);
+  stat_errno = errno;
+  close(fd);
+
+  if (err != 0) {
+    fprintf(stderr, "isFindFile: Could not find file '%s': %s\n", fn, strerror(stat_errno));
+    return NOACCESS;
+  }
+  
+  if (!S_ISREG(buf.st_mode)) {
+    fprintf(stderr, "isFindFile: %s is not a regular file\n", fn);
+    return NOACCESS;
+  }
+
+  //
+  // Walk through the readable possibilities.  Consider that the
+  // ownership and group privileges may be more restrictive than the
+  // world privileges.
+  //
+  rtn = NOACCESS;
+  if ((getuid() == buf.st_uid || geteuid() == buf.st_uid) && (buf.st_mode & S_IRUSR)) {
+    rtn = READABLE;
+  } else {
+    if ((getgid() == buf.st_gid || getegid() == buf.st_gid) && (buf.st_mode & S_IRGRP)) {
+      rtn = READABLE;
+    } else {
+      if (buf.st_mode & S_IROTH) {
+        rtn = READABLE;
+      }
+    }
+  }
+
+  //
+  // Test for writable priveleges: we consider the result as NOACCESS
+  // if the file is writable without being readable.
+  //
+  if (rtn == (image_file_type)READABLE) {
+    if ((getuid() == buf.st_uid || geteuid() == buf.st_uid) && (buf.st_mode & S_IWUSR)) {
+      rtn = WRITABLE;
+    } else {
+      if ((getgid() == buf.st_gid || getegid() == buf.st_gid) && (buf.st_mode & S_IWGRP)) {
+        rtn = WRITABLE;
+      } else {
+        if (buf.st_mode & S_IWOTH) {
+          rtn = WRITABLE;
+        }
+      }
+    }
+  }
+  return rtn;
+}
+
+image_file_type isFileType(const char *fn) {
+  htri_t ish5;
+  int fd;
+  int nbytes;
+  unsigned int buf4;
+
+  //
+  // H5 is easy
+  //
+  ish5 = H5Fis_hdf5(fn);
+  if (ish5 > 0) {
+    return HDF5;
+  }
+
+  fd = open(fn, O_RDONLY);
+  if (fd < 0) {
+    fprintf(stderr, "Could not open file '%s'\n", fn);
+    return UNKNOWN;
+  }
+
+  nbytes = read(fd, (char *)&buf4, 4);
+  close(fd);
+  if (nbytes != 4) {
+    fprintf(stderr, "Could not read 4 bytes from file '%s'\n", fn);
+    return UNKNOWN;
+  }
+
+  if (buf4 == 0x002a4949) {
+    return RAYONIX;
+  }
+
+  if (buf4 == 0x49492a00) {
+    return RAYONIX_BS;
+  }
+
+  return UNKNOWN;
+}

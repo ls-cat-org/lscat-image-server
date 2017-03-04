@@ -17,18 +17,22 @@
 #include <pwd.h>
 #include <pthread.h>
 #include <poll.h>
-
 #include <search.h>
-
+#include <hdf5.h>
 
 #define IS_JOB_QUEUE_LENGTH 1024
 #define N_WORKER_THREADS 5
 
+typedef enum {NOACCESS, READABLE, WRITABLE} image_access_type;
+
+typedef enum {UNKNOWN, BLANK, HDF5, RAYONIX, RAYONIX_BS} image_file_type;
+
 typedef struct isProcessListStruct {
   struct isProcessListStruct *next;
   const char *key;
+  int esaf;
   pid_t processID;
-  json_t *isAuth_obj;
+  json_t *isAuth;
   int do_not_call;
   pthread_t threads[N_WORKER_THREADS];
 } isProcessListType;
@@ -76,15 +80,17 @@ typedef struct isResponseStruct {
   int dummy;
 } isResponseType;
 
+extern void isH5Jpeg(json_t *job);
+extern void isRayonixJpeg(json_t *job);
+extern void isBlankJpeg(json_t *job);
 extern isRequestType *isRequestParser(json_t *);
 extern void isRequestDestroyer(isRequestType *a);
 extern void isRequestPrint(isRequestType *, FILE *);
-extern void isBlank(isRequestType *, isResponseType *);
-extern void isH5(isRequestType *, isResponseType *);
-extern void isRayonix(isRequestType *, isResponseType *);
 extern json_t *decryptIsAuth(gpgme_ctx_t gpg_ctx, const char *isAuth);
-extern int isHasProcess(const char *pid);
+extern const char *isFindProcess(const char *pid, int esaf);
 extern void isSupervisor(isProcessListType *p);
-extern void isProcessDoNotCall( const char *pid);
-extern void isRun(json_t *isAuth_obj);
+extern void isProcessDoNotCall( const char *pid, int esaf);
+extern const char *isRun(json_t *isAuth_obj, int esaf);
 extern void isProcessListInit();
+extern image_file_type isFileType(const char *fn);
+extern image_access_type isFindFile(const char *fn);
