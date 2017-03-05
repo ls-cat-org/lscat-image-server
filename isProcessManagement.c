@@ -150,9 +150,11 @@ isProcessListType *isCreateProcessListItem(json_t *isAuth, int esaf) {
     exit (-1);
   }
 
-  fprintf(stderr, "   Creating process list with key %s\n", json_string_value(json_object_get(isAuth,"pid")));
-
   rtn->key = strdup(ourKey);
+  if (rtn->key == NULL) {
+    fprintf(stderr, "isCreateProcessListItem: out of memory (rtn->key)\n");
+    exit (-1);
+  }
   rtn->processID = 0;
   rtn->esaf = esaf;
   rtn->isAuth = isAuth;
@@ -254,7 +256,6 @@ const char *isRun(json_t *isAuth, int esaf) {
   err = hsearch_r(item, FIND, &item_return, &worker_table);
   if (err != 0) {
     p = item_return->data;
-    //    fprintf(stderr, "isRun: Found key '%s'\n", p->key);
     return p->key;
   }
 
