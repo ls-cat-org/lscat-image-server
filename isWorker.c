@@ -8,8 +8,6 @@ void isWorkerJpeg(json_t *job) {
   fn = json_string_value(json_object_get(job, "fn"));
   if (fn == NULL) {
     fprintf(stderr, "isWorkerJpeg: Could not find file name parameter (fn) in job.\n");
-
-    json_decref(job);
     return;
   }
 
@@ -40,10 +38,8 @@ void isWorkerJpeg(json_t *job) {
 
   case UNKNOWN:
   default:
-    fprintf(stderr, "isWorkerJpeg: Ignoring unknown file type %s\n", fn);
+    fprintf(stderr, "isWorkerJpeg: Ignoring unknown file type '%s'\n", fn);
   }
-
-  json_decref(job);
   return;
 }
 
@@ -110,34 +106,29 @@ void *isWorker(void *voidp) {
     job = json_loads(subreply->str, 0, &jerr);
     if (job == NULL) {
       fprintf(stderr, "Failed to parse '%s': %s\n", subreply->str, jerr.text);
+      freeReplyObject(reply);
       continue;
     }
     freeReplyObject(reply);
 
     jobstr = json_dumps(job, JSON_INDENT(0) | JSON_COMPACT | JSON_SORT_KEYS);
-    fprintf(stdout, "In Worker with Job '%s'\n", jobstr);
+    //    fprintf(stdout, "In Worker with Job '%s'\n", jobstr);
     
     job_type = json_string_value(json_object_get(job, "type"));
     if (job_type == NULL) {
       fprintf(stderr, "No type parameter in job %s\n", jobstr);
-
-      free(jobstr);
-      json_decref(job);
-      continue;
-    }
-
-    // Cheapo command parser.  Probably the best way to go considering
-    // the small number of commands we'll likely have to service.
-    if (strcasecmp("jpeg", job_type) == 0) {
-      isWorkerJpeg(job);
     } else {
-      fprintf(stderr, "Unknown job type '%s' in job '%s'\n", job_type, jobstr);
+      // Cheapo command parser.  Probably the best way to go considering
+      // the small number of commands we'll likely have to service.
+      if (strcasecmp("jpeg", job_type) == 0) {
+        isWorkerJpeg(job);
+      } else {
+        fprintf(stderr, "Unknown job type '%s' in job '%s'\n", job_type, jobstr);
+      }
     }
-
     free(jobstr);
     json_decref(job);
   }
-
   return NULL;
 }
 
