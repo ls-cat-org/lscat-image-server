@@ -94,3 +94,4 @@ extern const char *isRun(json_t *isAuth_obj, int esaf);
 extern void isProcessListInit();
 extern image_file_type isFileType(const char *fn);
 extern image_access_type isFindFile(const char *fn);
+extern int isEsafAllowed(json_t *isAuth, int esaf);
