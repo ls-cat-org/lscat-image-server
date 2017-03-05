@@ -64,7 +64,7 @@ json_t *decryptIsAuth(gpgme_ctx_t gpg_ctx, const char *isAuth) {
 
   gpg_err = gpgme_data_new_from_mem( &cipher, fixedIsAuth, strlen(fixedIsAuth), 0);
   if (gpg_err != GPG_ERR_NO_ERROR) {
-    fprintf(stderr, "Could not create gpg data object for cipher text: %s\n", gpgme_strerror(gpg_err));
+    fprintf(stderr, "decryptIsAuth: Could not create gpg data object for cipher text: %s\n", gpgme_strerror(gpg_err));
 
     free(fixedIsAuth);
 
@@ -73,7 +73,7 @@ json_t *decryptIsAuth(gpgme_ctx_t gpg_ctx, const char *isAuth) {
 
   gpg_err = gpgme_data_new(&plaintext);
   if (gpg_err != GPG_ERR_NO_ERROR) {
-    fprintf(stderr, "Could not create gpg data object (plaintext): %s\n", gpgme_strerror(gpg_err));
+    fprintf(stderr, "decryptIsAuth: Could not create gpg data object (plaintext): %s\n", gpgme_strerror(gpg_err));
 
     free(fixedIsAuth);
     gpgme_data_release(cipher);
@@ -83,7 +83,7 @@ json_t *decryptIsAuth(gpgme_ctx_t gpg_ctx, const char *isAuth) {
 
   gpg_err = gpgme_op_decrypt(gpg_ctx, cipher, plaintext);
   if (gpg_err != GPG_ERR_NO_ERROR) {
-    fprintf(stderr, "Failed to decrypt cipher: %s\n", gpgme_strerror(gpg_err));
+    fprintf(stderr, "decryptIsAuth: Failed to decrypt cipher: %s\n", gpgme_strerror(gpg_err));
 
     free(fixedIsAuth);
     gpgme_data_release(cipher);
@@ -94,7 +94,7 @@ json_t *decryptIsAuth(gpgme_ctx_t gpg_ctx, const char *isAuth) {
 
   msg_size = gpgme_data_seek(plaintext, 0, SEEK_END);
   if (msg_size < 0) {
-    fprintf(stderr, "Could not seek to end of plaintext message\n");
+    fprintf(stderr, "decryptIsAuth: Could not seek to end of plaintext message\n");
 
     free(fixedIsAuth);
     gpgme_data_release(cipher);
@@ -105,7 +105,7 @@ json_t *decryptIsAuth(gpgme_ctx_t gpg_ctx, const char *isAuth) {
 
   msg = calloc(1, msg_size+1);
   if (msg == NULL) {
-    fprintf(stderr, "Out of memory (msg calloc in decryptIsAuth)\n");
+    fprintf(stderr, "decryptIsAuth: Out of memory\n");
     exit (-1);
   }
 
@@ -115,7 +115,7 @@ json_t *decryptIsAuth(gpgme_ctx_t gpg_ctx, const char *isAuth) {
         
   rtn = json_loads(msg, 0, &jerr);
   if (rtn == NULL) {
-    fprintf(stderr, "Failed to parse '%s': %s\n", msg, jerr.text);
+    fprintf(stderr, "decryptIsAuth: Failed to parse '%s': %s\n", msg, jerr.text);
 
     free(fixedIsAuth);
     free(msg);
@@ -142,7 +142,7 @@ image_access_type isFindFile(const char *fn) {
   errno = 0;
   fd = open(fn, O_RDONLY);
   if (fd < 0) {
-    fprintf(stderr, "Could not open file %s: %s\n", fn, strerror(errno));
+    fprintf(stderr, "isFindFile: Could not open file %s: %s\n", fn, strerror(errno));
     return NOACCESS;
   }
 
@@ -205,14 +205,6 @@ image_file_type isFileType(const char *fn) {
   int nbytes;
   unsigned int buf4;
 
-  //
-  // H5 is easy
-  //
-  ish5 = H5Fis_hdf5(fn);
-  if (ish5 > 0) {
-    return HDF5;
-  }
-
   fd = open(fn, O_RDONLY);
   if (fd < 0) {
     fprintf(stderr, "Could not open file '%s'\n", fn);
@@ -234,5 +226,40 @@ image_file_type isFileType(const char *fn) {
     return RAYONIX_BS;
   }
 
+  //
+  // H5 is easy
+  //
+  ish5 = H5Fis_hdf5(fn);
+  if (ish5 > 0) {
+    return HDF5;
+  }
+
+  fprintf(stderr, "isFileType: Unknown file type '%s'\n", fn);
   return UNKNOWN;
+}
+
+int isEsafAllowed(json_t *isAuth, int esaf) {
+  json_t *allowedESAFs;
+  size_t i;
+  json_t *v;
+
+  // esaf 0 is a placeholder for actions that do not require an esaf.
+  // This is always allowed;
+
+  if (esaf == 0) {
+    return 1;
+  }
+
+  allowedESAFs = json_object_get(isAuth, "allowedESAFs");
+  if (allowedESAFs == NULL) {
+    fprintf(stderr, "isEsafAllowed: No allowedESAFs array not found\n");
+    return 0;
+  }
+
+  json_array_foreach(allowedESAFs, i, v) {
+    if (json_integer_value(v) == esaf) {
+      return 1;
+    }
+  }
+  return 0;
 }
