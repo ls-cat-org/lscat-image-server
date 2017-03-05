@@ -203,6 +203,14 @@ int main(int argc, char **argv) {
         json_decref(isAuth);
         continue;
       }
+      if (!isEsafAllowed(isAuth, esaf)) {
+        fprintf(stderr, "isMain: user %s is not permitted to access esaf %d\n", json_string_value(json_object_get(isAuth, "uid")), esaf);
+        
+        json_decref(isRequest);
+        json_decref(isAuth);
+        continue;
+      }
+
       process_key = isRun(isAuth, esaf);
     } else {
       //
