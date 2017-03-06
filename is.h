@@ -19,9 +19,12 @@
 #include <poll.h>
 #include <search.h>
 #include <hdf5.h>
+#include <tiffio.h>
+#include <setjmp.h>
 
 #define IS_JOB_QUEUE_LENGTH 1024
 #define N_WORKER_THREADS 5
+#define ISPADSIZE   128
 
 typedef enum {NOACCESS, READABLE, WRITABLE} image_access_type;
 
@@ -95,3 +98,6 @@ extern void isProcessListInit();
 extern image_file_type isFileType(const char *fn);
 extern image_access_type isFindFile(const char *fn);
 extern int isEsafAllowed(json_t *isAuth, int esaf);
+extern void set_json_object_string(const char *cid, json_t *j, const char *key, const char *fmt, ...);
+extern void set_json_object_integer(const char *cid, json_t *j, const char *key, int value);
+extern void set_json_object_real(const char *cid, json_t *j, const char *key, double value);
