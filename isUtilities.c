@@ -263,3 +263,76 @@ int isEsafAllowed(json_t *isAuth, int esaf) {
   }
   return 0;
 }
+
+//
+// Convenence routine for setting a string value in a json object
+//
+void set_json_object_string(const char *cid, json_t *j, const char *key, const char *fmt, ...) {
+  static const char *id = "set_json_object_string";
+  va_list arg_ptr;
+  char v[PATH_MAX];
+  json_t *tmp_obj;
+  int err;
+
+  va_start( arg_ptr, fmt);
+  err = vsnprintf( v, sizeof(v), fmt, arg_ptr);
+  v[sizeof(v)-1] = 0;
+  if (err < 0 || err >= sizeof(v)) {
+    fprintf(stderr, "%s->%s: Could not create temporary string for key '%s'\n", cid, id, key);
+    exit (-1);
+  }
+  va_end( arg_ptr);
+
+  tmp_obj = json_string(v);
+  if (tmp_obj == NULL) {
+    fprintf(stderr, "%s->%s: Could not create json object for key '%s'\n", cid, id, key);
+    exit (-1);
+  }
+  err = json_object_set_new(j, key, tmp_obj);
+  if (err != 0) {
+    fprintf(stderr, "%s->%s: Could not add key '%s' to json object\n", cid, id, key);
+    exit (-1);
+  }
+}
+
+
+//
+// Convenence routine for setting an integer value in a json object
+//
+void set_json_object_integer(const char *cid, json_t *j, const char *key, int value) {
+  static const char *id = "set_json_object_integer";
+  json_t *tmp_obj;
+  int err;
+
+  tmp_obj = json_integer(value);
+  if (tmp_obj == NULL) {
+    fprintf(stderr, "%s->%s: Could not create json object for key '%s'\n", id, cid, key);
+    exit (-1);
+  }
+  err = json_object_set_new(j, key, tmp_obj);
+  if (err != 0) {
+    fprintf(stderr, "%s->%s: Could not add key '%s' to json object\n", cid, id, key);
+    exit (-1);
+  }
+}
+
+
+//
+// Convenence routine for setting an integer value in a json object
+//
+void set_json_object_real(const char *cid, json_t *j, const char *key, double value) {
+  static const char *id = "set_json_object_real";
+  json_t *tmp_obj;
+  int err;
+
+  tmp_obj = json_real(value);
+  if (tmp_obj == NULL) {
+    fprintf(stderr, "%s->%s: Could not create json object for key '%s' with value %f\n", cid, id, key, value);
+    exit (-1);
+  }
+  err = json_object_set_new(j, key, tmp_obj);
+  if (err != 0) {
+    fprintf(stderr, "%s->%s: Could not add key '%s' to json object\n", cid, id, key);
+    exit (-1);
+  }
+}
