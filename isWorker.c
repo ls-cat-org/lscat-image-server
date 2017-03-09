@@ -1,9 +1,10 @@
 #include "is.h"
 
-void isWorkerJpeg(json_t *job) {
-  const char *fn;       // file name from job.
-  image_access_type file_access;       // file descriptor for this file
-  image_file_type   file_type;
+void isWorkerJpeg(redisContext *rc, json_t *job) {
+  static const char *id = FILEID "isWorkerJpeg";
+  const char *fn;                       // file name from job.
+  isImageBufType *imb;
+  int frame;
 
   fn = json_string_value(json_object_get(job, "fn"));
   if (fn == NULL) {
@@ -11,39 +12,37 @@ void isWorkerJpeg(json_t *job) {
     return;
   }
 
-  file_access = NOACCESS;
-  file_type   = BLANK;
-  if (strlen(fn) > 0) {
-    file_access = isFindFile(fn);
-    if (file_access == NOACCESS) {
-      fprintf(stderr, "isWorkerJpeg: Can not access file %s\n", fn);
-      return;
-    }
-    file_type = isFileType(fn);
+  frame = json_integer_value(json_object_get(job, "frame"));
+  if (frame == 0) {
+    //
+    // We'll see 0 if frame is not  defined.  Just set it to 1 as that
+    // frame should always exist.
+    //
+    frame = 1;
   }
-  
-  switch (file_type) {
-  case HDF5:
-    isH5Jpeg(job);
-    break;
-    
-  case RAYONIX:
-  case RAYONIX_BS:
-    isRayonixJpeg(job);
-    break;
 
-  case BLANK:
+  if (strlen(fn) == 0) {
+    //
+    // Don't bother with the rest of this if all we want is a blank jpeg
+    //
     isBlankJpeg(job);
-    break;
-
-  case UNKNOWN:
-  default:
-    fprintf(stderr, "isWorkerJpeg: Ignoring unknown file type '%s'\n", fn);
+    return;
   }
+
+
+  imb = isGetImageBuf(rc, job);
+  if (imb == NULL) {
+    fprintf(stderr, "%s: Could not find data for frame %d in file %s\n", id, frame, fn);
+    return;
+  }
+
+
+  // TODO: go process the jpeg already, what's keeping you?
   return;
 }
 
 void *isWorker(void *voidp) {
+  static const char *id = FILEID "isWorker";
   isProcessListType *p;
   redisContext *rc;
   redisReply *reply;
@@ -62,9 +61,9 @@ void *isWorker(void *voidp) {
   rc = redisConnect("localhost", 6379);
   if (rc == NULL || rc->err) {
     if (rc) {
-      fprintf(stderr, "Failed to connect to redis: %s\n", rc->errstr);
+      fprintf(stderr, "%s: Failed to connect to redis: %s\n", id, rc->errstr);
     } else {
-      fprintf(stderr, "Failed to get redis context\n");
+      fprintf(stderr, "%s: Failed to get redis context\n", id);
     }
     exit (-1);
   }
@@ -75,12 +74,12 @@ void *isWorker(void *voidp) {
     //
     reply = redisCommand(rc, "BRPOP %s 0", p->key);
     if (reply == NULL) {
-      fprintf(stderr, "Redis error: %s\n", rc->errstr);
+      fprintf(stderr, "%s: Redis error: %s\n", id, rc->errstr);
       exit (-1);
     }
 
     if (reply->type == REDIS_REPLY_ERROR) {
-      fprintf(stderr, "Redis brpop command produced an error: %s\n", reply->str);
+      fprintf(stderr, "%s: Redis brpop command produced an error: %s\n", id, reply->str);
       exit (-1);
     }
   
@@ -89,41 +88,40 @@ void *isWorker(void *voidp) {
     // first element and the result in the second.
     //
     if (reply->type != REDIS_REPLY_ARRAY) {
-      fprintf(stderr, "Redis brpop did not return an array, got type %d\n", reply->type);
+      fprintf(stderr, "%s: Redis brpop did not return an array, got type %d\n", id, reply->type);
       exit(-1);
     }
     
     if (reply->elements != 2) {
-      fprintf(stderr, "Redis bulk reply length should have been 2 but instead was %d\n", (int)reply->elements);
+      fprintf(stderr, "%s: Redis bulk reply length should have been 2 but instead was %d\n", id, (int)reply->elements);
       exit(-1);
     }
     subreply = reply->element[1];
     if (subreply->type != REDIS_REPLY_STRING) {
-      fprintf(stderr, "Redis brpop did not return a string, got type %d\n", subreply->type);
+      fprintf(stderr, "%s: Redis brpop did not return a string, got type %d\n", id, subreply->type);
       exit (-1);
     }
 
     job = json_loads(subreply->str, 0, &jerr);
     if (job == NULL) {
-      fprintf(stderr, "Failed to parse '%s': %s\n", subreply->str, jerr.text);
+      fprintf(stderr, "%s: Failed to parse '%s': %s\n", id, subreply->str, jerr.text);
       freeReplyObject(reply);
       continue;
     }
     freeReplyObject(reply);
 
     jobstr = json_dumps(job, JSON_INDENT(0) | JSON_COMPACT | JSON_SORT_KEYS);
-    //    fprintf(stdout, "In Worker with Job '%s'\n", jobstr);
     
     job_type = json_string_value(json_object_get(job, "type"));
     if (job_type == NULL) {
-      fprintf(stderr, "No type parameter in job %s\n", jobstr);
+      fprintf(stderr, "%s: No type parameter in job %s\n", id, jobstr);
     } else {
       // Cheapo command parser.  Probably the best way to go considering
       // the small number of commands we'll likely have to service.
       if (strcasecmp("jpeg", job_type) == 0) {
-        isWorkerJpeg(job);
+        isWorkerJpeg(rc, job);
       } else {
-        fprintf(stderr, "Unknown job type '%s' in job '%s'\n", job_type, jobstr);
+        fprintf(stderr, "%s: Unknown job type '%s' in job '%s'\n", id, job_type, jobstr);
       }
     }
     free(jobstr);
@@ -133,22 +131,23 @@ void *isWorker(void *voidp) {
 }
 
 void isSupervisor(isProcessListType *p) {
+  static const char *id = FILEID "isSupervisor";
   //
   // In child process running as user in home directory
   //
   int i;
   int err;
 
-  fprintf(stderr, "isSupervisor for process %s\n", p->key);
+  fprintf(stderr, "%s: start process %s\n", id, p->key);
 
   // Start up some workers
-  for (i=0; i<N_WORKER_THREADS; i++) {
+  for (i=1; i<N_WORKER_THREADS; i++) {
     err = pthread_create(&(p->threads[i]), NULL, isWorker, p);
     if (err != 0) {
-      fprintf(stderr, "Could not start worker for %s because %s\n", p->key, err==EAGAIN ? "Insufficient resources" : (err==EINVAL ? "Bad attributes" : (err==EPERM ? "No permission" : "Unknown Reasons")));
+      fprintf(stderr, "%s: Could not start worker for %s because %s\n", id, p->key, err==EAGAIN ? "Insufficient resources" : (err==EINVAL ? "Bad attributes" : (err==EPERM ? "No permission" : "Unknown Reasons")));
       return;
     }
-    fprintf(stderr, "isSupervisor: Started worker %d\n", i+1);
+    fprintf(stderr, "%s: Started worker %d\n", id, i);
   }
 
   // Wait for the workers to stop
@@ -156,13 +155,13 @@ void isSupervisor(isProcessListType *p) {
     err = pthread_join(p->threads[i], NULL);
     switch(err) {
     case EDEADLK:
-      fprintf(stderr, "isSupervisor: deadlock detected on join\n");
+      fprintf(stderr, "%s: deadlock detected on join\n", id);
       break;
     case EINVAL:
-      fprintf(stderr, "isSupervisor: threadi is unjoinable\n");
+      fprintf(stderr, "%s: threadi is unjoinable\n", id);
       break;
     case ESRCH:
-      fprintf(stderr, "isSupervisor: thread could not be found\n");
+      fprintf(stderr, "%s: thread could not be found\n", id);
       break;
     }
   }

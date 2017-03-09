@@ -132,111 +132,6 @@ json_t *decryptIsAuth(gpgme_ctx_t gpg_ctx, const char *isAuth) {
   return rtn;
 }
 
-image_access_type isFindFile(const char *fn) {
-  struct stat buf;
-  image_file_type rtn;
-  int fd;
-  int err;
-  int stat_errno;
-
-  errno = 0;
-  fd = open(fn, O_RDONLY);
-  if (fd < 0) {
-    fprintf(stderr, "isFindFile: Could not open file %s: %s\n", fn, strerror(errno));
-    return NOACCESS;
-  }
-
-  errno = 0;
-  err = fstat(fd, &buf);
-  stat_errno = errno;
-  close(fd);
-
-  if (err != 0) {
-    fprintf(stderr, "isFindFile: Could not find file '%s': %s\n", fn, strerror(stat_errno));
-    return NOACCESS;
-  }
-  
-  if (!S_ISREG(buf.st_mode)) {
-    fprintf(stderr, "isFindFile: %s is not a regular file\n", fn);
-    return NOACCESS;
-  }
-
-  //
-  // Walk through the readable possibilities.  Consider that the
-  // ownership and group privileges may be more restrictive than the
-  // world privileges.
-  //
-  rtn = NOACCESS;
-  if ((getuid() == buf.st_uid || geteuid() == buf.st_uid) && (buf.st_mode & S_IRUSR)) {
-    rtn = READABLE;
-  } else {
-    if ((getgid() == buf.st_gid || getegid() == buf.st_gid) && (buf.st_mode & S_IRGRP)) {
-      rtn = READABLE;
-    } else {
-      if (buf.st_mode & S_IROTH) {
-        rtn = READABLE;
-      }
-    }
-  }
-
-  //
-  // Test for writable priveleges: we consider the result as NOACCESS
-  // if the file is writable without being readable.
-  //
-  if (rtn == (image_file_type)READABLE) {
-    if ((getuid() == buf.st_uid || geteuid() == buf.st_uid) && (buf.st_mode & S_IWUSR)) {
-      rtn = WRITABLE;
-    } else {
-      if ((getgid() == buf.st_gid || getegid() == buf.st_gid) && (buf.st_mode & S_IWGRP)) {
-        rtn = WRITABLE;
-      } else {
-        if (buf.st_mode & S_IWOTH) {
-          rtn = WRITABLE;
-        }
-      }
-    }
-  }
-  return rtn;
-}
-
-image_file_type isFileType(const char *fn) {
-  htri_t ish5;
-  int fd;
-  int nbytes;
-  unsigned int buf4;
-
-  fd = open(fn, O_RDONLY);
-  if (fd < 0) {
-    fprintf(stderr, "Could not open file '%s'\n", fn);
-    return UNKNOWN;
-  }
-
-  nbytes = read(fd, (char *)&buf4, 4);
-  close(fd);
-  if (nbytes != 4) {
-    fprintf(stderr, "Could not read 4 bytes from file '%s'\n", fn);
-    return UNKNOWN;
-  }
-
-  if (buf4 == 0x002a4949) {
-    return RAYONIX;
-  }
-
-  if (buf4 == 0x49492a00) {
-    return RAYONIX_BS;
-  }
-
-  //
-  // H5 is easy
-  //
-  ish5 = H5Fis_hdf5(fn);
-  if (ish5 > 0) {
-    return HDF5;
-  }
-
-  fprintf(stderr, "isFileType: Unknown file type '%s'\n", fn);
-  return UNKNOWN;
-}
 
 int isEsafAllowed(json_t *isAuth, int esaf) {
   json_t *allowedESAFs;
@@ -333,6 +228,92 @@ void set_json_object_real(const char *cid, json_t *j, const char *key, double va
   err = json_object_set_new(j, key, tmp_obj);
   if (err != 0) {
     fprintf(stderr, "%s->%s: Could not add key '%s' to json object\n", cid, id, key);
+    exit (-1);
+  }
+}
+
+/** Support for a one dimensional array of doubles
+ */
+void set_json_object_float_array( const char *cid, json_t *j, const char *key, float *values, int n) {
+  static const char *id = "set_json_object_integer_array";
+  json_t *tmp_obj;
+  json_t *tmp2_obj;
+  int err;
+  int i;
+
+  tmp_obj = json_array();
+  if (tmp_obj == NULL) {
+    fprintf(stderr, "%s->%s: Could not create json array object for key '%s'\n", cid, id, key);
+    exit (-1);
+  }
+
+  for (i=0; i < n; i++) {
+    tmp2_obj = json_real(values[i]);
+    if (tmp2_obj == NULL) {
+      fprintf(stderr, "%s->%s: Could not create integer object for index %d\n", cid, id, i);
+      exit (-1);
+    }
+    
+    err = json_array_append_new(tmp_obj,tmp2_obj);
+    if (err == -1) {
+      fprintf(stderr, "%s->%s: Could not append array index %d to json_array\n", cid, id, i);
+      exit (-1);
+    }
+
+  }
+
+  err = json_object_set_new(j, key, tmp_obj);
+  if (err != 0) {
+    fprintf(stderr, "%s->%s: Could not add key '%s' to json object\n", cid, id, key);
+    exit (-1);
+  }
+}
+
+void set_json_object_float_array_2d(const char *cid, json_t *j, const char *k, float *v, int rows, int cols) {
+  const static char *id = "set_json_object_float_array_2d";
+  json_t *tmp_obj;
+  json_t *tmp2_obj;
+  json_t *tmp3_obj;
+  int row, col;
+  int err;
+
+  tmp_obj = json_array();
+  if (tmp_obj == NULL) {
+    fprintf(stderr, "%s->%s: Could not json 2d array object for key %s\n", cid, id, k);
+    exit (-1);
+  }
+
+  for (col=0; col<cols; col++) {
+    tmp2_obj = json_array();
+    if (tmp2_obj == NULL) {
+      fprintf(stderr, "%s->%s: Could not create tmp2_obj for key %s column %d\n", cid, id, k, col);
+      exit (-1);
+    }
+    
+    for (row=0; row<rows; row++) {
+      tmp3_obj = json_real(*(v + rows * col + row));
+      if (tmp3_obj == NULL) {
+        fprintf(stderr, "%s->%s: Could not create tmp3_obj for key %s column %d row %d\n", cid, id, k, col, row);
+        exit (-1);
+      }
+
+      err = json_array_append_new(tmp2_obj, tmp3_obj);
+      if (err != 0) {
+        fprintf(stderr, "%s->%s: Could not append value to array key %s  col %d row %d\n", cid, id, k, col, row);
+        exit (-1);
+      }
+    }
+
+    err = json_array_append_new(tmp_obj, tmp2_obj);
+    if (err != 0) {
+      fprintf(stderr, "%s->%s: Could not append column to result array key %s col %d\n", cid, id, k, col);
+      exit (-1);
+    }
+  }
+
+  err = json_object_set_new(j, k, tmp_obj);
+  if (err != 0) {
+    fprintf(stderr, "%s->%s: Could not add key %s to json object\n", cid, id, k);
     exit (-1);
   }
 }

@@ -265,7 +265,7 @@ char *parseComment( char const *cp, char const *needle) {
   return rtn;
 }
 
-json_t *marTiffGetHeader( json_t *isRequest) {
+json_t *isRayonixGetMeta( const char *fn) {
   static const char *id = "marTiffGetHeader";
   //
   // is is the image structure we are getting all our info from
@@ -274,7 +274,6 @@ json_t *marTiffGetHeader( json_t *isRequest) {
   //
   FILE *f;
   frame_header fh;
-  const char *fn;
   char *tmps;
   json_t *rtn;
 
@@ -284,8 +283,7 @@ json_t *marTiffGetHeader( json_t *isRequest) {
     return NULL;
   }
 
-  fn = json_string_value(json_object_get(isRequest,"fn"));
-  // Get the hreader
+  // Get the header
   //
   f = fopen( fn, "r");
   if( f == NULL) {
@@ -328,10 +326,10 @@ json_t *marTiffGetHeader( json_t *isRequest) {
   set_json_object_real(id, rtn, "rotationRange",   fh.rotation_range/1000.0);
   set_json_object_real(id, rtn, "startPhi",        fh.start_phi/1000.0);
   set_json_object_real(id, rtn, "wavelength",      fh.source_wavelength/100000.0);
-  set_json_object_real(id, rtn, "beamX",           fh.beam_x/1000.0);
-  set_json_object_real(id, rtn, "beamY",           fh.beam_y/1000.0);
-  set_json_object_real(id, rtn, "pixelsizeX",      fh.pixelsize_x/1000.0);
-  set_json_object_real(id, rtn, "pixelsizeY",      fh.pixelsize_y/1000.0);
+  set_json_object_real(id, rtn, "beam_center_x",   fh.beam_x/1000.0);
+  set_json_object_real(id, rtn, "beam_center_y",   fh.beam_y/1000.0);
+  set_json_object_real(id, rtn, "x_pixel_size",    fh.pixelsize_x/1e9);
+  set_json_object_real(id, rtn, "y_pixel_size",    fh.pixelsize_y/1e9);
   set_json_object_real(id, rtn, "integrationTime", fh.integration_time/1000.0);
   set_json_object_real(id, rtn, "exposureTime",    fh.exposure_time/1000.0);
   set_json_object_real(id, rtn, "readoutTime",     fh.readout_time/1000.0);
@@ -339,12 +337,12 @@ json_t *marTiffGetHeader( json_t *isRequest) {
   set_json_object_real(id, rtn, "rmsValue",        fh.rms/1000.0);
 
   set_json_object_integer(id, rtn, "nSaturated",   fh.n_saturated);
-  set_json_object_integer(id, rtn, "imagesizeX",   fh.nfast);
-  set_json_object_integer(id, rtn, "imagesizeY",   fh.nslow);
+  set_json_object_integer(id, rtn, "x_pixels_in_detector", fh.nfast);
+  set_json_object_integer(id, rtn, "y_pixels_in_detector", fh.nslow);
+  set_json_object_integer(id, rtn, "image_depth",  fh.depth);
   set_json_object_integer(id, rtn, "saturation",   fh.saturation_level);
   set_json_object_integer(id, rtn, "minValue",     fh.min);
   set_json_object_integer(id, rtn, "maxValue",     fh.max);
-
 
   //  is->b->h_dist                  = fh.xtal_to_detector/1000.0;
   //  is->b->h_rotationRange         = fh.rotation_range/1000.0;
@@ -369,9 +367,7 @@ json_t *marTiffGetHeader( json_t *isRequest) {
   return rtn;
 }
 
-
-
-void marTiffGetData( json_t *isRequest, json_t *meta) {
+void isRayonixGetData( const char *fn, int frame, isImageBufType *imb) {
   static const char *id = "marTiffGetData";
 
   //
@@ -385,13 +381,9 @@ void marTiffGetData( json_t *isRequest, json_t *meta) {
   struct sigaction signew;
   struct sigaction sigold;
   jmp_buf jmpenv;
-  const char *fn;
   unsigned int inHeight;
   unsigned int inWidth;
-  unsigned short *fullbuf;
   unsigned short *buf;
-
-  fn = json_string_value(json_object_get(isRequest,"fn"));
 
   void sigbusHandler( int sig) {
     longjmp( jmpenv, 1);
@@ -421,27 +413,21 @@ void marTiffGetData( json_t *isRequest, json_t *meta) {
   TIFFGetField( tf, TIFFTAG_IMAGELENGTH,   &inHeight);
   TIFFGetField( tf, TIFFTAG_IMAGEWIDTH,    &inWidth);
 
-  // add the padding here
-  sls = sizeof(unsigned short) * (inWidth + ISPADSIZE);
+  sls = sizeof(unsigned short) * inWidth;
 
-  // use calloc to be sure unassigned pixels have zero value
   //
-  fullbuf  = calloc( sls * (inHeight + 2*ISPADSIZE), sizeof( unsigned short));
-  if( fullbuf == NULL) {
+  buf  = malloc( sls * inHeight * sizeof( unsigned short));
+  if( buf == NULL) {
     TIFFClose( tf);
     fprintf( stderr, "%s: Out of memory.  malloc(%d) failed\n", id, sls * (inHeight+1));
     signew.sa_handler = SIG_DFL;
     sigaction( SIGBUS, &signew, NULL);
-    return;
+    exit (-1);
   }
-
-  // let the first scan line be blank
-  buf = fullbuf + sls*ISPADSIZE;
     
   //
   // read the image
   //
-
   for( i=0; i<inHeight; i++) {
     TIFFReadScanline( tf, buf + i*(inWidth), i, 0);
   }
@@ -453,28 +439,10 @@ void marTiffGetData( json_t *isRequest, json_t *meta) {
   signew.sa_handler = SIG_DFL;
   sigaction( SIGBUS, &signew, NULL);
   
-  // TODO: do something with fullbuf
-
-}
-
-
-
-
-
-void isRayonixJpeg(json_t *job) {
-  static const char *id = "isRayonixJpeg";
-  json_t *meta;
-
-  fprintf(stderr, "%s: Here I am with file named %s\n", id, json_string_value(json_object_get(job, "fn")));
-  meta = marTiffGetHeader(job);
-  if (meta == NULL) {
-    fprintf(stderr, "%s: failed to get meta data from file %s\n", id, json_string_value(json_object_get(job, "fn")));
-    return;
-  }
-
-  json_dumpf(meta, stdout, JSON_SORT_KEYS | JSON_INDENT(31));
-
-  json_decref(meta);
+  imb->height = inHeight;
+  imb->width  = inWidth;
+  imb->depth  = 2;
+  imb->buf    = buf;
   return;
 }
 
