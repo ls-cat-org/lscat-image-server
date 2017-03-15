@@ -1,32 +1,34 @@
 #define _GNU_SOURCE
 #define __USE_GNU
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <math.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/wait.h>
-#include <fcntl.h>
 #include <errno.h>
-#include <string.h>
+#include <fcntl.h>
+#include <hdf5.h>
 #include <hiredis/hiredis.h>
 #include <jansson.h>
-#include <pwd.h>
-#include <gpgme.h>
+#include <math.h>
+#include <openssl/err.h>
+#include <openssl/evp.h>
+#include <openssl/ssl.h>
 #include <pwd.h>
 #include <pthread.h>
 #include <poll.h>
 #include <search.h>
-#include <hdf5.h>
-#include <tiffio.h>
 #include <setjmp.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
+#include <tiffio.h>
+#include <unistd.h>
+
 
 #define FILEID __FILE__ " "
 
 #define IS_JOB_QUEUE_LENGTH 1024
-#define N_WORKER_THREADS 5
+#define N_WORKER_THREADS 1
 
 typedef enum {NOACCESS, READABLE, WRITABLE} image_access_type;
 
@@ -36,12 +38,10 @@ typedef struct isImageBufStruct {
   struct isImageBufStruct *next;
   const char *key;
   pthread_rwlock_t buflock;
+  redisReply *rr;       // non-NULL when buf points to rr->str
   char *meta_str;
   json_t *meta;
   int buf_size;          // Size of our buffer in bytes
-  int height;            // height of image in pixels
-  int width;             // width of image in pixels
-  int depth;             // depth of image in bytes
   void *extra;           // Whatever the extra stuff this detector requires
   void *buf;             // Our buffer
 } isImageBufType;
@@ -107,7 +107,6 @@ extern void isBlankJpeg(json_t *job);
 extern isRequestType *isRequestParser(json_t *);
 extern void isRequestDestroyer(isRequestType *a);
 extern void isRequestPrint(isRequestType *, FILE *);
-extern json_t *decryptIsAuth(gpgme_ctx_t gpg_ctx, const char *isAuth);
 extern const char *isFindProcess(const char *pid, int esaf);
 extern void isSupervisor(isProcessListType *p);
 extern void isProcessDoNotCall( const char *pid, int esaf);
@@ -122,3 +121,5 @@ extern void set_json_object_real(const char *cid, json_t *j, const char *key, do
 extern void set_json_object_float_array_2d(const char *cid, json_t *j, const char *k, float *v, int rows, int cols);
 extern void set_json_object_float_array( const char *cid, json_t *j, const char *key, float *values, int n);
 extern isImageBufType *isGetImageBuf( redisContext *rc, json_t *job);
+extern void isDataInit();
+extern int verifyIsAuth( char *isAuth, char *isAuthSig_str);
