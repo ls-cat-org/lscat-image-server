@@ -1,16 +1,19 @@
 #include "is.h"
 
+
 void isWorkerJpeg(redisContext *rc, json_t *job) {
   static const char *id = FILEID "isWorkerJpeg";
   const char *fn;                       // file name from job.
   isImageBufType *imb;
   int frame;
 
+
   fn = json_string_value(json_object_get(job, "fn"));
   if (fn == NULL) {
     fprintf(stderr, "isWorkerJpeg: Could not find file name parameter (fn) in job.\n");
     return;
   }
+
 
   frame = json_integer_value(json_object_get(job, "frame"));
   if (frame == 0) {
@@ -29,6 +32,7 @@ void isWorkerJpeg(redisContext *rc, json_t *job) {
     return;
   }
 
+  fprintf(stdout, "%s: Here is file %s\n", id, fn);
 
   imb = isGetImageBuf(rc, job);
   if (imb == NULL) {
@@ -36,6 +40,7 @@ void isWorkerJpeg(redisContext *rc, json_t *job) {
     return;
   }
 
+  fprintf(stdout, "%s: Here I am with an image buffer of length %d\n", id, imb->buf_size);
 
   // TODO: go process the jpeg already, what's keeping you?
   return;
@@ -58,13 +63,17 @@ void *isWorker(void *voidp) {
   //
   // setup redis
   //
-  rc = redisConnect("localhost", 6379);
+  rc = redisConnect("127.0.0.1", 6379);
+  fflush(stdout);
   if (rc == NULL || rc->err) {
+    fflush(stderr);
+
     if (rc) {
       fprintf(stderr, "%s: Failed to connect to redis: %s\n", id, rc->errstr);
     } else {
       fprintf(stderr, "%s: Failed to get redis context\n", id);
     }
+    fflush(stderr);
     exit (-1);
   }
 
@@ -111,7 +120,7 @@ void *isWorker(void *voidp) {
     freeReplyObject(reply);
 
     jobstr = json_dumps(job, JSON_INDENT(0) | JSON_COMPACT | JSON_SORT_KEYS);
-    
+
     job_type = json_string_value(json_object_get(job, "type"));
     if (job_type == NULL) {
       fprintf(stderr, "%s: No type parameter in job %s\n", id, jobstr);
@@ -132,6 +141,7 @@ void *isWorker(void *voidp) {
 
 void isSupervisor(isProcessListType *p) {
   static const char *id = FILEID "isSupervisor";
+
   //
   // In child process running as user in home directory
   //
@@ -141,10 +151,12 @@ void isSupervisor(isProcessListType *p) {
   fprintf(stderr, "%s: start process %s\n", id, p->key);
 
   // Start up some workers
-  for (i=1; i<N_WORKER_THREADS; i++) {
+  for (i=0; i<N_WORKER_THREADS; i++) {
     err = pthread_create(&(p->threads[i]), NULL, isWorker, p);
+
     if (err != 0) {
-      fprintf(stderr, "%s: Could not start worker for %s because %s\n", id, p->key, err==EAGAIN ? "Insufficient resources" : (err==EINVAL ? "Bad attributes" : (err==EPERM ? "No permission" : "Unknown Reasons")));
+      fprintf(stderr, "%s: Could not start worker for %s because %s\n",
+              id, p->key, err==EAGAIN ? "Insufficient resources" : (err==EINVAL ? "Bad attributes" : (err==EPERM ? "No permission" : "Unknown Reasons")));
       return;
     }
     fprintf(stderr, "%s: Started worker %d\n", id, i);

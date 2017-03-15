@@ -50,85 +50,115 @@ char *fixLineFeeds( const char *s) {
   return(rtn);
 }
 
-json_t *decryptIsAuth(gpgme_ctx_t gpg_ctx, const char *isAuth) {
-  json_t *rtn;
-  json_error_t jerr;
-  gpgme_error_t gpg_err;
-  gpgme_data_t cipher;
-  gpgme_data_t plaintext;
-  char *fixedIsAuth;
-  char *msg;
-  int msg_size;
 
-  fixedIsAuth = fixLineFeeds(isAuth);
+/** openssl_vase64_decode
+ *  From https://github.com/exabytes18/OpenSSL-Base64/blob/master/base64.c
+ *
+ *  Shouldn't this be in some nice library I could include?
+ */
 
-  gpg_err = gpgme_data_new_from_mem( &cipher, fixedIsAuth, strlen(fixedIsAuth), 0);
-  if (gpg_err != GPG_ERR_NO_ERROR) {
-    fprintf(stderr, "decryptIsAuth: Could not create gpg data object for cipher text: %s\n", gpgme_strerror(gpg_err));
+void openssl_base64_decode(char *encoded_bytes, char **decoded_bytes, ssize_t *decoded_length) {
+  BIO *bioMem, *b64;
+  ssize_t buffer_length;
 
-    free(fixedIsAuth);
+  bioMem = BIO_new_mem_buf((void *)encoded_bytes, -1);
+  b64 = BIO_new(BIO_f_base64());
+  BIO_set_flags(b64, BIO_FLAGS_BASE64_NO_NL);
+  bioMem = BIO_push(b64, bioMem);
 
-    return NULL;
+  buffer_length = BIO_get_mem_data(bioMem, NULL);
+  *decoded_bytes = malloc(buffer_length);
+  *decoded_length = BIO_read(bioMem, *decoded_bytes, buffer_length);
+  BIO_free_all(bioMem);
+}
+
+
+int verify_it(const unsigned char* msg, size_t mlen, char* sig, size_t slen, EVP_PKEY* pkey) {
+  static const char *id = FILEID "verify_it";
+  /* Returned to caller */
+  int result = -1;
+  
+  if(!msg || !mlen || !sig || !slen || !pkey) {
+    return -1;
+  }
+  
+  EVP_MD_CTX* ctx = NULL;
+  
+  do
+    {
+      ctx = EVP_MD_CTX_create();
+      if(ctx == NULL) {
+        fprintf(stderr, "%s: EVP_MD_CTX_create failed, error 0x%lx\n", id, ERR_get_error());
+        break; /* failed */
+      }
+      
+      const EVP_MD* md = EVP_get_digestbyname("SHA256");
+      if(md == NULL) {
+        fprintf(stderr, "%s: EVP_get_digestbyname failed, error 0x%lx\n", id, ERR_get_error());
+        break; /* failed */
+      }
+      
+      int rc = EVP_DigestInit_ex(ctx, md, NULL);
+      if(rc != 1) {
+        fprintf(stderr, "%s: EVP_DigestInit_ex failed, error 0x%lx\n", id, ERR_get_error());
+        break; /* failed */
+      }
+      
+      rc = EVP_DigestVerifyInit(ctx, NULL, md, NULL, pkey);
+      if(rc != 1) {
+        fprintf(stderr, "%s: EVP_DigestVerifyInit failed, error 0x%lx\n", id, ERR_get_error());
+        break; /* failed */
+      }
+      
+      rc = EVP_DigestVerifyUpdate(ctx, msg, mlen);
+      if(rc != 1) {
+        fprintf(stderr, "%s: EVP_DigestVerifyUpdate failed, error 0x%lx\n", id, ERR_get_error());
+        break; /* failed */
+      }
+      
+      /* Clear any errors for the call below */
+      ERR_clear_error();
+      
+      rc = EVP_DigestVerifyFinal(ctx, (unsigned char *)sig, slen);
+      if(rc != 1) {
+        fprintf(stderr, "%s: EVP_DigestVerifyFinal failed: %s\n", id, ERR_error_string(ERR_get_error(), NULL));
+        break; /* failed */
+      }
+      result = 0;
+    } while(0);
+  
+  if(ctx) {
+    EVP_MD_CTX_destroy(ctx);
+    ctx = NULL;
+  }
+  return !!result;
+}
+
+int verifyIsAuth( char *isAuth, char *isAuthSig_str) {
+  static const char *id = FILEID "verifyIsAuth";
+  FILE *fp;
+  char *isAuthSig;
+  ssize_t isAuthSig_len;
+  int rtn;
+  EVP_PKEY *pkey;
+
+  openssl_base64_decode(isAuthSig_str, &isAuthSig, &isAuthSig_len);
+  
+  if (isAuthSig_len == 0 || isAuthSig == NULL) {
+    fprintf(stderr, "%s: Could not decode isAuthSig\n", id);
+    return 0;
   }
 
-  gpg_err = gpgme_data_new(&plaintext);
-  if (gpg_err != GPG_ERR_NO_ERROR) {
-    fprintf(stderr, "decryptIsAuth: Could not create gpg data object (plaintext): %s\n", gpgme_strerror(gpg_err));
-
-    free(fixedIsAuth);
-    gpgme_data_release(cipher);
-
-    return NULL;
-  }
-
-  gpg_err = gpgme_op_decrypt(gpg_ctx, cipher, plaintext);
-  if (gpg_err != GPG_ERR_NO_ERROR) {
-    fprintf(stderr, "decryptIsAuth: Failed to decrypt cipher: %s\n", gpgme_strerror(gpg_err));
-
-    free(fixedIsAuth);
-    gpgme_data_release(cipher);
-    gpgme_data_release(plaintext);
-
-    return NULL;
-  }
-
-  msg_size = gpgme_data_seek(plaintext, 0, SEEK_END);
-  if (msg_size < 0) {
-    fprintf(stderr, "decryptIsAuth: Could not seek to end of plaintext message\n");
-
-    free(fixedIsAuth);
-    gpgme_data_release(cipher);
-    gpgme_data_release(plaintext);
-
-    return NULL;
-  }
-
-  msg = calloc(1, msg_size+1);
-  if (msg == NULL) {
-    fprintf(stderr, "decryptIsAuth: Out of memory\n");
+  fp = fopen("ls-ee-contrabass-pubkey.pem", "r");
+  if (fp == NULL) {
+    fprintf(stderr, "%s: Could not open public key\n", id);
     exit (-1);
   }
+  pkey = PEM_read_PUBKEY(fp, NULL, NULL, NULL);
+  fclose(fp);
 
-  gpgme_data_seek(plaintext, 0, SEEK_SET);
-  gpgme_data_read(plaintext, msg, msg_size);
-  msg[msg_size] = 0;
-        
-  rtn = json_loads(msg, 0, &jerr);
-  if (rtn == NULL) {
-    fprintf(stderr, "decryptIsAuth: Failed to parse '%s': %s\n", msg, jerr.text);
-
-    free(fixedIsAuth);
-    free(msg);
-    gpgme_data_release(cipher);
-    gpgme_data_release(plaintext);
-
-    return NULL;
-  }
-
-  free(fixedIsAuth);
-  free(msg);
-  gpgme_data_release(cipher);
-  gpgme_data_release(plaintext);
+  rtn = !verify_it((unsigned char *)isAuth, strlen(isAuth), isAuthSig, isAuthSig_len, pkey);
+  free(isAuthSig);
   return rtn;
 }
 

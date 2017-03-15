@@ -38,19 +38,17 @@ int main(int argc, char **argv) {
   redisContext *rc;
   redisContext *rcLocal;
   json_t *isAuth;
+  char *isAuth_str;
+  char *isAuthSig;
   json_error_t jerr;
   redisReply *reply;
   redisReply *subreply;
-  const char *gpg_version;
-  gpgme_ctx_t gpg_ctx;
-  gpgme_error_t gpg_err;
   char *pid;
   char *jobstr;
   int esaf;
   const char *process_key;
 
   isProcessListInit();
-
   //
   // setup redis
   //
@@ -74,29 +72,13 @@ int main(int argc, char **argv) {
     exit (-1);
   }
 
-  //
-  // Setup gpg
-  //
-  gpg_version = gpgme_check_version(NULL);
-  fprintf(stderr, "%s: Using gpg version %s\n", id, gpg_version);
+  // openssl initialization
+  OpenSSL_add_all_digests();
+  /* Load the human readable error strings for libcrypto */
+  ERR_load_crypto_strings();
 
-  gpg_err = gpgme_new(&gpg_ctx);
-  if (gpg_err != GPG_ERR_NO_ERROR) {
-    fprintf(stderr, "%s: gpg error creating context: %s\n", id, gpgme_strerror(gpg_err));
-    exit (-1);
-  }
-
-  gpg_err = gpgme_set_protocol(gpg_ctx, GPGME_PROTOCOL_OpenPGP);
-  if (gpg_err != GPG_ERR_NO_ERROR) {
-    fprintf(stderr, "%s: Could not set gpg protocol: %s\n", id, gpgme_strerror(gpg_err));
-    exit (-1);
-  }
-
-  gpg_err = gpgme_ctx_set_engine_info(gpg_ctx, GPGME_PROTOCOL_OpenPGP, "/usr/bin/gpg", "/pf/people/edu/northwestern/k-brister/.gnupg");
-  if (gpg_err != GPG_ERR_NO_ERROR) {
-    fprintf(stderr, "%s: Could not set gpg engine info: %s\n", id, gpgme_strerror(gpg_err));
-    exit (-1);
-  }
+  /* Load all digest and cipher algorithms */
+  OpenSSL_add_all_algorithms();
 
   //
   // Here is our main loop
@@ -151,7 +133,10 @@ int main(int argc, char **argv) {
 
     pid = (char *)json_string_value(json_object_get(isRequest, "pid"));
     if (pid == NULL) {
-      fprintf(stderr, "%s: isRequest without pid\n", id);
+      char *tmpstr;
+      tmpstr = json_dumps(isRequest, JSON_SORT_KEYS | JSON_COMPACT | JSON_INDENT(0));
+      fprintf(stderr, "%s: isRequest without pid: %s\n", id, tmpstr);
+      free(tmpstr);
 
       json_decref(isRequest);
       continue;
@@ -165,34 +150,66 @@ int main(int argc, char **argv) {
       //
       // Here we've not yet authenticated this pid.
       //
-      reply = redisCommand(rc, "HGET %s isAuth", pid);
+      reply = redisCommand(rc, "HMGET %s isAuth isAuthSig", pid);
       if (reply == NULL) {
         fprintf(stderr, "%s: Redis error (isAuth): %s\n", id, rc->errstr);
         exit(-1);
       }
     
       if (reply->type == REDIS_REPLY_ERROR) {
-        fprintf(stderr, "%s: Reids hget isAuth produced an error: %s\n", id, reply->str);
+        fprintf(stderr, "%s: Reids hmget isAuth produced an error: %s\n", id, reply->str);
         exit(-1);
       }
 
-      if (reply->type != REDIS_REPLY_STRING) {
-        if (reply->type == REDIS_REPLY_NIL) {
+      if (reply->type != REDIS_REPLY_ARRAY) {
+        if (subreply->type == REDIS_REPLY_NIL) {
           fprintf(stderr, "%s: Process %s is not active\n", id, pid);
         } else {
-          fprintf(stderr, "%s: Redis hget isAuth did not return a string, got type %d\n", id, reply->type);
+          fprintf(stderr, "%s: Redis hmget isAuth isAuthSig did not return an array, got type %d\n", id, reply->type);
         }
+
         json_decref(isRequest);
         freeReplyObject(reply);
         continue;
       }
 
-      //
-      // TODO: Once the LS CA is up an running (and we've produced and
-      // installed the required certs) go ahead and verify that the
-      // message signature is tracable to LS CA.
-      //
-      isAuth = decryptIsAuth( gpg_ctx, reply->str);
+      subreply = reply->element[0];
+      if (subreply->type != REDIS_REPLY_STRING) {
+        fprintf(stderr, "%s: isAuth reply is not a string, got type %d\n", id, subreply->type);
+        
+        json_decref(isRequest);
+        freeReplyObject(reply);
+        continue;
+      }      
+      isAuth_str = subreply->str;
+
+      subreply = reply->element[1];
+      if (subreply->type != REDIS_REPLY_STRING) {
+        fprintf(stderr, "%s: isAuthSig reply is not a string, got type %d\n", id, subreply->type);
+        
+        json_decref(isRequest);
+        freeReplyObject(reply);
+        continue;
+      }      
+      isAuthSig = subreply->str;
+        
+      if (!verifyIsAuth( isAuth_str, isAuthSig)) {
+        fprintf(stderr, "%s: Bad isAuth signature for pid %s: isAuth_str: '%s'\n", id, pid, isAuth_str);
+
+        json_decref(isRequest);
+        freeReplyObject(reply);
+        continue;
+      }      
+
+      isAuth = json_loads(isAuth_str, 0, &jerr);
+      if (isRequest == NULL) {
+        fprintf(stderr, "%s: Failed to parse '%s': %s\n", id, subreply->str, jerr.text);
+
+        json_decref(isRequest);
+        freeReplyObject(reply);
+        continue;
+      }
+    
       fprintf(stdout, "%s: isAuth:\n", id);
       json_dumpf(isAuth, stdout, JSON_INDENT(0)|JSON_COMPACT|JSON_SORT_KEYS);
       fprintf(stdout, "\n");

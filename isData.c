@@ -11,6 +11,8 @@ void isDataInit() {
   static const char *id = FILEID "isDataInit";
   int err;
 
+  fprintf(stderr, "%s: initializing imageBufferTable with %d entries\n", id, N_IMAGE_BUFFERS);
+
   errno = 0;
   err = hcreate_r( 2*N_IMAGE_BUFFERS, &imageBufferTable);
   if (err == 0) {
@@ -160,6 +162,8 @@ isImageBufType *createNewImageBuf(const char *key) {
   isImageBufType *next;
   // call with isImageBufMutex locked
 
+  fprintf(stderr, "%s: 10\n", id);
+
   rtn = calloc(1, sizeof(*rtn));
   if (rtn == NULL) {
     fprintf(stderr, "%s: Out of memory\n", id);
@@ -222,13 +226,27 @@ isImageBufType *createNewImageBuf(const char *key) {
         //
         // TODO: sooner rather than later.  Correctly dispose of
         // "extra"
+        if (p->rr) {
+          //
+          // Here p->rr->str is the buffer, free the redis object, not
+          // the buffer
+          //
+          freeReplyObject(p->rr);
+          p->rr = NULL;
+          p->buf = NULL;
+        } else {
+          //
+          // OK, buffer was malloced not redised (redis is a verb?)
+          //
+          if (p->buf) {
+            free(p->buf);
+          }
+        }
+
         free((char *)p->key);
         pthread_rwlock_destroy(&p->buflock);
         if (p->meta_str) {
           free(p->meta_str);
-        }
-        if (p->buf) {
-          free(p->buf);
         }
         free(p);
       }
@@ -254,14 +272,18 @@ isImageBufType *isGetImageBuf( redisContext *rc, json_t *job) {
   int key_strlen;
   redisReply *rr;
   json_error_t jerr;
-  image_file_type ft;
   int found_redis_entry;
   int err;
+  image_file_type ft;
+
+  fprintf(stderr, "%s: 010\n", id);
 
   fn = json_string_value(json_object_get(job, "fn"));
   if (fn == NULL || strlen(fn) == 0) {
     return NULL;
   }
+
+  fprintf(stderr, "%s: 020  fn: %s\n", id, fn);
 
   gid = getegid();
   if (gid <= 0) {
@@ -270,12 +292,17 @@ isImageBufType *isGetImageBuf( redisContext *rc, json_t *job) {
   }
   gid_strlen = ((int)log10(gid)) + 1;
 
+  fprintf(stderr, "%s: 30  gid: %d  len: %d\n", id, gid, gid_strlen);
+
   frame = json_integer_value(json_object_get(job,"frame"));
   if (frame <= 0) {
     frame = 1;
   }
 
   frame_strlen = ((int)log10(frame)) + 1;
+
+  fprintf(stderr, "%s: 40 frame: %d   len: %d\n", id, frame, frame_strlen);
+
   //           length of strings plus 2 slashes and one dash  
   key_strlen = strlen(fn) + gid_strlen + frame_strlen +  3;
   key = calloc(1,  key_strlen + 1);
@@ -285,9 +312,15 @@ isImageBufType *isGetImageBuf( redisContext *rc, json_t *job) {
   }
   snprintf(key, key_strlen, "%d/%s-%d", gid, fn, frame);
   key[key_strlen] = 0;
-  
+
+  fprintf(stderr, "%s: 50 key: %s  len: %d\n", id, key, key_strlen);
+  fflush(stderr);
+
   rtn = NULL;
   pthread_mutex_lock(&isImageBufMutex);
+
+  fprintf(stderr, "%s: 60 got mutex\n", id);
+  fflush(stderr);
 
   item.key = key;
   err = hsearch_r(item, FIND, &return_item, &imageBufferTable);
@@ -295,6 +328,9 @@ isImageBufType *isGetImageBuf( redisContext *rc, json_t *job) {
     rtn = return_item->data;
   }
   
+  fprintf(stderr, "%s: 70 Found key %s\n", id, rtn->key == NULL ? "<NULL>" : rtn->key);
+  fflush(stderr);
+
   if (rtn == NULL) {
     //
     // Better create and write-lock a new entry
@@ -368,40 +404,27 @@ isImageBufType *isGetImageBuf( redisContext *rc, json_t *job) {
       pthread_rwlock_unlock(&rtn->buflock);
       return NULL;
     }
-    rtn->height = json_integer_value(json_object_get(rtn->meta, "x_pixels_in_detector"));
-    rtn->width  = json_integer_value(json_object_get(rtn->meta, "y_pixels_in_detector"));
-    rtn->depth  = json_integer_value(json_object_get(rtn->meta, "image_depth"));
     rtn->extra  = NULL;
     //
     // Got the meta data, now for the actual data
     //
-    rr = redisCommand(rc, "HGET %s DATA", key);
-    if (rr == NULL) {
+    rtn->rr = redisCommand(rc, "HGET %s DATA", key);
+    if (rtn->rr == NULL) {
       fprintf(stderr, "%s: Redis error: %s\n", id, rc->errstr);
       exit (-1);
     }
     
-    if (rr->type == REDIS_REPLY_ERROR) {
-      fprintf(stderr, "%s: Redis hget command produced an error: %s\n", id, rr->str);
+    if (rtn->rr->type == REDIS_REPLY_ERROR) {
+      fprintf(stderr, "%s: Redis hget command produced an error: %s\n", id, rtn->rr->str);
       exit (-1);
     }
     
-    if (rr->type != REDIS_REPLY_STRING) {
-      fprintf(stderr, "%s: Reading data buffer from redis did not yield a data buffer.  Got type %d\n", id, rr->type);
+    if (rtn->rr->type != REDIS_REPLY_STRING) {
+      fprintf(stderr, "%s: Reading data buffer from redis did not yield a data buffer.  Got type %d\n", id, rtn->rr->type);
       exit (-1);
     }
-    rtn->buf_size = rr->len;
-    rtn->buf = malloc(rtn->buf_size);
-    if (rtn->buf == NULL) {
-      fprintf(stderr, "%s: Out of memory (data, %d bytes)\n", id, rtn->buf_size);
-      exit (-1);
-    }
-    memcpy(rtn->buf, rr->str, rtn->buf_size);
-    
-    if (rtn->height * rtn->width * rtn->depth != rtn->buf_size) {
-      fprintf(stderr, "%s: Size mismatch!  width: %d, height: %d, depth: %d, image_size: %d, buffer_size: %d\n",
-              id, rtn->width, rtn->height, rtn->depth, rtn->width*rtn->height*rtn->depth, rtn->buf_size);
-    }
+    rtn->buf_size = rtn->rr->len;
+    rtn->buf      = rtn->rr->str;
   } else {
     // META does not exist or was never entered.  Re-read both meta and data.
     ft = isFileType(fn);
@@ -429,10 +452,7 @@ isImageBufType *isGetImageBuf( redisContext *rc, json_t *job) {
       fprintf(stderr, "%s: Could not stringify meta object.  This is not supposed to be possible\n", id);
       exit (-1);
     }
-    rtn->height = json_integer_value(json_object_get(rtn->meta, "x_pixels_in_detector"));
-    rtn->width  = json_integer_value(json_object_get(rtn->meta, "y_pixels_in_detector"));
-    rtn->depth  = json_integer_value(json_object_get(rtn->meta, "image_depth"));
-    
+
     rr = redisCommand(rc, "HSET %s META %s", key, rtn->meta_str);
     if (rr == NULL) {
       fprintf(stderr, "%s: Redis error: %s\n", id, rc->errstr);
@@ -471,4 +491,3 @@ isImageBufType *isGetImageBuf( redisContext *rc, json_t *job) {
   pthread_rwlock_unlock(&rtn->buflock);
   return rtn;
 }
-

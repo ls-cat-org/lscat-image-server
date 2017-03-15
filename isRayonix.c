@@ -376,7 +376,6 @@ void isRayonixGetData( const char *fn, int frame, isImageBufType *imb) {
   // in addtion to extra scans line at the top and bottom
   //
   TIFF *tf;
-  int sls;
   int i;
   struct sigaction signew;
   struct sigaction sigold;
@@ -384,6 +383,7 @@ void isRayonixGetData( const char *fn, int frame, isImageBufType *imb) {
   unsigned int inHeight;
   unsigned int inWidth;
   unsigned short *buf;
+  int buf_size;
 
   void sigbusHandler( int sig) {
     longjmp( jmpenv, 1);
@@ -413,36 +413,31 @@ void isRayonixGetData( const char *fn, int frame, isImageBufType *imb) {
   TIFFGetField( tf, TIFFTAG_IMAGELENGTH,   &inHeight);
   TIFFGetField( tf, TIFFTAG_IMAGEWIDTH,    &inWidth);
 
-  sls = sizeof(unsigned short) * inWidth;
-
   //
-  buf  = malloc( sls * inHeight * sizeof( unsigned short));
+  buf_size = inWidth * inHeight * sizeof( unsigned short);
+  buf  = malloc( buf_size);
   if( buf == NULL) {
     TIFFClose( tf);
-    fprintf( stderr, "%s: Out of memory.  malloc(%d) failed\n", id, sls * (inHeight+1));
+    fprintf( stderr, "%s: Out of memory.  malloc(%d) failed\n", id,buf_size);
     signew.sa_handler = SIG_DFL;
     sigaction( SIGBUS, &signew, NULL);
     exit (-1);
   }
-    
   //
   // read the image
   //
   for( i=0; i<inHeight; i++) {
     TIFFReadScanline( tf, buf + i*(inWidth), i, 0);
   }
-  
   //
   // we are done
   //
   TIFFClose( tf);
   signew.sa_handler = SIG_DFL;
   sigaction( SIGBUS, &signew, NULL);
-  
-  imb->height = inHeight;
-  imb->width  = inWidth;
-  imb->depth  = 2;
-  imb->buf    = buf;
+  //
+  //
+  imb->buf_size = buf_size;
+  imb->buf = buf;
   return;
 }
-
