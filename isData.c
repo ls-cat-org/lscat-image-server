@@ -489,9 +489,11 @@ isImageBufType *isGetImageBufFromKey(isImageBufContext_t *ibctx, redisContext *r
   rtn->meta_str = meta_rr->type == REDIS_REPLY_STRING ? strdup(meta_rr->str) : NULL;
   rtn->meta = rtn->meta_str == NULL ? NULL : json_loads(rtn->meta_str, 0, &jerr);
 
-  rtn->buf_width  = width_rr->integer;
-  rtn->buf_height = height_rr->integer;
-  rtn->buf_depth  = depth_rr->integer;
+  //  fprintf(stderr, "%s: key: %s  width: %d  width_type: %d height: %d  height_type: %d  depth: %d  depth_type: %d\n", id, rtn->key, (int)width_rr->integer, width_rr->type, (int)height_rr->integer, height_rr->type, (int)depth_rr->integer, depth_rr->type);
+
+  rtn->buf_width  = atoi(width_rr->str);
+  rtn->buf_height = atoi(height_rr->str);
+  rtn->buf_depth  = atoi(depth_rr->str);
 
   rtn->extra = NULL;
 
@@ -588,9 +590,9 @@ isImageBufType *isGetImageBufFromKey(isImageBufContext_t *ibctx, redisContext *r
     rtn->buf = image_rr->str;
     rtn->buf_size = image_rr->len;
 
-    rtn->buf_width  = width_rr->integer;
-    rtn->buf_height = height_rr->integer;
-    rtn->buf_depth  = depth_rr->integer;
+    rtn->buf_width  = atoi(width_rr->str);
+    rtn->buf_height = atoi(height_rr->str);
+    rtn->buf_depth  = atoi(depth_rr->str);
 
     if (rtn->buf_size != rtn->buf_width * rtn->buf_height * rtn->buf_depth) {
       fprintf(stderr, "%s: Bad buffer size.  Width: %d  Height: %d  Depth: %d  Size: %d\n", id, rtn->buf_width, rtn->buf_height, rtn->buf_depth, rtn->buf_size);
