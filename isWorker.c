@@ -7,13 +7,11 @@ void isWorkerJpeg( isImageBufContext_t *ibctx, redisContext *rc, json_t *job) {
   isImageBufType *imb;
   int frame;
 
-
   fn = json_string_value(json_object_get(job, "fn"));
   if (fn == NULL) {
     fprintf(stderr, "isWorkerJpeg: Could not find file name parameter (fn) in job.\n");
     return;
   }
-
 
   frame = json_integer_value(json_object_get(job, "frame"));
   if (frame == 0) {
@@ -32,19 +30,28 @@ void isWorkerJpeg( isImageBufContext_t *ibctx, redisContext *rc, json_t *job) {
     return;
   }
 
-  fprintf(stdout, "%s: Here is file %s\n", id, fn);
-
-  // when isGetImageBuf returns a buffer it is read locked
-  imb = isGetImageBuf(ibctx, rc, job);
+  if (json_integer_value(json_object_get(job, "esaf")) > 0) {
+    fprintf(stdout, "%s: Here is file %s\n", id, fn);
+  }
+  // when isReduceImage returns a buffer it is read locked
+  imb = isReduceImage(ibctx, rc, job);
   if (imb == NULL) {
     fprintf(stderr, "%s: Could not find data for frame %d in file %s\n", id, frame, fn);
     return;
   }
-  fprintf(stdout, "%s: Here I am with an image buffer of length %d\n", id, imb->buf_size);
+  if (json_integer_value(json_object_get(job, "esaf")) > 0) {
+    fprintf(stdout, "%s: Here I am with an image buffer of length %d\n", id, imb->buf_size);
+  }
 
-  
   //isJpeg(imb, job);
   pthread_rwlock_unlock(&imb->buflock);
+
+  fprintf(stderr, "%s: Waiting for ctxMutex\n", id);
+  pthread_mutex_lock(&ibctx->ctxMutex);
+  fprintf(stderr, "%s: Got ctxMutex\n", id);
+  imb->in_use--;
+  pthread_mutex_unlock(&ibctx->ctxMutex);
+  fprintf(stderr, "%s: Unlocked ctxMutex\n", id);
   return;
 }
 
@@ -130,6 +137,10 @@ void *isWorker(void *voidp) {
     freeReplyObject(reply);
 
     jobstr = json_dumps(job, JSON_INDENT(0) | JSON_COMPACT | JSON_SORT_KEYS);
+
+    if (json_integer_value(json_object_get(job, "esaf")) > 0) {
+      fprintf(stderr, "%s: Got job %s\n", id, subreply->str);
+    }
 
     job_type = json_string_value(json_object_get(job, "type"));
     if (job_type == NULL) {
