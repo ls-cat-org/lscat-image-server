@@ -72,7 +72,6 @@ void openssl_base64_decode(char *encoded_bytes, char **decoded_bytes, ssize_t *d
   BIO_free_all(bioMem);
 }
 
-
 int verify_it(const unsigned char* msg, size_t mlen, char* sig, size_t slen, EVP_PKEY* pkey) {
   static const char *id = FILEID "verify_it";
   /* Returned to caller */

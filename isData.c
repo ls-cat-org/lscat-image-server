@@ -1,24 +1,97 @@
+/*! @file catchData.c
+ *  @brief Worker to receive data from Eiger detector 
+ *  @date 2017
+ *  @author Keith Brister
+ *  @copyright Northwestern University All Rights Reserved
+ */
 #include "is.h"
-#define N_IMAGE_BUFFERS 128
 
-
-static struct hsearch_data imageBufferTable;
-static pthread_mutex_t isImageBufMutex;
-static isImageBufType *firstImageBuffer = NULL;
-static int n_image_buffers = 0;
-
-void isDataInit() {
+isImageBufContext_t  *isDataInit(const char *key) {
   static const char *id = FILEID "isDataInit";
+  pthread_mutexattr_t matt;
+  isImageBufContext_t *rtn;
   int err;
 
   fprintf(stderr, "%s: initializing imageBufferTable with %d entries\n", id, N_IMAGE_BUFFERS);
 
+
+  rtn = calloc(1, sizeof(*rtn));
+  if (rtn == NULL) {
+    fprintf(stderr, "%s: Out of memory\n", id);
+    fflush(stderr);
+    exit (-1);
+  }
+
+  rtn->key = strdup(key);
+  if (rtn->key == NULL) {
+    fprintf(stderr, "%s: Out of memory\n", id);
+    fflush(stderr);
+    exit (-1);
+  }
+
+  /*  
+  pthread_rwlockattr_init(&rwatt);
+  pthread_rwlockattr_setpshared(&rwatt, PTHREAD_PROCESS_SHARED);
+  pthread_rwlock_init(&rtn->buflock, &rwatt);
+  pthread_rwlock_wrlock(&rtn->buflock);
+  pthread_rwlockattr_destroy(&rwatt);
+  */
+  rtn->n_buffers = 0;
+  rtn->first     = NULL;
+
+  pthread_mutexattr_init(&matt);
+  pthread_mutexattr_settype(&matt, PTHREAD_MUTEX_RECURSIVE);
+  pthread_mutexattr_setpshared(&matt, PTHREAD_PROCESS_SHARED);
+  pthread_mutex_init(&rtn->ctxMutex, &matt);
+  pthread_mutexattr_destroy(&matt);
+
   errno = 0;
-  err = hcreate_r( 2*N_IMAGE_BUFFERS, &imageBufferTable);
+  err = hcreate_r( 2*N_IMAGE_BUFFERS, &rtn->bufTable);
   if (err == 0) {
     fprintf(stderr, "%s: Failed to initialize hash table\n", id);
+    fflush(stderr);
     exit(-1);
   }
+
+  return rtn;
+}
+
+void isDataDestroy(isImageBufContext_t *c) {
+  isImageBufType *p, *next;
+  //
+  // We are called from isSupervisor after all the threads have been
+  // joined: there is no danger of collision and, hence, no need to
+  // lock anything.
+  //
+
+  hdestroy_r(&c->bufTable);
+
+  next = NULL;
+  for (p=c->first; p!=NULL; p=next) {
+    next = p->next;     // need to save next since we are going to free p
+    if (p->rr) {
+      freeReplyObject(p->rr);
+      p->rr = NULL;
+      p->buf = NULL;
+    } else {
+      if (p->buf) {
+        free(p->buf);
+        p->buf = NULL;
+      }
+    }
+    free((char *)p->key);
+    pthread_rwlock_destroy(&p->buflock);
+    if (p->meta_str) {
+      free(p->meta_str);
+      p->meta_str = NULL;
+    }
+    free(p);
+  }
+  c->n_buffers = 0;
+  c->first = NULL;
+  pthread_mutex_destroy(&c->ctxMutex);
+  free((char *)c->key);
+  free(c);
 }
 
 image_access_type isFindFile(const char *fn) {
@@ -149,7 +222,9 @@ image_file_type isFileType(const char *fn) {
   return UNKNOWN;
 }
 
-isImageBufType *createNewImageBuf(const char *key) {
+/** Create new buffer
+ */
+isImageBufType *createNewImageBuf(isImageBufContext_t *ibctx, const char *key) {
   static const char *id = FILEID "createNewImageBuf";
   ENTRY item;
   ENTRY *return_item;
@@ -160,38 +235,49 @@ isImageBufType *createNewImageBuf(const char *key) {
   isImageBufType *p;
   isImageBufType *last;
   isImageBufType *next;
-  // call with isImageBufMutex locked
+  pthread_rwlockattr_t rwatt;
+
+  // call with ctxMutex locked
 
   fprintf(stderr, "%s: 10\n", id);
 
   rtn = calloc(1, sizeof(*rtn));
   if (rtn == NULL) {
     fprintf(stderr, "%s: Out of memory\n", id);
+    fflush(stderr);
     exit (-1);
   }
-  
-  rtn->key = strdup(key);
-  pthread_rwlock_init(&rtn->buflock, NULL);
 
-  rtn->next = firstImageBuffer;
-  firstImageBuffer = rtn;
+  rtn->key = strdup(key);
+  pthread_rwlockattr_init(&rwatt);
+  pthread_rwlockattr_setpshared(&rwatt, PTHREAD_PROCESS_SHARED);
+  pthread_rwlock_init(&rtn->buflock, &rwatt);
+  pthread_rwlock_wrlock(&rtn->buflock);
+  pthread_rwlockattr_destroy(&rwatt);
+
+  rtn->in_use = 1;              // we're going to be writting to this buffern then switching to reading it.  Will need to set in_use.
+
+  rtn->next = ibctx->first;
+  ibctx->first = rtn;
 
   item.key  = (char *)rtn->key;
   item.data = rtn;
   errno = 0;
-  err = hsearch_r(item, ENTER, &return_item, &imageBufferTable);
+  err = hsearch_r(item, ENTER, &return_item, &ibctx->bufTable);
   if (err == 0) {
     fprintf(stderr, "%s: Failed to enter item %s: %s\n", id, rtn->key, strerror(errno));
+    fflush(stderr);
     exit (-1);
   }
   
-  if (++n_image_buffers >= N_IMAGE_BUFFERS) {
+  if (++ibctx->n_buffers >= N_IMAGE_BUFFERS) {
     // Time to rebuild the hash table
-    hdestroy_r(&imageBufferTable);
+    hdestroy_r(&ibctx->bufTable);
     errno = 0;
-    err = hcreate_r( 2*N_IMAGE_BUFFERS, &imageBufferTable);
+    err = hcreate_r( 2*N_IMAGE_BUFFERS, &ibctx->bufTable);
     if (err == 0) {
       fprintf(stderr, "%s: Failed to initialize hash table\n", id);
+      fflush(stderr);
       exit(-1);
     }
     //
@@ -202,12 +288,12 @@ isImageBufType *createNewImageBuf(const char *key) {
 
     last = NULL;
     next = NULL;
-    n_image_buffers = 0;
-    for(i=0, p=firstImageBuffer; p != NULL; p=next) {
+    ibctx->n_buffers = 0;
+    for(i=0, p=ibctx->first; p != NULL; p=next) {
       next = p->next;
       locked = (0 == pthread_rwlock_trywrlock(&p->buflock));
-      if (i < N_IMAGE_BUFFERS/2 || locked) {
-        n_image_buffers++;
+      if (i < N_IMAGE_BUFFERS/2 || locked || p->in_use) {
+        ibctx->n_buffers++;
         if (locked) {
           pthread_rwlock_unlock(&p->buflock);
         }
@@ -216,9 +302,10 @@ isImageBufType *createNewImageBuf(const char *key) {
         item.key = (char *)p->key;
         item.data = p;
         last = p;
-        err = hsearch_r(item, ENTER, &return_item, &imageBufferTable);
+        err = hsearch_r(item, ENTER, &return_item, &ibctx->bufTable);
         if (err == 0) {
           fprintf(stderr, "%s: Failed to enter item %s\n", id, p->key);
+          fflush(stderr);
           exit (-1);
         }
       } else {
@@ -240,6 +327,7 @@ isImageBufType *createNewImageBuf(const char *key) {
           //
           if (p->buf) {
             free(p->buf);
+            p->buf = NULL;
           }
         }
 
@@ -257,33 +345,323 @@ isImageBufType *createNewImageBuf(const char *key) {
   return rtn;
 }
 
+/** Look to see if the data are already available to us from either
+ * the image buffer hash table or from redis.  We will wait for the
+ * data to appear if another process already is processing this.  In
+ * this case we'll grab the data from redis when it's ready and
+ * rerturn it.
+ *
+ *  When the data are availabe we'll return a read locked buffer.
+ *  Otherwise, we'll returned with no data and a write locked buffer.
+ *
+ *  It is expected that if the caller has to go get the data
+ *  themselves that they'll do the kindness of writing the data out to
+ *  redis and add something to the list key-READY so that the
+ *  processes can get back to work.
+ *
+ */
+isImageBufType *isGetImageBufFromKey(isImageBufContext_t *ibctx, redisContext *rc, char *key) {
+  static const char *id = FILEID "isGetImageBufFromKey";
+  isImageBufType *rtn;          // This is our return value
+  redisReply *rr;               // our redis reply object pointer
+  redisReply *meta_rr;          // redis reply object perhaps with our metadata
+  redisReply *width_rr;
+  redisReply *height_rr;
+  redisReply *depth_rr;
+  redisReply *image_rr;         // redis reply object perhaps with our image data
+  int need_to_read_data;        // non-zero when we are the first one asking for this data
+  ENTRY item;
+  ENTRY *return_item;
+  int err;
+  json_error_t jerr;
 
-isImageBufType *isGetImageBuf( redisContext *rc, json_t *job) {
+  pthread_mutex_lock(&ibctx->ctxMutex);
+
+  item.key  = key;
+  item.data = NULL;
+  errno = 0;
+  err = hsearch_r(item, FIND, &return_item, &ibctx->bufTable);
+  if (err != 0) {
+    rtn = return_item->data;
+  }
+  
+  if (rtn != NULL) {
+    fprintf(stderr, "%s: Found buffer in bufTable for key %s\n", id, key);
+    free(key);
+    rtn->in_use++;                              // flag to keep buffer from being deleted before we get the read lock
+    pthread_mutex_unlock(&ibctx->ctxMutex);
+    pthread_rwlock_rdlock(&rtn->buflock);
+
+    pthread_mutex_lock(&ibctx->ctxMutex);
+    rtn->in_use--;
+    pthread_mutex_unlock(&ibctx->ctxMutex);
+    return rtn;
+  }
+  
+  //
+  // Create a new entry then read some data into it.  We still have
+  // bufMutex locked: This is used to avoid contention with other
+  // writers as well as potential readers.  We'll grab the read lock
+  // on the buffer before releasing the context mutex.
+  //
+  rtn = createNewImageBuf(ibctx, key);
+  // buffer is write locked and in_use = 1
+
+  pthread_mutex_unlock(&ibctx->ctxMutex);       // But now we can allow access to the buffers
+
+  //
+  // Three redis queries follow:
+  //  1) increment properties 'USERS' in for our key
+  //  2) Set an expiration time for the key
+  //  3) read data and meta properties
+  //
+  //  When the first query returns '1' then we know that the key did
+  //  not exist before and that we'll need to find (or calculate) the
+  //  data and then return it to the hash.
+  //
+  //  When the first query returns something greater than 1 then we'll
+  //  run a blocking query to wait for the data to be written.
+  //
+  //  NB: any of our co-threads are already waiting for us to drop the
+  //  write lock on the buffer before they go ahead.  All this magic
+  //  here is to block other processes from redundantly processing the
+  //  same data in the same way.
+  //
+
+  redisAppendCommand(rc, "HINCBY %s USERS 1", key);
+  redisAppendCommand(rc, "EXPIRES %s %d", key, IS_REDIS_TTL);
+  redisAppendCommand(rc, "HMGET %s META WIDTH HEIGHT DEPTH DATA", key);
+
+  //
+  // hincby reply: 1 means we are the first and should get the data, >1 means we should block until the data are there.
+  //
+  err = redisGetReply(rc, (void **)&rr);
+  if (err != REDIS_OK) {
+    fprintf(stderr, "%s: Redis failure (hincby): %s\n", id, rc->errstr);
+    exit (-1);
+  }
+
+  need_to_read_data = rr->integer == 1;
+  freeReplyObject(rr);
+
+  //
+  // expires reply: we don't need to do anything with this  err = redisGetReply(rc, &rr);
+  //
+  err = redisGetReply(rc, (void **)&rr);
+  if (err != REDIS_OK) {
+    fprintf(stderr, "%s: Redis failure (hincby): %s\n", id, rc->errstr);
+    exit (-1);
+  }
+  freeReplyObject(rr);
+
+  //
+  // Try to get the data.  If there is nothing to get then either get
+  // it block until someone else gets it.
+  //
+  err = redisGetReply(rc, (void **)&rr);
+  if (err != REDIS_OK) {
+    fprintf(stderr, "%s: Redis failure (hincby): %s\n", id, rc->errstr);
+    exit (-1);
+  }
+  
+  //
+  // Here the reply is an array.  element[0] is the meta data (if any)
+  // and element[1] is the image data (if any)
+  //
+  meta_rr   = rr->element[0];
+  width_rr  = rr->element[1];
+  height_rr = rr->element[2];
+  depth_rr  = rr->element[3];
+  image_rr  = rr->element[4];
+
+  rtn->meta_str = meta_rr->type == REDIS_REPLY_STRING ? strdup(meta_rr->str) : NULL;
+  rtn->meta = rtn->meta_str == NULL ? NULL : json_loads(rtn->meta_str, 0, &jerr);
+
+  rtn->buf_width  = width_rr->integer;
+  rtn->buf_height = height_rr->integer;
+  rtn->buf_depth  = depth_rr->integer;
+
+  rtn->extra = NULL;
+
+  if (image_rr->type == REDIS_REPLY_STRING) {
+    //
+    // We're all set. We'll free the redis object after we are done
+    // with the image.  We'll also exchange our write lock for a read
+    // lock.
+    rtn->rr  = rr;
+    rtn->buf = image_rr->str;
+    rtn->buf_size = image_rr->len;
+
+    if (buf_size != buf_width * buf_height * buf_depth) {
+      fprintf(stderr, "%s: Bad buffer size.  Width: %d  Height: %d  Depth: %d  Size: %d\n", id, rtn->buf_width, rtn->buf_height, rtn->buf_depth, rtn->buf_size);
+      exit (-1);
+    }
+
+    pthread_rwlock_unlock(&rtn->buflock);
+    pthread_rwlock_rdlock(&rtn->buflock);
+
+    // Now that we have a read lock to maintain our access to the
+    // buffer we can lower the in_use flag a tad.
+    //
+    pthread_mutex_lock(&ibctx->ctxMutex);
+    rtn->in_use--;
+    pthread_mutex_unlock(&ibctx->ctxMutex);
+    free(key);
+    return rtn;
+
+  }
+  // OK, no data yet.
+  freeReplyObject(rr);
+
+  if (need_to_read_data) {
+    // Who ever called us will go ahead and fill the image data if we
+    // return a null buffer.
+    //
+    // In this case we hold on to the write lock.
+    //
+    free(key);
+    return rtn;
+  }
+
+  // Now we just wait for the data to magically appear
+  //
+  // TODO: evaluate and perhaps implement a timeout and error recovery
+  //
+  rr = redisCommand(rc, "BRPOP %s-READY 0", key);
+  if (rr == NULL) {
+    fprintf(stderr, "%s: Redis error: %s\n", id, rc->errstr);
+    exit (-1);
+  }
+  if (rr->type == REDIS_REPLY_STRING && strcmp(rr->str, "error")==0) {
+    //
+    // Something bad happened to whoever tried to read the data file.
+    //
+    // TODO: Pass the error condition on to whoever called us cause as
+    // it is they'll just try reading the file too.
+    //
+    freeReplyObject(rr);
+    free(key);
+    return rtn;
+  }
+
+  freeReplyObject(rr);
+
+  rr = redisCommand(rc, "HMGET %s META WIDTH HEIGHT DEPTH DATA", key);
+  if (rr == NULL) {
+    fprintf(stderr, "%s: Redis failure (hincby): %s\n", id, rc->errstr);
+    exit (-1);
+  }
+
+  meta_rr   = rr->element[0];
+  width_rr  = rr->element[1];
+  height_rr = rr->element[2];
+  depth_rr  = rr->element[3];
+  image_rr  = rr->element[4];
+
+  rtn->meta_str = meta_rr->type == REDIS_REPLY_STRING ? strdup(meta_rr->str) : NULL;
+  rtn->meta = rtn->meta_str == NULL ? NULL : json_loads(rtn->meta_str, 0, &jerr);
+
+  if (image_rr->type == REDIS_REPLY_STRING) {
+    //
+    // We're all set. We'll free the redis object after we are done
+    // with the image.  We'll also exchange our write lock for a read
+    // lock.
+    rtn->rr  = rr;
+    rtn->buf = image_rr->str;
+    rtn->buf_size = image_rr->len;
+
+    rtn->buf_width  = width_rr->integer;
+    rtn->buf_height = height_rr->integer;
+    rtn->buf_depth  = depth_rr->integer;
+
+    if (buf_size != buf_width * buf_height * buf_depth) {
+      fprintf(stderr, "%s: Bad buffer size.  Width: %d  Height: %d  Depth: %d  Size: %d\n", id, rtn->buf_width, rtn->buf_height, rtn->buf_depth, rtn->buf_size);
+      exit (-1);
+    }
+
+    pthread_rwlock_unlock(&rtn->buflock);
+    pthread_rwlock_rdlock(&rtn->buflock);
+
+    // Now that we have a read lock to maintain our access to the
+    // buffer we can lower the in_use flag a tad.
+    //
+    pthread_mutex_lock(&ibctx->ctxMutex);
+    rtn->in_use--;
+    pthread_mutex_unlock(&ibctx->ctxMutex);
+    free(key);
+    return rtn;
+
+  }
+
+  // OK, no data yet.  Don't cry.
+  freeReplyObject(rr);
+  free(key);
+  return rtn;
+}
+
+void isWriteImageBufToRedis(isImageBufType *imb, redisContext *rc) {
+  static const char *id = FILEID "isWriteImageBufToRedis";
+  redisReply *rr;
+  int i;
+  int n;
+
+  redisAppendCommand(rc, "HMSET %s META %s WIDTH %d HEIGHT %d DEPTH %d", imb->key, imb->meta_str, imb->buf_width, imb->buf_height, imb->buf_depth);
+  redisAppendCommand(rc, "HSET %s DATA %b", imb->buf, imb->buf_size);
+  redisAppendCommand(rc, "HGET %s USERS", imb->key);
+
+  // meta reply
+  err = redisGetReply(rc, (void **)&rr);
+  if (err != REDIS_OK) {
+    fprintf(stderr, "%s: Redis failure (hset meta): %s\n", id, rc->errstr);
+    exit (-1);
+  }
+  freeReplyObject(reply);
+
+  // data reply
+  err = redisGetReply(rc, (void **)&rr);
+  if (err != REDIS_OK) {
+    fprintf(stderr, "%s: Redis failure (hset data): %s\n", id, rc->errstr);
+    exit (-1);
+  }
+  freeReplyObject(reply);
+
+  // users reply
+  err = redisGetReply(rc, (void **)&rr);
+  if (err != REDIS_OK) {
+    fprintf(stderr, "%s: Redis failure (hget users): %s\n", id, rc->errstr);
+    exit (-1);
+  }
+  n = rr->integer;
+  freeReplyObject(reply);
+  
+  //
+  // tell the processes awaiting notification it's time to get back to work
+  //
+  for (i=0; i<n; i++) {
+    reply = redisCommand(rc, "LPUSH %s-READY ok");
+    freeReplyObject(reply);
+  }
+}
+
+/**
+ */
+isImageBufType *isGetImageBuf(isImageBufContext_t *ibctx, redisContext *rc, json_t *job) {
   static const char *id = FILEID "isGetImageBuf";
   const char *fn;
   int frame;
   int frame_strlen;
-  ENTRY item;
-  ENTRY *return_item;
   isImageBufType *rtn;
   int gid;
   int gid_strlen;
   char *key;
   int key_strlen;
   redisReply *rr;
-  json_error_t jerr;
-  int found_redis_entry;
-  int err;
   image_file_type ft;
-
-  fprintf(stderr, "%s: 010\n", id);
 
   fn = json_string_value(json_object_get(job, "fn"));
   if (fn == NULL || strlen(fn) == 0) {
     return NULL;
   }
-
-  fprintf(stderr, "%s: 020  fn: %s\n", id, fn);
 
   gid = getegid();
   if (gid <= 0) {
@@ -292,8 +670,6 @@ isImageBufType *isGetImageBuf( redisContext *rc, json_t *job) {
   }
   gid_strlen = ((int)log10(gid)) + 1;
 
-  fprintf(stderr, "%s: 30  gid: %d  len: %d\n", id, gid, gid_strlen);
-
   frame = json_integer_value(json_object_get(job,"frame"));
   if (frame <= 0) {
     frame = 1;
@@ -301,193 +677,72 @@ isImageBufType *isGetImageBuf( redisContext *rc, json_t *job) {
 
   frame_strlen = ((int)log10(frame)) + 1;
 
-  fprintf(stderr, "%s: 40 frame: %d   len: %d\n", id, frame, frame_strlen);
-
   //           length of strings plus 2 slashes and one dash  
   key_strlen = strlen(fn) + gid_strlen + frame_strlen +  3;
   key = calloc(1,  key_strlen + 1);
   if (key == NULL) {
     fprintf(stderr, "%s: Out of memory\n", id);
+    fflush(stderr);
     exit (-1);
   }
-  snprintf(key, key_strlen, "%d/%s-%d", gid, fn, frame);
+  snprintf(key, key_strlen, "%d:%s-%d", gid, fn, frame);
   key[key_strlen] = 0;
 
-  fprintf(stderr, "%s: 50 key: %s  len: %d\n", id, key, key_strlen);
-  fflush(stderr);
-
-  rtn = NULL;
-  pthread_mutex_lock(&isImageBufMutex);
-
-  fprintf(stderr, "%s: 60 got mutex\n", id);
-  fflush(stderr);
-
-  item.key = key;
-  err = hsearch_r(item, FIND, &return_item, &imageBufferTable);
-  if (err != 0) {
-    rtn = return_item->data;
-  }
-  
-  fprintf(stderr, "%s: 70 Found key %s\n", id, rtn->key == NULL ? "<NULL>" : rtn->key);
-  fflush(stderr);
-
-  if (rtn == NULL) {
-    //
-    // Better create and write-lock a new entry
-    //
-    rtn = createNewImageBuf(key);
-    pthread_rwlock_wrlock(&rtn->buflock);
-  }
-  pthread_mutex_unlock(&isImageBufMutex);
-
-  if (rtn != NULL) {
+  // Get the buffer and fill it if it's in redis already
+  //
+  // Buffer is read locked if it exists, write locked if it does not
+  //
+  rtn = isGetImageBufFromKey(ibctx, rc, key);
+  if (rtn->buf != NULL) {
+    fprintf(stderr, "%s: Found buffer in bufTable for key %s\n", id, key);
     free(key);
     return rtn;
   }
   
+  // I guess we didn't find our buffer in redis
   //
-  // Check the redis store for this data
-  //
-  // First extend the expiration time for our key
-  //
-  //
-  rr = redisCommand(rc, "EXPIRE %s 300", key);
-  if (rr == NULL) {
-    fprintf(stderr, "%s: Redis error: %s\n", id, rc->errstr);
+  // META does not exist or was never entered.  Re-read both meta and data.
+  ft = isFileType(fn);
+  switch (ft) {
+  case HDF5:
+    rtn->meta = isH5GetMeta(fn);
+    isH5GetData(fn, frame, rtn);
+    break;
+      
+  case RAYONIX:
+  case RAYONIX_BS:
+    rtn->meta = isRayonixGetMeta(fn);
+    isRayonixGetData(fn, frame, rtn);
+    break;
+      
+  case UNKNOWN:
+  default:
+    fprintf(stderr, "%s: unknown file type for file %s\n", id, fn);
+    pthread_rwlock_unlock(&rtn->buflock);
+    free(key);
+    return NULL;
+  }
+
+  rtn->meta_str = json_dumps(rtn->meta, JSON_SORT_KEYS | JSON_INDENT(0) | JSON_COMPACT);
+  if (rtn->meta_str == NULL) {
+    fprintf(stderr, "%s: Could not stringify meta object.  This is not supposed to be possible\n", id);
     exit (-1);
   }
-  
-  if (rr->type == REDIS_REPLY_ERROR) {
-    fprintf(stderr, "%s: Redis expire command produced an error: %s\n", id, rr->str);
-    exit (-1);
-  }
 
-  if (rr->type != REDIS_REPLY_INTEGER) {
-    fprintf(stderr, "%s: Redis expire did not return an integer, got type %d\n", id, rr->type);
-    exit (-1);
-  }
+  isWriteImageBufToRedis(rtn, rc);
 
-  found_redis_entry = rr->integer;
-  freeReplyObject(rr);
+  // TODO: Reduce Image here
+  isReduceImage(rtn, job);
 
-  if (found_redis_entry == 1) {
-    // The key exists and the new expiration time has been set
-    //
-    rr = redisCommand(rc, "HGET %s META", key);
-    if (rr == NULL) {
-      fprintf(stderr, "%s: Redis error: %s\n", id, rc->errstr);
-      exit (-1);
-    }
-
-    if (rr->type == REDIS_REPLY_ERROR) {
-      fprintf(stderr, "%s: Redis hget command produced an error: %s\n", id, rr->str);
-      exit (-1);
-    }
-
-    if (rr->type != REDIS_REPLY_STRING) {
-      fprintf(stderr, "%s: meta data failed to be a string for key %s\n", id, key);
-      exit (-1);
-    }
-
-    rtn->meta_str = strdup(rr->str);
-    if (rtn->meta_str == NULL) {
-      fprintf(stderr, "%s: Out of memory (meta_str)\n", id);
-      exit (-1);
-    }
-    freeReplyObject(rr);
-    
-    rtn->meta = json_loads(rtn->meta_str, 0, &jerr);
-    if (rtn->meta == NULL) {
-      fprintf(stderr, "%s: Failed to parse '%s': %s\n", id, rtn->meta_str, jerr.text);
-      
-      free(key);
-      pthread_rwlock_unlock(&rtn->buflock);
-      return NULL;
-    }
-    rtn->extra  = NULL;
-    //
-    // Got the meta data, now for the actual data
-    //
-    rtn->rr = redisCommand(rc, "HGET %s DATA", key);
-    if (rtn->rr == NULL) {
-      fprintf(stderr, "%s: Redis error: %s\n", id, rc->errstr);
-      exit (-1);
-    }
-    
-    if (rtn->rr->type == REDIS_REPLY_ERROR) {
-      fprintf(stderr, "%s: Redis hget command produced an error: %s\n", id, rtn->rr->str);
-      exit (-1);
-    }
-    
-    if (rtn->rr->type != REDIS_REPLY_STRING) {
-      fprintf(stderr, "%s: Reading data buffer from redis did not yield a data buffer.  Got type %d\n", id, rtn->rr->type);
-      exit (-1);
-    }
-    rtn->buf_size = rtn->rr->len;
-    rtn->buf      = rtn->rr->str;
-  } else {
-    // META does not exist or was never entered.  Re-read both meta and data.
-    ft = isFileType(fn);
-    switch (ft) {
-    case HDF5:
-      rtn->meta = isH5GetMeta(fn);
-      isH5GetData(fn, frame, rtn);
-      break;
-      
-    case RAYONIX:
-    case RAYONIX_BS:
-      rtn->meta = isRayonixGetMeta(fn);
-      isRayonixGetData(fn, frame, rtn);
-      break;
-      
-    case UNKNOWN:
-    default:
-      fprintf(stderr, "%s: unknown file type for file %s\n", id, fn);
-      pthread_rwlock_unlock(&rtn->buflock);
-      return NULL;
-    }
-    
-    rtn->meta_str = json_dumps(rtn->meta, JSON_SORT_KEYS | JSON_INDENT(0) | JSON_COMPACT);
-    if (rtn->meta_str == NULL) {
-      fprintf(stderr, "%s: Could not stringify meta object.  This is not supposed to be possible\n", id);
-      exit (-1);
-    }
-
-    rr = redisCommand(rc, "HSET %s META %s", key, rtn->meta_str);
-    if (rr == NULL) {
-      fprintf(stderr, "%s: Redis error: %s\n", id, rc->errstr);
-      exit (-1);
-    }
-    if (rr->type == REDIS_REPLY_ERROR) {
-      fprintf(stderr, "%s: Redis hset meta data command produced an error: %s\n", id, rr->str);
-      exit (-1);
-    }
-    freeReplyObject(rr);
-
-    rr = redisCommand(rc, "HSET %s DATA %b", key, rtn->buf, (size_t)rtn->buf_size);
-    if (rr == NULL) {
-      fprintf(stderr, "%s: Redis error: %s\n", id, rc->errstr);
-      exit (-1);
-    }
-    if (rr->type == REDIS_REPLY_ERROR) {
-      fprintf(stderr, "%s: Redis hset data produced an error: %s\n", id, rr->str);
-      exit (-1);
-    }
-    freeReplyObject(rr);
-
-    rr = redisCommand(rc, "EXPIRE %s 300");
-    if (rr == NULL) {
-      fprintf(stderr, "%s: Redis error: %s\n", id, rc->errstr);
-      exit (-1);
-    }
-    if (rr->type == REDIS_REPLY_ERROR) {
-      fprintf(stderr, "%s: Redis expire produced an error: %s\n", id, rr->str);
-      exit (-1);
-    }
-    freeReplyObject(rr);
-  }
-
-  free(key);
+  //
+  // Complicated ending with our lock and mutex all to keep the image
+  // buffer from disappearing before we have a chance to read it.
+  //
   pthread_rwlock_unlock(&rtn->buflock);
+  pthread_rwlock_rdlock(&rtn->buflock);
+
+  pthread_mutex_lock(&ibctx->ctxMutex);
+  rtn->in_use--;
+  pthread_mutex_unlock(&ibctx->ctxMutex);
   return rtn;
 }

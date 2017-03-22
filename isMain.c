@@ -230,7 +230,7 @@ int main(int argc, char **argv) {
         continue;
       }
 
-      process_key = isRun(isAuth, esaf);
+      process_key = isRun(rc, rcLocal, isAuth, esaf);
     } else {
       //
       // Here we've authenticated this pid (perhaps some time ago).  We
@@ -253,8 +253,10 @@ int main(int argc, char **argv) {
       }
 
       if (reply->integer != 1) {
-        isProcessDoNotCall(pid, esaf);  // TODO: search for all process with this pid, not just for this esaf
         fprintf(stderr, "%s: Process %s is no longer active\n", id, pid);
+        //
+        // TODO: We need to periodically purge our process list of inactivek processes
+        //
 
         freeReplyObject(reply);
         json_decref(isRequest);

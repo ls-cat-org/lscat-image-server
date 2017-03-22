@@ -1,0 +1,4 @@
+
+
+Be sure to build the hdf5 library with threadsafe support.
+./configure --prefix=/usr/local --enable-threadsafe --with-pthread=/usr --disable-hl 

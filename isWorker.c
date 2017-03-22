@@ -1,7 +1,7 @@
 #include "is.h"
 
 
-void isWorkerJpeg(redisContext *rc, json_t *job) {
+void isWorkerJpeg( isImageBufContext_t *ibctx, redisContext *rc, json_t *job) {
   static const char *id = FILEID "isWorkerJpeg";
   const char *fn;                       // file name from job.
   isImageBufType *imb;
@@ -34,21 +34,23 @@ void isWorkerJpeg(redisContext *rc, json_t *job) {
 
   fprintf(stdout, "%s: Here is file %s\n", id, fn);
 
-  imb = isGetImageBuf(rc, job);
+  // when isGetImageBuf returns a buffer it is read locked
+  imb = isGetImageBuf(ibctx, rc, job);
   if (imb == NULL) {
     fprintf(stderr, "%s: Could not find data for frame %d in file %s\n", id, frame, fn);
     return;
   }
-
   fprintf(stdout, "%s: Here I am with an image buffer of length %d\n", id, imb->buf_size);
 
-  // TODO: go process the jpeg already, what's keeping you?
+  
+  //isJpeg(imb, job);
+  pthread_rwlock_unlock(&imb->buflock);
   return;
 }
 
 void *isWorker(void *voidp) {
   static const char *id = FILEID "isWorker";
-  isProcessListType *p;
+  isImageBufContext_t *ibctx;
   redisContext *rc;
   redisReply *reply;
   redisReply *subreply;
@@ -58,7 +60,7 @@ void *isWorker(void *voidp) {
   const char *job_type;
 
   // make gcc happy
-  p = voidp;
+  ibctx = voidp;
 
   //
   // setup redis
@@ -81,7 +83,7 @@ void *isWorker(void *voidp) {
     //
     // Wait for something to do
     //
-    reply = redisCommand(rc, "BRPOP %s 0", p->key);
+    reply = redisCommand(rc, "BRPOP %s 0", ibctx->key);
     if (reply == NULL) {
       fprintf(stderr, "%s: Redis error: %s\n", id, rc->errstr);
       exit (-1);
@@ -111,6 +113,14 @@ void *isWorker(void *voidp) {
       exit (-1);
     }
 
+    if (strcmp(subreply->str, "end") == 0) {
+      // "end" is special.  It means we must exit right away
+      //
+      freeReplyObject(reply);
+      break;
+    }
+
+
     job = json_loads(subreply->str, 0, &jerr);
     if (job == NULL) {
       fprintf(stderr, "%s: Failed to parse '%s': %s\n", id, subreply->str, jerr.text);
@@ -128,7 +138,7 @@ void *isWorker(void *voidp) {
       // Cheapo command parser.  Probably the best way to go considering
       // the small number of commands we'll likely have to service.
       if (strcasecmp("jpeg", job_type) == 0) {
-        isWorkerJpeg(rc, job);
+        isWorkerJpeg(ibctx, rc, job);
       } else {
         fprintf(stderr, "%s: Unknown job type '%s' in job '%s'\n", id, job_type, jobstr);
       }
@@ -139,24 +149,29 @@ void *isWorker(void *voidp) {
   return NULL;
 }
 
-void isSupervisor(isProcessListType *p) {
+void isSupervisor(const char *key) {
   static const char *id = FILEID "isSupervisor";
-
   //
   // In child process running as user in home directory
   //
+  isImageBufContext_t *ibctx;
   int i;
   int err;
+  redisContext *rc;
+  redisReply *reply;
+  pthread_t threads[N_WORKER_THREADS];
 
-  fprintf(stderr, "%s: start process %s\n", id, p->key);
+  fprintf(stderr, "%s: start process %s\n", id, key);
+
+  ibctx = isDataInit(key);
 
   // Start up some workers
   for (i=0; i<N_WORKER_THREADS; i++) {
-    err = pthread_create(&(p->threads[i]), NULL, isWorker, p);
+    err = pthread_create(&(threads[i]), NULL, isWorker, ibctx);
 
     if (err != 0) {
       fprintf(stderr, "%s: Could not start worker for %s because %s\n",
-              id, p->key, err==EAGAIN ? "Insufficient resources" : (err==EINVAL ? "Bad attributes" : (err==EPERM ? "No permission" : "Unknown Reasons")));
+              id, key, err==EAGAIN ? "Insufficient resources" : (err==EINVAL ? "Bad attributes" : (err==EPERM ? "No permission" : "Unknown Reasons")));
       return;
     }
     fprintf(stderr, "%s: Started worker %d\n", id, i);
@@ -164,7 +179,7 @@ void isSupervisor(isProcessListType *p) {
 
   // Wait for the workers to stop
   for (i=0; i<N_WORKER_THREADS; i++) {
-    err = pthread_join(p->threads[i], NULL);
+    err = pthread_join(threads[i], NULL);
     switch(err) {
     case EDEADLK:
       fprintf(stderr, "%s: deadlock detected on join\n", id);
@@ -177,5 +192,25 @@ void isSupervisor(isProcessListType *p) {
       break;
     }
   }
+
+  // free up the image buffers
+  isDataDestroy(ibctx);
+
+  // delete all the pending jobs
+  rc = redisConnect("127.0.0.1", 6379);
+  reply = redisCommand(rc, "DEL %s", key);
+  if (reply == NULL) {
+    fprintf(stderr, "%s: Redis error: %s\n", id, rc->errstr);
+    exit (-1);
+  }
+
+  if (reply->type == REDIS_REPLY_ERROR) {
+    fprintf(stderr, "%s: Redis brpop command produced an error: %s\n", id, reply->str);
+    exit (-1);
+  }
+  
+  freeReplyObject(reply);
+  redisFree(rc);
+
   return;
 }

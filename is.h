@@ -27,77 +27,49 @@
 
 #define FILEID __FILE__ " "
 
+#define N_IMAGE_BUFFERS 128
 #define IS_JOB_QUEUE_LENGTH 1024
-#define N_WORKER_THREADS 1
+#define N_WORKER_THREADS 5
+#define IS_REDIS_TTL 300
 
 typedef enum {NOACCESS, READABLE, WRITABLE} image_access_type;
 
 typedef enum {UNKNOWN, BLANK, HDF5, RAYONIX, RAYONIX_BS} image_file_type;
 
 typedef struct isImageBufStruct {
-  struct isImageBufStruct *next;
-  const char *key;
-  pthread_rwlock_t buflock;
-  redisReply *rr;       // non-NULL when buf points to rr->str
-  char *meta_str;
-  json_t *meta;
-  int buf_size;          // Size of our buffer in bytes
-  void *extra;           // Whatever the extra stuff this detector requires
-  void *buf;             // Our buffer
+  struct isImageBufStruct *next;        // The next item in our list of buffers
+  const char *key;                      // The string that uniquely idenitifies this entry: This is the gid/file path
+  pthread_rwlock_t buflock;             // keep our threads from colliding on a specific buffer
+  int in_use;                           // Flag to make sure we don't remove this buffer between the time we write to it and the time we want to read it.  Protect with contex mutex
+  redisReply *rr;                       // non-NULL when buf points to rr->str
+  char *meta_str;                       // String version of the meta object
+  json_t *meta;                         // Our meta data
+  int buf_size;                         // Size of our buffer in bytes (had better = buf_width * buf_height * buf_depth
+  int buf_width;                        // width of the current buffer (may differ from that found in meta)
+  int buf_height;                       // height of the current buffer (may differ from that found in meta)
+  int buf_depth;                        // depth of the current buffer (may differ from that found in meta)
+  void *extra;                          // Whatever the extra stuff this detector requires
+  void *bad_pixel_map;                  // If defined assumed uint32_t of same size and shape as buf
+  void (*destroy_extra)(void *);        // Function to destroy the extra stuff
+  void *buf;                            // Our buffer
 } isImageBufType;
 
+typedef struct isImageBufContextStruct {
+  isImageBufType *first;                // The first image buffer in our linked list
+  const char *key;                      // same as the process list key but accessible to the threads: this is the redis key for the job list
+  int n_buffers;                        // The number of buffers in the list (so we know when to remake the hash table
+  pthread_mutex_t ctxMutex;             //
+  struct hsearch_data bufTable;         // Hash table to find the correct buffer quickly
+} isImageBufContext_t;
+
 typedef struct isProcessListStruct {
-  struct isProcessListStruct *next;
-  const char *key;
-  int esaf;
-  pid_t processID;
-  json_t *isAuth;
-  int do_not_call;
-  pthread_t threads[N_WORKER_THREADS];
+  struct isProcessListStruct *next;     // Linked list of of processes running as a specific user in a specific group
+  const char *key;                      // Unique key to identify this user/esaf combination
+  int esaf;                             // Our esaf
+  pid_t processID;                      // The process id returned to the parent by fork
+  json_t *isAuth;                       // Authenticated user name, role, and list of allowed esafs
+  int do_not_call;                      // 
 } isProcessListType;
-
-
-    //
-    // Expected parameters from parse JSON string in the ISREQESTS list
-    //
-    //  type:        String   The output type request.  JPEG for now.  TODO: movies, profiles, tarballs, whatever
-    //  tag:         String   Identifies (with pid) the connection that needs this image
-    //  pid:         String   Identifies the user who is requesting the image
-    //  stop:        Boolean  Tells the output method to cease updating image
-    //  fn:          String   Our file name.  Either relative or fully qualified OK
-    //  frame:       Int      Our frame number
-    //  xsize:       Int      Width of output image
-    //  ysize:       Int      Height of output image
-    //  contrast:    Int      greater than this is black.  -1 means self calibrate, whatever that means
-    //  wval:        Int      less than this is white.     -1 means self calibrate, whatever that means
-    //  x:           Int      X coord of original image to be left hand edge
-    //  y:           Int      Y coord of original image to the the top edge
-    //  width:       Int      Width in pixels on original image to process.  -1 means full width
-    //  height:      Int      Height in pixels on original image to process.  -1 means full height
-    //  labelHeight: Int      Height of the label to be placed at the top of the image (full output jpeg is ysize+labelHeight tall)
-    //
-typedef struct isRequestStruct {
-  json_t *rqst_obj;
-  const char *type;
-  const char *tag;
-  const char *pid;
-  int stop;
-  const char *fn;
-  int frame;
-  int xsize;
-  int ysize;
-  int contrast;
-  int wval;
-  int x;
-  int y;
-  int width;
-  int height;
-  int labelHeight;
-} isRequestType;
-
-typedef struct isResponseStruct {
-  int dummy;
-} isResponseType;
 
 extern json_t *isH5GetMeta(const char *fn);
 extern json_t *isRayonixGetMeta(const char *fn);
@@ -108,9 +80,9 @@ extern isRequestType *isRequestParser(json_t *);
 extern void isRequestDestroyer(isRequestType *a);
 extern void isRequestPrint(isRequestType *, FILE *);
 extern const char *isFindProcess(const char *pid, int esaf);
-extern void isSupervisor(isProcessListType *p);
+extern void isSupervisor(const char *key);
 extern void isProcessDoNotCall( const char *pid, int esaf);
-extern const char *isRun(json_t *isAuth_obj, int esaf);
+const char *isRun(redisContext *rc, redisContext *rcLocal, json_t *isAuth, int esaf);
 extern void isProcessListInit();
 extern image_file_type isFileType(const char *fn);
 extern image_access_type isFindFile(const char *fn);
@@ -120,6 +92,8 @@ extern void set_json_object_integer(const char *cid, json_t *j, const char *key,
 extern void set_json_object_real(const char *cid, json_t *j, const char *key, double value);
 extern void set_json_object_float_array_2d(const char *cid, json_t *j, const char *k, float *v, int rows, int cols);
 extern void set_json_object_float_array( const char *cid, json_t *j, const char *key, float *values, int n);
-extern isImageBufType *isGetImageBuf( redisContext *rc, json_t *job);
-extern void isDataInit();
+extern isImageBufType *isGetImageBuf(isImageBufContext_t *ibctx, redisContext *rc, json_t *job);
+extern isImageBufContext_t  *isDataInit(const char *key);
 extern int verifyIsAuth( char *isAuth, char *isAuthSig_str);
+extern void isDataDestroy(isImageBufContext_t *c);
+extern void isWriteImageBufToRedis(isImageBufType *imb, redisContext *rc);
