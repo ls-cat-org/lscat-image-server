@@ -24,5 +24,11 @@ isRayonix.o: isRayonix.c is.h Makefile
 isReduceImage.o: isReduceImage.c is.h Makefile
 	gcc -g -Wall -c isReduceImage.c
 
-is: isMain.c is.h Makefile isUtilities.o isBlank.o isH5.o isRayonix.o isProcessManagement.o isWorker.o isData.o isReduceImage.o
-	gcc -g -Wall isMain.c -o is isUtilities.o isBlank.o isH5.o isRayonix.o isProcessManagement.o isWorker.o isData.o isReduceImage.o -lhiredis -ljansson -lhdf5 -ltiff -lcrypto -lm -pthread
+isJpeg.o: isJpeg.c is.h Makefile
+	gcc -g -Wall -c isJpeg.c
+
+isBitmapFont.o: isBitmapFont.c is.h Makefile
+	gcc -g -Wall -c isBitmapFont.c
+
+is: isMain.c is.h Makefile isUtilities.o isBlank.o isH5.o isRayonix.o isProcessManagement.o isWorker.o isData.o isReduceImage.o isJpeg.o isBitmapFont.o
+	gcc -g -Wall isMain.c -o is isUtilities.o isBlank.o isH5.o isRayonix.o isProcessManagement.o isWorker.o isData.o isReduceImage.o isJpeg.o isBitmapFont.o -lhiredis -ljansson -lhdf5 -ltiff -lcrypto -lm -pthread
