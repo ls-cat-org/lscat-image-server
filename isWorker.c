@@ -1,59 +1,7 @@
 #include "is.h"
 
 
-void isWorkerJpeg( isImageBufContext_t *ibctx, redisContext *rc, json_t *job) {
-  static const char *id = FILEID "isWorkerJpeg";
-  const char *fn;                       // file name from job.
-  isImageBufType *imb;
-  int frame;
 
-  fn = json_string_value(json_object_get(job, "fn"));
-  if (fn == NULL) {
-    fprintf(stderr, "isWorkerJpeg: Could not find file name parameter (fn) in job.\n");
-    return;
-  }
-
-  frame = json_integer_value(json_object_get(job, "frame"));
-  if (frame == 0) {
-    //
-    // We'll see 0 if frame is not  defined.  Just set it to 1 as that
-    // frame should always exist.
-    //
-    frame = 1;
-  }
-
-  if (strlen(fn) == 0) {
-    //
-    // Don't bother with the rest of this if all we want is a blank jpeg
-    //
-    isBlankJpeg(job);
-    return;
-  }
-
-  if (json_integer_value(json_object_get(job, "esaf")) > 0) {
-    fprintf(stdout, "%s: Here is file %s\n", id, fn);
-  }
-  // when isReduceImage returns a buffer it is read locked
-  imb = isReduceImage(ibctx, rc, job);
-  if (imb == NULL) {
-    fprintf(stderr, "%s: Could not find data for frame %d in file %s\n", id, frame, fn);
-    return;
-  }
-  if (json_integer_value(json_object_get(job, "esaf")) > 0) {
-    fprintf(stdout, "%s: Here I am with an image buffer of length %d\n", id, imb->buf_size);
-  }
-
-  //isJpeg(imb, job);
-  pthread_rwlock_unlock(&imb->buflock);
-
-  fprintf(stderr, "%s: Waiting for ctxMutex\n", id);
-  pthread_mutex_lock(&ibctx->ctxMutex);
-  fprintf(stderr, "%s: Got ctxMutex\n", id);
-  imb->in_use--;
-  pthread_mutex_unlock(&ibctx->ctxMutex);
-  fprintf(stderr, "%s: Unlocked ctxMutex\n", id);
-  return;
-}
 
 void *isWorker(void *voidp) {
   static const char *id = FILEID "isWorker";
@@ -149,7 +97,7 @@ void *isWorker(void *voidp) {
       // Cheapo command parser.  Probably the best way to go considering
       // the small number of commands we'll likely have to service.
       if (strcasecmp("jpeg", job_type) == 0) {
-        isWorkerJpeg(ibctx, rc, job);
+        isJpeg(ibctx, rc, job);
       } else {
         fprintf(stderr, "%s: Unknown job type '%s' in job '%s'\n", id, job_type, jobstr);
       }
