@@ -566,9 +566,21 @@ isImageBufType *isGetImageBufFromKey(isImageBufContext_t *ibctx, redisContext *r
   freeReplyObject(rr);
   fprintf(stderr, "%s: 40\n", id);
 
-  rr = redisCommand(rc, "HMGET %s META WIDTH HEIGHT DEPTH DATA", key);
-  if (rr == NULL) {
-    fprintf(stderr, "%s: Redis failure (hincby): %s\n", id, rc->errstr);
+  redisAppendCommand(rc, "EXPIRES %s %d", key, IS_REDIS_TTL);
+  redisAppendCommand(rc, "HMGET %s META WIDTH HEIGHT DEPTH DATA", key); 
+
+  // Expires
+  err = redisGetReply(rc, (void **)&rr);
+  if (err != REDIS_OK) {
+    fprintf(stderr, "%s: Redis failure (expires): %s\n", id, rc->errstr);
+    exit (-1);
+  }
+  freeReplyObject(rr);
+
+  // Mget
+  err = redisGetReply(rc, (void **)&rr);
+  if (err != REDIS_OK) {
+    fprintf(stderr, "%s: Redis failure (mget): %s\n", id, rc->errstr);
     exit (-1);
   }
 
@@ -629,6 +641,7 @@ void isWriteImageBufToRedis(isImageBufType *imb, redisContext *rc) {
 
   redisAppendCommand(rc, "HMSET %s META %s WIDTH %d HEIGHT %d DEPTH %d", imb->key, imb->meta_str, imb->buf_width, imb->buf_height, imb->buf_depth);
   redisAppendCommand(rc, "HSET %s DATA %b", imb->key, imb->buf, imb->buf_size);
+  redisAppendCommand(rc, "EXPIRES %s %d", imb->key, IS_REDIS_TTL);
   redisAppendCommand(rc, "HGET %s USERS", imb->key);
 
   // meta reply
@@ -643,6 +656,14 @@ void isWriteImageBufToRedis(isImageBufType *imb, redisContext *rc) {
   err = redisGetReply(rc, (void **)&rr);
   if (err != REDIS_OK) {
     fprintf(stderr, "%s: Redis failure (hset data): %s\n", id, rc->errstr);
+    exit (-1);
+  }
+  freeReplyObject(rr);
+
+  // expires reply
+  err = redisGetReply(rc, (void **)&rr);
+  if (err != REDIS_OK) {
+    fprintf(stderr, "%s: Redis failure (hset expires): %s\n", id, rc->errstr);
     exit (-1);
   }
   freeReplyObject(rr);
