@@ -22,8 +22,10 @@
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <tiffio.h>
+#include <turbojpeg.h>
 #include <unistd.h>
 
+#include "isBitmapFont.h"
 
 #define FILEID __FILE__ " "
 
@@ -96,3 +98,4 @@ extern void isDataDestroy(isImageBufContext_t *c);
 extern void isWriteImageBufToRedis(isImageBufType *imb, redisContext *rc);
 extern isImageBufType *isReduceImage(isImageBufContext_t *ibctx, redisContext *rc, json_t *job);
 extern isImageBufType *isGetImageBufFromKey(isImageBufContext_t *ibctx, redisContext *rc, char *key);
+extern void isJpeg( isImageBufContext_t *ibctx, redisContext *rc, json_t *job);
