@@ -2,6 +2,7 @@
 
 void isJpegBlank(json_t *job) {
   static const char *id = FILEID "isJpegBlank";
+  (void)id;
 
 }
 
@@ -10,8 +11,8 @@ void isJpeg( isImageBufContext_t *ibctx, redisContext *rc, json_t *job) {
   const char *fn;                       // file name from job.
   const isBitmapFontType *bmp;          // Our chosen bitmap font
   isImageBufType *imb;
-  unsigned char  *bufo;
-  unsigned char  *bufo_with_label;
+  JSAMPROW row_buffer;
+  JOCTET *out_buffer;
   int labelHeight;
   int row, col;
   uint16_t *bp16, v16;
@@ -28,6 +29,14 @@ void isJpeg( isImageBufContext_t *ibctx, redisContext *rc, json_t *job) {
   int label_xmax;               // RHS of text
   int ib;                       // index in bitmap of current char
   int ix;                       // x position in scan line of current char
+  struct jpeg_compress_struct cinfo;
+  int cinfoSetup;
+  jmp_buf j_jumpHere;
+  struct jpeg_error_mgr jerr;
+  struct jpeg_destination_mgr dmgr;
+  int i;
+  int ci;
+  char label[64];
 
   fn = json_string_value(json_object_get(job, "fn"));
   if (fn == NULL || strlen(fn) == 0) {
@@ -47,73 +56,152 @@ void isJpeg( isImageBufContext_t *ibctx, redisContext *rc, json_t *job) {
     return;
   }
 
+  row_buffer = calloc(imb->buf_width, sizeof(*row_buffer) * 3);
+  if (row_buffer == NULL) {
+    fprintf(stderr, "%s: Out of memory (row_buffer)\n", id);
+    exit (-1);
+  }
+
+  out_buffer = calloc(imb->buf_width * imb->buf_height, sizeof(*out_buffer) * 3);
+  if (out_buffer == NULL) {
+    fprintf(stderr, "%s: Out of memory (out_buffer)\n", id);
+    exit (-1);
+  }
+
+  //
+  // Setup the jpeg stuff
+  //
+  cinfoSetup = 0;
+
+  if( setjmp( j_jumpHere)) {
+    if( cinfoSetup) {
+      jpeg_destroy_compress( &cinfo);
+    }
+    free(row_buffer);
+    free(out_buffer);
+
+    pthread_rwlock_unlock(&imb->buflock);
+
+    pthread_mutex_lock(&ibctx->ctxMutex);
+    imb->in_use--;
+    pthread_mutex_unlock(&ibctx->ctxMutex);
+    return;
+  }
+
+  void jerror_handler( j_common_ptr cp) {
+    fprintf( stderr, "%s: jpeg compression error\n", id);
+    longjmp( *(jmp_buf *)cp->client_data, 1);
+  }
+
+  void init_buffer(struct jpeg_compress_struct* cinfo) {}
+  int empty_buffer(struct jpeg_compress_struct* cinfo) {
+    return 1;
+  }
+  void term_buffer(struct jpeg_compress_struct* cinfo) {}
+
+  cinfo.err = jpeg_std_error(&jerr);
+  cinfo.err->error_exit = jerror_handler;
+  cinfo.client_data    = &j_jumpHere;
+  jpeg_create_compress(&cinfo);
+  cinfoSetup = 1;
+
+  
+  dmgr.init_destination    = init_buffer;
+  dmgr.empty_output_buffer = empty_buffer;
+  dmgr.term_destination    = term_buffer;
+  dmgr.next_output_byte    = out_buffer;
+  dmgr.free_in_buffer      = imb->buf_width * imb->buf_height * 3;
+
+  cinfo.dest = &dmgr;
+
+  cinfo.image_width  = imb->buf_width;
+  cinfo.image_height = imb->buf_height;
+
+  cinfo.input_components = 3;		/* # of color components per pixel */
+  cinfo.in_color_space = JCS_RGB;	/* colorspace of input image */
+
+  jpeg_set_defaults(&cinfo);
+  jpeg_set_quality( &cinfo, 95, TRUE);
+
+  jpeg_start_compress(&cinfo, TRUE);
+
   labelHeight = json_integer_value(json_object_get(job, "labelheight"));
   labelHeight = labelHeight < 0  ?  0 : labelHeight;    // labels can't have negative height
   labelHeight = labelHeight > 64 ?  0 : labelHeight;    // ignore requests for really big labels
 
-  bufo_with_label = malloc((imb->buf_width * imb->buf_height + labelHeight) * 3);
-  if (bufo == NULL) {
-    fprintf(stderr, "%s: Out of memory\n", id);
-    exit (-1);
-  }
-
-  // Write the label
   //
-  bmp = &isBitmapFontBitmaps[3];
-  bpc = bmp->width / 8 + 1;             // bytes per character in this font
-
+  // TODO: Rayonix images already have the frame number in the label,
+  // so don't add it for these.  How to tell?  Probably imb should
+  // have a field for the detector type and/or the number of frames in
+  // the file.  When the number is 1 then don't add the frame number
+  // to the label.
   //
-  // Placement of the label within the banner.  At this point we only
-  // support left justified text.  TODO: truncate the beginning of the
-  // string if the label is too long to fit since it's the end of the
-  // string that distingushes one frame from another.
-  //
-  label_ymin = 0;
-  label_ymax = labelHeight > bmp->height ? bmp->height : labelHeight;
-  label_xmax = imb->buf_width;
 
-  bufo  = bufo_with_label;
-  red   = bufo;
-  green = bufo + 1;
-  blue  = bufo + 2;
+  if (labelHeight && json_string_value(json_object_get(job,"label"))) {
 
-  for (cy=0, i=label_ymin; i<=label_ymax; cy++, i++) {
-    // Loop over characters
-    for (ci=0; label[ci] != 0; ci++) {
-      if (label[ci] < 32) {
-        continue;
-      }
-      if (ci * bmp->width >= label_xmax) {
-        // No room on line for this character
-        break;
-      }
-      sbc = 0;
-      bmc = bmp->bitmap[(bmp->height*(label[ci] - 32) + cy) * bpc];
-      mask = 0x80;
-      for (ib=0; ib<bmp->width; ib++) {
-        ix = ci * bmp->width + ib;
-        if (ix > label_xmax) {
+    snprintf(label, sizeof(label)-1, "%s %d", json_string_value(json_object_get(job,"label")), (int)json_integer_value(json_object_get(job,"frame")));
+    label[sizeof(label)-1] = 0;
+
+    // Write the label
+    //
+    bmp = &isBitmapFontBitmaps[3];
+    bpc = bmp->width / 8 + 1;             // bytes per character in this font
+    
+    //
+    // Placement of the label within the banner.  At this point we only
+    // support left justified text.  TODO: truncate the beginning of the
+    // string if the label is too long to fit since it's the end of the
+    // string that distingushes one frame from another.
+    //
+    label_ymin = 0;
+    label_ymax = labelHeight > bmp->height ? bmp->height : labelHeight;
+    label_xmax = imb->buf_width;
+    
+    // i loops over scan lines
+    // cy loops over character scan lines
+    // ci loops over character columns
+    //
+    
+    for (cy=0, i=label_ymin; i<=label_ymax; cy++, i++) {
+      red   = row_buffer;
+      green = row_buffer + 1;
+      blue  = row_buffer + 2;
+      
+      for (ci=0; label[ci] != 0; ci++) {
+        if (label[ci] < 32) {
+          // Ignore control characters
+          continue;
+        }
+        if (ci * bmp->width >= label_xmax) {
+          // No room on line for this character
           break;
         }
-
-        bp = bufo + 3*i*(is->xsize) + 3*ix;
-        if (mask & bmc) {
-          *red = *green = *blue = 255;
+        sbc = 0;
+        bmc = bmp->bitmap[(bmp->height*(label[ci] - 32) + cy) * bpc];
+        mask = 0x80;
+        for (ib=0; ib<bmp->width; ib++) {
+          ix = ci * bmp->width + ib;
+          if (ix > label_xmax) {
+            break;
+          }
+          if (mask & bmc) {
+            *red = *green = *blue = 255;
+          }
+          
+          mask >>= 1;
+          if (!mask) {
+            mask = 0x80;
+            sbc++;
+            bmc = bmp->bitmap[(bmp->height*(label[ci] - 32) + cy) * bpc + sbc];
+          }
+          red   += 3;
+          green += 3;
+          blue  += 3;
         }
-
-        mask >>= 1;
-        if (!mask) {
-          mask = 0x80;
-          sbc++;
-          bmc = bmp->bitmap[(bmp->height*(label[ci] - 32) + cy) * bpc + sbc];
-        }
-        red   += 3;
-        green += 3;
-        blue  += 3;
       }
+      jpeg_write_scanlines(&cinfo, &row_buffer, 1);
     }
   }
-
 
 
   // TODO: stick in the autoscale
@@ -124,15 +212,14 @@ void isJpeg( isImageBufContext_t *ibctx, redisContext *rc, json_t *job) {
   wval = wval < 0 ? 0 : wval;
   bval = bval <= wval ? wval+1 : bval;  
 
-  bufo  = bufo_with_label + 3 * labelHeight;
-  red   = bufo;
-  green = bufo + 1;
-  blue  = bufo + 2;
-  if (imp->buf_depth == 4) {
-    bp16 = imp->buf;
+  if (imb->buf_depth == 4) {
+    bp16 = imb->buf;
     for (row=0; row<imb->buf_height; row++) {
+      red   = row_buffer;
+      green = row_buffer + 1;
+      blue  = row_buffer + 2;
       for (col=0; col<imb->buf_width; col++) {
-        v16 = *(bp16 + imp->buf_width * row + col);
+        v16 = *(bp16 + imb->buf_width * row + col);
         if (v16 == 0xffff) {
           *red   = 0xff;
           *green = 0;
@@ -152,12 +239,16 @@ void isJpeg( isImageBufContext_t *ibctx, redisContext *rc, json_t *job) {
         green += 3;
         blue  += 3;
       }
+      jpeg_write_scanlines(&cinfo, &row_buffer, 1);
     }
   } else {
-    bp32 = imp->buf;
+    bp32 = imb->buf;
     for (row=0; row<imb->buf_height; row++) {
+      red   = row_buffer;
+      green = row_buffer + 1;
+      blue  = row_buffer + 2;
       for (col=0; col<imb->buf_width; col++) {
-        v32 = *(bp32 + imp->buf_width * row + col);
+        v32 = *(bp32 + imb->buf_width * row + col);
         if (v16 == 0xffffffff) {
           *red   = 0xff;
           *green = 0;
@@ -177,15 +268,16 @@ void isJpeg( isImageBufContext_t *ibctx, redisContext *rc, json_t *job) {
         green += 3;
         blue  += 3;
       }
+      jpeg_write_scanlines(&cinfo, &row_buffer, 1);
     }
   }
 
-  bufo_with_label = NULL;
+  jpeg_finish_compress(&cinfo);
 
+  fprintf(stderr, "%s: jpeg size = %d for image %s\n", id, (int)(cinfo.dest->next_output_byte - out_buffer), imb->key);
 
-  
-
-
+  free(row_buffer);
+  free(out_buffer);
 
   pthread_rwlock_unlock(&imb->buflock);
 
