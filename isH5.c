@@ -547,8 +547,8 @@ void get_one_frame(const char *fn, int frame, isImageBufType *imb) {
 
   imb->buf = data_buffer;
   imb->buf_size   = data_buffer_size;
-  imb->buf_width  = file_dims[1];
-  imb->buf_height = file_dims[2];
+  imb->buf_height = file_dims[1];
+  imb->buf_width  = file_dims[2];
   imb->buf_depth  = data_element_size;
 
   fprintf(stderr, "%s: Done\n", id);
