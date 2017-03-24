@@ -6,6 +6,7 @@
 #include <hdf5.h>
 #include <hiredis/hiredis.h>
 #include <jansson.h>
+#include <jpeglib.h>
 #include <math.h>
 #include <openssl/err.h>
 #include <openssl/evp.h>
