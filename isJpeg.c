@@ -18,8 +18,8 @@ void isJpeg( isImageBufContext_t *ibctx, redisContext *rc, json_t *job) {
   uint16_t *bp16, v16;
   uint32_t *bp32, v32;
   uint8_t *red, *blue, *green;
-  uint32_t wval, bval;
-  int mask;                     // used to find bit in font
+  int32_t wval, bval;
+  uint16_t mask;                // used to find bit in font
   int sbc;                      // the "sub" byte in the font needed for font width > 8
   int bpc;                      // bytes per character.  ie, 1 for 6x13, 2 for 9x15
   int bmc;                      // the current byte in the font
@@ -56,13 +56,17 @@ void isJpeg( isImageBufContext_t *ibctx, redisContext *rc, json_t *job) {
     return;
   }
 
+  labelHeight = json_integer_value(json_object_get(job, "labelHeight"));
+  labelHeight = labelHeight < 0  ?  0 : labelHeight;    // labels can't have negative height
+  labelHeight = labelHeight > 64 ?  0 : labelHeight;    // ignore requests for really big labels
+
   row_buffer = calloc(imb->buf_width, sizeof(*row_buffer) * 3);
   if (row_buffer == NULL) {
     fprintf(stderr, "%s: Out of memory (row_buffer)\n", id);
     exit (-1);
   }
 
-  out_buffer = calloc(imb->buf_width * imb->buf_height, sizeof(*out_buffer) * 3);
+  out_buffer = calloc(imb->buf_width * imb->buf_height, (sizeof(*out_buffer) + labelHeight) * 3);
   if (out_buffer == NULL) {
     fprintf(stderr, "%s: Out of memory (out_buffer)\n", id);
     exit (-1);
@@ -110,12 +114,12 @@ void isJpeg( isImageBufContext_t *ibctx, redisContext *rc, json_t *job) {
   dmgr.empty_output_buffer = empty_buffer;
   dmgr.term_destination    = term_buffer;
   dmgr.next_output_byte    = out_buffer;
-  dmgr.free_in_buffer      = imb->buf_width * imb->buf_height * 3;
+  dmgr.free_in_buffer      = (imb->buf_width * imb->buf_height + labelHeight) * 3;
 
   cinfo.dest = &dmgr;
 
   cinfo.image_width  = imb->buf_width;
-  cinfo.image_height = imb->buf_height;
+  cinfo.image_height = imb->buf_height + labelHeight;
 
   cinfo.input_components = 3;		/* # of color components per pixel */
   cinfo.in_color_space = JCS_RGB;	/* colorspace of input image */
@@ -125,10 +129,6 @@ void isJpeg( isImageBufContext_t *ibctx, redisContext *rc, json_t *job) {
 
   jpeg_start_compress(&cinfo, TRUE);
 
-  labelHeight = json_integer_value(json_object_get(job, "labelheight"));
-  labelHeight = labelHeight < 0  ?  0 : labelHeight;    // labels can't have negative height
-  labelHeight = labelHeight > 64 ?  0 : labelHeight;    // ignore requests for really big labels
-
   //
   // TODO: Rayonix images already have the frame number in the label,
   // so don't add it for these.  How to tell?  Probably imb should
@@ -136,6 +136,8 @@ void isJpeg( isImageBufContext_t *ibctx, redisContext *rc, json_t *job) {
   // the file.  When the number is 1 then don't add the frame number
   // to the label.
   //
+
+  fprintf(stderr, "%s: label: %s  labelHeight: %d\n", id, json_string_value(json_object_get(job,"label")), labelHeight);
 
   if (labelHeight && json_string_value(json_object_get(job,"label"))) {
 
@@ -167,6 +169,8 @@ void isJpeg( isImageBufContext_t *ibctx, redisContext *rc, json_t *job) {
       green = row_buffer + 1;
       blue  = row_buffer + 2;
       
+      memset( row_buffer, 0xff, 3 * imb->buf_width);
+
       for (ci=0; label[ci] != 0; ci++) {
         if (label[ci] < 32) {
           // Ignore control characters
@@ -185,7 +189,9 @@ void isJpeg( isImageBufContext_t *ibctx, redisContext *rc, json_t *job) {
             break;
           }
           if (mask & bmc) {
-            *red = *green = *blue = 255;
+            *red = *green = *blue = 0;
+          } else {
+            *red = *green = *blue = 0xff;
           }
           
           mask >>= 1;
@@ -212,7 +218,9 @@ void isJpeg( isImageBufContext_t *ibctx, redisContext *rc, json_t *job) {
   wval = wval < 0 ? 0 : wval;
   bval = bval <= wval ? wval+1 : bval;  
 
-  if (imb->buf_depth == 4) {
+  fprintf(stderr, "%s: wval=%d  bval=%d\n", id, wval, bval);
+
+  if (imb->buf_depth == 2) {
     bp16 = imb->buf;
     for (row=0; row<imb->buf_height; row++) {
       red   = row_buffer;
@@ -226,12 +234,12 @@ void isJpeg( isImageBufContext_t *ibctx, redisContext *rc, json_t *job) {
           *blue  = 0;
         } else {
           if (v16 <= wval) {
-            *red = *green = *blue = 0;
+            *red = *green = *blue = 0xff;
           } else {
             if (v16 >= bval) {
-              *red = *green = *blue = 0xff;
+              *red = *green = *blue = 0;
             } else {
-              *red = *green = *blue = (v16 - wval)/(bval - wval) * 0xff;
+              *red = *green = *blue = 0xff - (v16 - wval)/(bval - wval) * 0xff;
             }
           }
         }
@@ -249,18 +257,18 @@ void isJpeg( isImageBufContext_t *ibctx, redisContext *rc, json_t *job) {
       blue  = row_buffer + 2;
       for (col=0; col<imb->buf_width; col++) {
         v32 = *(bp32 + imb->buf_width * row + col);
-        if (v16 == 0xffffffff) {
+        if (v32 == 0xffffffff) {
           *red   = 0xff;
           *green = 0;
           *blue  = 0;
         } else {
           if (v32 <= wval) {
-            *red = *green = *blue = 0;
+            *red = *green = *blue = 0xff;
           } else {
             if (v32 >= bval) {
-              *red = *green = *blue = 0xff;
+              *red = *green = *blue = 0;
             } else {
-              *red = *green = *blue = (v32 - wval)/(bval - wval) * 0xff;
+              *red = *green = *blue = 0xff - (v32 - wval)/(bval - wval) * 0xff;
             }
           }
         }
@@ -275,6 +283,15 @@ void isJpeg( isImageBufContext_t *ibctx, redisContext *rc, json_t *job) {
   jpeg_finish_compress(&cinfo);
 
   fprintf(stderr, "%s: jpeg size = %d for image %s\n", id, (int)(cinfo.dest->next_output_byte - out_buffer), imb->key);
+
+  {
+    FILE *fp;
+    int lngth = cinfo.dest->next_output_byte - out_buffer;
+    fp = fopen("/tmp/a.jpeg", "w");
+    fwrite(out_buffer, lngth, 1, fp);
+    fclose(fp);
+  }
+
 
   free(row_buffer);
   free(out_buffer);
