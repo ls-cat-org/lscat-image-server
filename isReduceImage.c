@@ -4,9 +4,12 @@
 ** returns the maximum value of ha xa by ya box centered on d,l
 */
 uint32_t maxBox16( uint32_t *badPixels, void *buf, int bufWidth, int bufHeight, double k, double l, int yal, int yau, int xal, int xau) {
+  static const char *id = FILEID "maxBo16";
   int m, n;
   uint32_t d, d1;
   uint16_t *bp = (uint16_t *) buf;
+
+  (void)id;
 
   d = 0;
 
@@ -45,9 +48,12 @@ uint32_t maxBox16( uint32_t *badPixels, void *buf, int bufWidth, int bufHeight, 
 ** returns the maximum value of ha xa by ya box centered on d,l
 */
 uint32_t maxBox32( uint32_t *badPixels, void *buf, int bufWidth, int bufHeight, double k, double l, int yal, int yau, int xal, int xau) {
+  static const char *id = FILEID "maxBox32";
   int m, n;
   uint32_t d, d1;
   uint32_t *bp = (uint32_t *)buf;
+  
+  (void)id;
   
   d = 0;
   
@@ -78,16 +84,19 @@ uint32_t maxBox32( uint32_t *badPixels, void *buf, int bufWidth, int bufHeight, 
       if (d1 == 0xffffffff)
         return d1;
 
-      d = (d>d1 ? d : d1);
+      d = d>d1 ? d : d1;
     }
   }
   return d;
 }
 
 uint32_t nearest16( uint32_t *badPixels, void *buf, int bufWidth, int bufHeight, double k, double l, int yal, int yau, int xal, int xau) {
+  static const char *id = FILEID "nearest16";
   uint16_t *bp = (uint16_t *)buf;
   uint32_t rtn;
   int index;
+
+  (void)id;
 
   index = (int)(k+0.5)*bufWidth + (int)(l+0.5);
   if (badPixels && *(badPixels + index)) {
@@ -100,9 +109,12 @@ uint32_t nearest16( uint32_t *badPixels, void *buf, int bufWidth, int bufHeight,
 }
 
 uint32_t nearest32( uint32_t *badPixels, void *buf, int bufWidth, int bufHeight, double k, double l, int yal, int yau, int xal, int xau) {
+  static const char *id = FILEID "nearest32";
   int index;
   uint32_t *bp = (uint32_t *)buf;
   uint32_t rtn;
+
+  (void)id;
 
   index = (int)(k+0.5)*bufWidth + (int)(l+0.5);
   if (badPixels && *(badPixels + index)) {
@@ -115,6 +127,7 @@ uint32_t nearest32( uint32_t *badPixels, void *buf, int bufWidth, int bufHeight,
 }
 
 void reduceImage16( isImageBufType *src, isImageBufType *dst, int x, int y, int winWidth, int winHeight) {
+  static const char *id = FILEID "reduceImage16";
 
   uint32_t (*cvtFunc)(uint32_t *, void *, int, int, double, double, int, int, int, int);
 
@@ -129,6 +142,8 @@ void reduceImage16( isImageBufType *src, isImageBufType *dst, int x, int y, int 
   int dstHeight;
   int srcWidth;
   int srcHeight;
+
+  (void)id;
 
   srcBuf = src->buf;
   dstBuf = dst->buf;
@@ -176,6 +191,71 @@ void reduceImage16( isImageBufType *src, isImageBufType *dst, int x, int y, int 
   }
 }
 
+void reduceImage32( isImageBufType *src, isImageBufType *dst, int x, int y, int winWidth, int winHeight) {
+  static const char *id = FILEID "reduceImage32";
+  uint32_t (*cvtFunc)(uint32_t *, void *, int, int, double, double, int, int, int, int);
+
+  int row=0, col=0;
+  int xa, ya;
+  int xal, yal, xau, yau;
+  uint32_t pxl;
+  double d_row, d_col;
+  uint32_t *srcBuf;
+  uint32_t *dstBuf;
+  int dstWidth;
+  int dstHeight;
+  int srcWidth;
+  int srcHeight;
+
+  fprintf(stderr, "%s: x=%d y=%d winWidth=%d winHeight=%d\n", id, x, y, winWidth, winHeight);
+
+  srcBuf = src->buf;
+  dstBuf = dst->buf;
+
+  dstWidth  = dst->buf_width;
+  dstHeight = dst->buf_height;
+
+  srcWidth  = src->buf_width;
+  srcHeight = src->buf_height;
+
+  //
+  // size of rectangle to search for the maximum pixel value
+  // yal and xal are subtracted from ya and xa for the lower bound of the box and
+  // yau and xau are added to ya and xa for the upper bound of the box
+  //
+  xa = (winWidth)/(dstWidth);
+  xal = xau = xa/2;
+  if( (xal + xau) < xa)
+    xau++;
+
+  ya = (winHeight)/(dstHeight);
+  yal = yau = ya/2;
+  if ((yal + yau) < ya)
+    yau++;
+
+  cvtFunc = NULL;
+  if (xa <= 1 || ya <= 1) {
+    cvtFunc = nearest32;
+  } else {
+    cvtFunc = maxBox32;
+  }
+
+  for (row=0; row<dstHeight; row++) {
+    // "index" of vertical position on original image
+    d_row = row * (double)winHeight/(double)(dstHeight) + y;
+
+    for (col=0; col<dstWidth; col++) {
+      // "index" of the horizontal position on the original image
+      d_col = col * (double)winWidth/(double)(dstWidth) + x;
+
+      pxl = cvtFunc( src->bad_pixel_map, srcBuf, srcWidth, srcHeight, d_row, d_col, yal, yau, xal, xau);
+      
+      *(dstBuf + row*dstWidth + col) = pxl;
+    }
+  }
+}
+
+            
 /** Image reduction is defined by a "zoom" and a "sector".
  *
  *  The width and heigh of the original image are divided by "zoom"
@@ -369,6 +449,8 @@ isImageBufType *isReduceImage(isImageBufContext_t *ibctx, redisContext *rc, json
     exit (-1);
   }
 
+  fprintf(stderr, "%s: srcWidth %d  srcHeight %d  image_depth %d  winWidth %d  winHeight %d  dstWidth %d  dstHeight %d\n", id, srcWidth, srcHeight, image_depth, winWidth, winHeight, dstWidth, dstHeight);
+
   rtn->buf_width  = dstWidth;
   rtn->buf_height = dstHeight;
   rtn->buf_depth  = image_depth;
@@ -386,7 +468,7 @@ isImageBufType *isReduceImage(isImageBufContext_t *ibctx, redisContext *rc, json
     break;
 
   case 4:
-    reduceImage16(raw, rtn, x, y, winWidth, winHeight);
+    reduceImage32(raw, rtn, x, y, winWidth, winHeight);
     break;
 
   default:
