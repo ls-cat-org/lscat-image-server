@@ -404,14 +404,14 @@ void isJpeg( isImageBufContext_t *ibctx, redisContext *rc, json_t *job) {
   // Perhaps autoscale black values
   //
   if (bval <= 0) {
-    bval = json_real_value(json_object_get(imb->meta, "mean")) + json_real_value(json_object_get(imb->meta, "stddev"));
+    bval = json_number_value(json_object_get(imb->meta, "mean")) + json_number_value(json_object_get(imb->meta, "stddev"));
   }
   
   //
   // Perhaps autoscale white values
   //
   if (wval < 0) {
-    wval = json_real_value(json_object_get(imb->meta, "mean")) - json_real_value(json_object_get(imb->meta, "stddev"));
+    wval = json_number_value(json_object_get(imb->meta, "mean")) - json_number_value(json_object_get(imb->meta, "stddev"));
   }
 
   wval = wval < 0 ? 0 : wval;

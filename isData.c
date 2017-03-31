@@ -66,10 +66,15 @@ void isDataDestroy(isImageBufContext_t *c) {
       freeReplyObject(p->rr);
       p->rr = NULL;
       p->buf = NULL;
+      p->bad_pixel_map = NULL;
     } else {
       if (p->buf) {
         free(p->buf);
         p->buf = NULL;
+      }
+      if (p->bad_pixel_map) {
+        free(p->bad_pixel_map);
+        p->bad_pixel_map = NULL;
       }
     }
     free((char *)p->key);
@@ -316,6 +321,7 @@ isImageBufType *createNewImageBuf(isImageBufContext_t *ibctx, const char *key) {
         freeReplyObject(p->rr);
         p->rr = NULL;
         p->buf = NULL;
+        p->bad_pixel_map = NULL;
       } else {
         //
         // OK, buffer was malloced not redised (redis is a verb?)
@@ -324,7 +330,12 @@ isImageBufType *createNewImageBuf(isImageBufContext_t *ibctx, const char *key) {
           free(p->buf);
           p->buf = NULL;
         }
+        if (p->bad_pixel_map) {
+          free(p->bad_pixel_map);
+          p->bad_pixel_map = NULL;
+        }
       }
+
 
       free((char *)p->key);
       pthread_rwlock_destroy(&p->buflock);
@@ -365,6 +376,7 @@ isImageBufType *isGetImageBufFromKey(isImageBufContext_t *ibctx, redisContext *r
   redisReply *height_rr;
   redisReply *depth_rr;
   redisReply *image_rr;         // redis reply object perhaps with our image data
+  redisReply *badpixels_rr;     // redis reply object perhaps with our bad pixel map
   int need_to_read_data;        // non-zero when we are the first one asking for this data
   ENTRY item;
   ENTRY *return_item;
@@ -425,7 +437,7 @@ isImageBufType *isGetImageBufFromKey(isImageBufContext_t *ibctx, redisContext *r
   //fprintf(stdout, "%s: attemping to get meta data for %s\n", id, key);
   redisAppendCommand(rc, "HINCRBY %s USERS 1", key);
   redisAppendCommand(rc, "EXPIRE %s %d", key, IS_REDIS_TTL);
-  redisAppendCommand(rc, "HMGET %s META WIDTH HEIGHT DEPTH DATA", key);
+  redisAppendCommand(rc, "HMGET %s META WIDTH HEIGHT DEPTH DATA BADPIXELS", key);
 
   //
   // hincby reply: 1 means we are the first and should get the data, >1 means we should block until the data are there.
@@ -465,11 +477,12 @@ isImageBufType *isGetImageBufFromKey(isImageBufContext_t *ibctx, redisContext *r
   // Here the reply is an array.  element[0] is the meta data (if any)
   // and element[1] is the image data (if any)
   //
-  meta_rr   = rr->element[0];
-  width_rr  = rr->element[1];
-  height_rr = rr->element[2];
-  depth_rr  = rr->element[3];
-  image_rr  = rr->element[4];
+  meta_rr      = rr->element[0];
+  width_rr     = rr->element[1];
+  height_rr    = rr->element[2];
+  depth_rr     = rr->element[3];
+  image_rr     = rr->element[4];
+  badpixels_rr = rr->element[5];
 
   rtn->meta_str = meta_rr->type == REDIS_REPLY_STRING ? strdup(meta_rr->str) : NULL;
   rtn->meta = rtn->meta_str == NULL ? NULL : json_loads(rtn->meta_str, 0, &jerr);
@@ -487,6 +500,11 @@ isImageBufType *isGetImageBufFromKey(isImageBufContext_t *ibctx, redisContext *r
     rtn->buf_height = atoi(height_rr->str);
     rtn->buf_depth  = atoi(depth_rr->str);
 
+    rtn->bad_pixel_map = NULL;
+    if (badpixels_rr->type == REDIS_REPLY_STRING) {
+      rtn->bad_pixel_map = badpixels_rr->str;
+    }
+
     //fprintf(stdout, "%s: key: %s  width: %d  width_type: %d height: %d  height_type: %d  depth: %d  depth_type: %d\n", id, rtn->key, (int)width_rr->integer, width_rr->type, (int)height_rr->integer, height_rr->type, (int)depth_rr->integer, depth_rr->type);
 
     rtn->extra = NULL;
@@ -495,6 +513,8 @@ isImageBufType *isGetImageBufFromKey(isImageBufContext_t *ibctx, redisContext *r
       fprintf(stderr, "%s: Bad buffer size.  Width: %d  Height: %d  Depth: %d  Size: %d\n", id, rtn->buf_width, rtn->buf_height, rtn->buf_depth, rtn->buf_size);
       exit (-1);
     }
+
+    
 
     pthread_rwlock_unlock(&rtn->buflock);
     pthread_rwlock_rdlock(&rtn->buflock);
@@ -538,7 +558,7 @@ isImageBufType *isGetImageBufFromKey(isImageBufContext_t *ibctx, redisContext *r
   freeReplyObject(rr);
 
   redisAppendCommand(rc, "EXPIRE %s %d", key, IS_REDIS_TTL);
-  redisAppendCommand(rc, "HMGET %s META WIDTH HEIGHT DEPTH DATA", key); 
+  redisAppendCommand(rc, "HMGET %s META WIDTH HEIGHT DEPTH DATA BADPIXELS", key); 
 
   // Expire
   err = redisGetReply(rc, (void **)&rr);
@@ -555,11 +575,12 @@ isImageBufType *isGetImageBufFromKey(isImageBufContext_t *ibctx, redisContext *r
     exit (-1);
   }
 
-  meta_rr   = rr->element[0];
-  width_rr  = rr->element[1];
-  height_rr = rr->element[2];
-  depth_rr  = rr->element[3];
-  image_rr  = rr->element[4];
+  meta_rr      = rr->element[0];
+  width_rr     = rr->element[1];
+  height_rr    = rr->element[2];
+  depth_rr     = rr->element[3];
+  image_rr     = rr->element[4];
+  badpixels_rr = rr->element[5];
 
   rtn->meta_str = meta_rr->type == REDIS_REPLY_STRING ? strdup(meta_rr->str) : NULL;
   rtn->meta = rtn->meta_str == NULL ? NULL : json_loads(rtn->meta_str, 0, &jerr);
@@ -576,6 +597,11 @@ isImageBufType *isGetImageBufFromKey(isImageBufContext_t *ibctx, redisContext *r
     rtn->buf_width  = atoi(width_rr->str);
     rtn->buf_height = atoi(height_rr->str);
     rtn->buf_depth  = atoi(depth_rr->str);
+
+    rtn->bad_pixel_map = NULL;
+    if (badpixels_rr->type == REDIS_REPLY_STRING) {
+      rtn->bad_pixel_map = badpixels_rr->str;
+    }
 
     if (rtn->buf_size != rtn->buf_width * rtn->buf_height * rtn->buf_depth) {
       fprintf(stderr, "%s: Bad buffer size.  Width: %d  Height: %d  Depth: %d  Size: %d\n", id, rtn->buf_width, rtn->buf_height, rtn->buf_depth, rtn->buf_size);
@@ -604,6 +630,9 @@ void isWriteImageBufToRedis(isImageBufType *imb, redisContext *rc) {
 
   redisAppendCommand(rc, "HMSET %s META %s WIDTH %d HEIGHT %d DEPTH %d", imb->key, imb->meta_str, imb->buf_width, imb->buf_height, imb->buf_depth);
   redisAppendCommand(rc, "HSET %s DATA %b", imb->key, imb->buf, imb->buf_size);
+  if (imb->bad_pixel_map) {
+    redisAppendCommand(rc, "HSET %s BADPIXELS %b", imb->key, imb->bad_pixel_map, sizeof(uint32_t) * imb->buf_width * imb->buf_height);
+  }
   redisAppendCommand(rc, "EXPIRE %s %d", imb->key, IS_REDIS_TTL);
   redisAppendCommand(rc, "HGET %s USERS", imb->key);
 
@@ -622,6 +651,16 @@ void isWriteImageBufToRedis(isImageBufType *imb, redisContext *rc) {
     exit (-1);
   }
   freeReplyObject(rr);
+
+  // badpixels reply
+  if (imb->bad_pixel_map != NULL) {
+    err = redisGetReply(rc, (void **)&rr);
+    if (err != REDIS_OK) {
+      fprintf(stderr, "%s: Redis failure (hset badpixels): %s\n", id, rc->errstr);
+      exit (-1);
+    }
+    freeReplyObject(rr);
+  }    
 
   // expire reply
   err = redisGetReply(rc, (void **)&rr);

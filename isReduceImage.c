@@ -197,11 +197,17 @@ void reduceImage16( isImageBufType *src, isImageBufType *dst, int x, int y, int 
 
       pxl = cvtFunc( src->bad_pixel_map, srcBuf, srcWidth, srcHeight, d_row, d_col, yal, yau, xal, xau);
       
-      sum += pxl;
-      ss  += pxl * pxl;
-      n++;
+      if (pxl != 0xffffffff) {
+        sum += pxl;
+        ss  += pxl * pxl;
+        n++;
+      }
       *(dstBuf + row*dstWidth + col) = pxl;
     }
+  }
+  if (n == 0) {
+    fprintf(stderr, "%s: no pixels counted.  dstHeight=%d  dstWidth=%d  key=%s\n", id, dstHeight, dstWidth, src->key);
+    return;
   }
   mean = sum / n;
   rms  = sqrt(ss / n);
@@ -286,12 +292,20 @@ void reduceImage32( isImageBufType *src, isImageBufType *dst, int x, int y, int 
       d_col = col * (double)winWidth/(double)(dstWidth) + x;
 
       pxl = cvtFunc( src->bad_pixel_map, srcBuf, srcWidth, srcHeight, d_row, d_col, yal, yau, xal, xau);
-      sum += pxl;
-      ss  += pxl * pxl;
-      n++;
-      
+
+      if (pxl != 0xffffffff) {
+        sum += pxl;
+        ss  += pxl * pxl;
+        n++;
+      }
+
       *(dstBuf + row*dstWidth + col) = pxl;
     }
+  }
+  
+  if (n == 0) {
+    fprintf(stderr, "%s: No pixels counted for key %s\n", id, src->key);
+    return;
   }
   mean = sum / n;
   rms  = sqrt(ss / n);
@@ -366,9 +380,9 @@ isImageBufType *isReduceImage(isImageBufContext_t *ibctx, redisContext *rc, json
   fn    = json_string_value(json_object_get(job, "fn"));
   frame = json_integer_value(json_object_get(job, "frame"));
 
-  zoom   = json_real_value(json_object_get(job, "zoom"));
-  segcol = json_real_value(json_object_get(job, "segcol"));
-  segrow = json_real_value(json_object_get(job, "segrow"));
+  zoom   = json_number_value(json_object_get(job, "zoom"));
+  segcol = json_number_value(json_object_get(job, "segcol"));
+  segrow = json_number_value(json_object_get(job, "segrow"));
   
   //
   // Reality check on zoom

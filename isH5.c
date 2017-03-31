@@ -12,7 +12,6 @@ typedef struct frame_discovery_struct {
 
 typedef struct isH5extraStruct {
   frame_discovery_t *frame_discovery_base;
-  void *bad_pixel_map;
 } isH5extra_t;
 
 typedef struct h5_to_json_struct {
@@ -551,6 +550,12 @@ void isH5GetData(const char *fn, int frame, isImageBufType *imb) {
   isH5extra_t *extra;
   hid_t master_file;
   herr_t herr;
+  hid_t data_set;
+  hid_t data_space;
+  hsize_t dims[2];
+  int rank;
+  int npoints;
+  int err;
   
   //fprintf(stdout, "%s: enter with fn='%s' frame=%d\n", id, fn, frame);
   extra = imb->extra;
@@ -571,7 +576,6 @@ void isH5GetData(const char *fn, int frame, isImageBufType *imb) {
       exit(-1);
     }
     extra->frame_discovery_base = NULL;
-    extra->bad_pixel_map = NULL;
 
     imb->extra = extra;
     //
@@ -582,6 +586,60 @@ void isH5GetData(const char *fn, int frame, isImageBufType *imb) {
       fprintf(stderr, "%s: Could not discover which frame is where for file %s\n", id, fn);
       return;
     }
+    
+    do {
+      //
+      // Get the bad pixel map
+      //
+      data_set = H5Dopen2(master_file, "/entry/instrument/detector/detectorSpecific/pixel_mask", H5P_DEFAULT);
+      if (data_set < 0) {
+        fprintf(stderr, "%s: Could not open pixel mask data set\n", id);
+        break;
+      }
+      
+      data_space = H5Dget_space(data_set);
+      if (data_space < 0) {
+        fprintf(stderr, "%s: Could not open pixel mask data space\n", id);
+        break;
+      }
+      
+      rank = H5Sget_simple_extent_ndims(data_space);
+      if (rank < 0) {
+        fprintf(stderr, "%s: Could not get pixel mask rank\n", id);
+        break;
+      }
+      
+      if (rank != 2) {
+        fprintf(stderr, "%s: We do not know how to deal with a pixel mask of rank %d.  It should be 2\n", id, rank);
+        break;
+      }
+      
+      err = H5Sget_simple_extent_dims(data_space, dims, NULL);
+      if (err < 0) {
+        fprintf(stderr, "%s: Could not get pixelmask dimentions\n", id);
+        break;
+      }
+      
+      npoints = H5Sget_simple_extent_npoints(data_space);
+      if (npoints < 0) {
+        fprintf(stderr, "%s: Could not get pixel mask dimensions\n", id);
+        break;
+      }
+      
+      imb->bad_pixel_map = calloc(npoints, sizeof(uint32_t));
+      if (imb->bad_pixel_map == NULL) {
+        fprintf(stderr, "%s: Could not allocate memory for the pixelmask\n", id);
+        break;
+      }
+      
+      err = H5Dread(data_set, H5T_NATIVE_UINT, H5S_ALL, H5S_ALL, H5P_DEFAULT, imb->bad_pixel_map);
+      if (err < 0) {
+        fprintf(stderr, "%s: Could not read pixelmask data\n", id);
+        free(imb->bad_pixel_map);
+        imb->bad_pixel_map = NULL;
+        break;
+      }
+    } while(0);
   }
   get_one_frame(fn, frame, imb);
 }

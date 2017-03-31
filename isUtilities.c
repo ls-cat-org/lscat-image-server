@@ -249,6 +249,11 @@ void set_json_object_real(const char *cid, json_t *j, const char *key, double va
   json_t *tmp_obj;
   int err;
 
+  if (isnan(value) || isinf(value)) {
+    fprintf(stderr, "%s->%s: Ignoring request for key %s with value %f\n", cid, id, key, value);
+    return;
+  }
+
   tmp_obj = json_real(value);
   if (tmp_obj == NULL) {
     fprintf(stderr, "%s->%s: Could not create json object for key '%s' with value %f\n", cid, id, key, value);
