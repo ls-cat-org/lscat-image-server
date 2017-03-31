@@ -11,6 +11,8 @@ uint32_t maxBox16( uint32_t *badPixels, void *buf, int bufWidth, int bufHeight, 
 
   (void)id;
 
+  //fprintf(stdout, "%s: bufWidth=%d bufHeight=%d  k=%f l=%f yal=%d  yau=%d  xal=%d  xau=%d\n", id, bufWidth, bufHeight, k, l, yal, yau, xal, xau);
+
   d = 0;
 
   for (m=k-yal; m < k+yau; m++) {
@@ -142,6 +144,12 @@ void reduceImage16( isImageBufType *src, isImageBufType *dst, int x, int y, int 
   int dstHeight;
   int srcWidth;
   int srcHeight;
+  int n;
+  double ss;
+  double sum;
+  double mean;
+  double rms;
+  double sd;
 
   (void)id;
 
@@ -176,6 +184,9 @@ void reduceImage16( isImageBufType *src, isImageBufType *dst, int x, int y, int 
     cvtFunc = maxBox16;
   }
 
+  n   = 0;
+  sum = 0.0;
+  ss  = 0.0;
   for (row=0; row<dstHeight; row++) {
     // "index" of vertical position on original image
     d_row = row * winHeight/(double)(dstHeight) + y;
@@ -186,9 +197,26 @@ void reduceImage16( isImageBufType *src, isImageBufType *dst, int x, int y, int 
 
       pxl = cvtFunc( src->bad_pixel_map, srcBuf, srcWidth, srcHeight, d_row, d_col, yal, yau, xal, xau);
       
+      sum += pxl;
+      ss  += pxl * pxl;
+      n++;
       *(dstBuf + row*dstWidth + col) = pxl;
     }
   }
+  mean = sum / n;
+  rms  = sqrt(ss / n);
+  sd   = sqrt(ss /n - mean * mean);
+
+  set_json_object_real(id, src->meta, "mean", mean);
+  set_json_object_real(id, dst->meta, "mean", mean);
+
+  set_json_object_real(id, src->meta, "rms", rms);
+  set_json_object_real(id, dst->meta, "rms", rms);
+
+  set_json_object_real(id, src->meta, "stddev", sd);
+  set_json_object_real(id, dst->meta, "stddev", sd);
+
+  fprintf(stdout, "%s: n=%d mean=%f  rms=%f   stddev=%f  key=%s\n", id, n, mean, rms, sd, src->key);
 }
 
 void reduceImage32( isImageBufType *src, isImageBufType *dst, int x, int y, int winWidth, int winHeight) {
@@ -206,8 +234,14 @@ void reduceImage32( isImageBufType *src, isImageBufType *dst, int x, int y, int 
   int dstHeight;
   int srcWidth;
   int srcHeight;
+  int n;
+  double ss;
+  double sum;
+  double mean;
+  double rms;
+  double sd;
 
-  fprintf(stderr, "%s: x=%d y=%d winWidth=%d winHeight=%d\n", id, x, y, winWidth, winHeight);
+  //fprintf(stdout, "%s: x=%d y=%d winWidth=%d winHeight=%d\n", id, x, y, winWidth, winHeight);
 
   srcBuf = src->buf;
   dstBuf = dst->buf;
@@ -240,6 +274,9 @@ void reduceImage32( isImageBufType *src, isImageBufType *dst, int x, int y, int 
     cvtFunc = maxBox32;
   }
 
+  n   = 0;
+  sum = 0.0;
+  ss  = 0.0;
   for (row=0; row<dstHeight; row++) {
     // "index" of vertical position on original image
     d_row = row * (double)winHeight/(double)(dstHeight) + y;
@@ -249,10 +286,27 @@ void reduceImage32( isImageBufType *src, isImageBufType *dst, int x, int y, int 
       d_col = col * (double)winWidth/(double)(dstWidth) + x;
 
       pxl = cvtFunc( src->bad_pixel_map, srcBuf, srcWidth, srcHeight, d_row, d_col, yal, yau, xal, xau);
+      sum += pxl;
+      ss  += pxl * pxl;
+      n++;
       
       *(dstBuf + row*dstWidth + col) = pxl;
     }
   }
+  mean = sum / n;
+  rms  = sqrt(ss / n);
+  sd   = sqrt(ss /n - mean * mean);
+
+  set_json_object_real(id, src->meta, "mean", mean);
+  set_json_object_real(id, dst->meta, "mean", mean);
+
+  set_json_object_real(id, src->meta, "rms", rms);
+  set_json_object_real(id, dst->meta, "rms", rms);
+
+  set_json_object_real(id, src->meta, "stddev", sd);
+  set_json_object_real(id, dst->meta, "stddev", sd);
+
+  fprintf(stdout, "%s: n=%d mean=%f  rms=%f   stddev=%f  key=%s\n", id, n, mean, rms, sd, src->key);
 }
 
             
@@ -290,32 +344,31 @@ isImageBufType *isReduceImage(isImageBufContext_t *ibctx, redisContext *rc, json
   isImageBufType *rtn;
   isImageBufType *raw;
   double zoom;
-  int segcol;
-  int segrow;
-  int seglen;
+  double segcol;
+  double segrow;
+  double seglen;
   const char *fn;
   int frame;
   char *reducedKey;
   int gid;
   int reducedKeyStrlen;
 
-
   int srcWidth;
   int srcHeight;
   int image_depth;
   int x;
   int y;
-  int winWidth = json_integer_value(json_object_get(job, "width"));                             // width of input image to map to output image
-  int winHeight = json_integer_value(json_object_get(job, "height"));                           // height of input image to map to output image
-  int dstWidth  = json_integer_value(json_object_get(job, "xsize"));                            // width, in pixels, of output image
-  int dstHeight = json_integer_value(json_object_get(job, "ysize"));                            // height, in pixels, of output image
+  int winWidth;                                                         // width of input image to map to output image
+  int winHeight;                                                        // height of input image to map to output image
+  int dstWidth  = json_integer_value(json_object_get(job, "xsize"));    // width, in pixels, of output image
+  int dstHeight;                                                        // height, in pixels, calculated once we know the source image dimensions
 
   fn    = json_string_value(json_object_get(job, "fn"));
   frame = json_integer_value(json_object_get(job, "frame"));
 
   zoom   = json_real_value(json_object_get(job, "zoom"));
-  segcol = json_integer_value(json_object_get(job, "segcol"));
-  segrow = json_integer_value(json_object_get(job, "segrow"));
+  segcol = json_real_value(json_object_get(job, "segcol"));
+  segrow = json_real_value(json_object_get(job, "segrow"));
   
   //
   // Reality check on zoom
@@ -323,28 +376,27 @@ isImageBufType *isReduceImage(isImageBufContext_t *ibctx, redisContext *rc, json
   zoom = (floor(10.0*zoom+0.5))/10.0;   // round to the nearest 0.1
   if (zoom <= 1.0) {
     zoom = 1.0;
-    segcol = 0;
-    segrow = 0;
+    segcol = 0.;
+    segrow = 0.;
   }
   
   //
   // Reality check on segcol and segrow
   //
   seglen = ceil(zoom);
-  segcol = segcol > seglen - 1 ? seglen - 1 : segcol;
-  segrow = segrow > seglen - 1 ? seglen - 1 : segrow;
+  segcol = segcol > seglen - 1. ? seglen - 1. : segcol;
+  segrow = segrow > seglen - 1. ? seglen - 1. : segrow;
   
   //
   // Refuse really tiny conversions
   dstWidth  = dstWidth  < 8 ? 8 : dstWidth;
-  dstHeight = dstHeight < 8 ? 8 : dstHeight;
 
   //
   // Reality check on the destination image size to keep weirdos from
   // finding buffer overflows.
   //
-  if (dstWidth > 10000 || dstHeight > 10000) {
-    fprintf(stderr, "%s: unlikely valid destination size %d X %d\n", id, dstWidth, dstHeight);
+  if (dstWidth > 10000) {
+    fprintf(stderr, "%s: unlikely valid destination size width %d\n", id, dstWidth);
     return NULL;
   }
 
@@ -377,15 +429,13 @@ isImageBufType *isReduceImage(isImageBufContext_t *ibctx, redisContext *rc, json
     fprintf(stderr, "%s: Out of memory (reducedKey)\n", id);
     exit (-1);
   }
-  snprintf(reducedKey, reducedKeyStrlen, "%d:%s-%d-%0.1f-%d-%d-%d-%d",
-           getegid(), fn, frame, zoom, segcol, segrow, dstWidth, dstHeight);
+  snprintf(reducedKey, reducedKeyStrlen, "%d:%s-%d-%0.1f-%0.3f-%0.3f-%d",
+           getegid(), fn, frame, zoom, segcol, segrow, dstWidth);
   reducedKey[reducedKeyStrlen] = 0;
  
-  fprintf(stderr, "%s: about to get image buf from key %s\n", id, reducedKey);
+  //  fprintf(stdout, "%s: about to get image buf from key %s\n", id, reducedKey);
 
   rtn = isGetImageBufFromKey(ibctx, rc, reducedKey);
-
-  free(reducedKey);
 
   if (rtn == NULL || rtn->buf != NULL) {
     //
@@ -393,8 +443,9 @@ isImageBufType *isReduceImage(isImageBufContext_t *ibctx, redisContext *rc, json
     // Either way we are done here.  When rtn is not null the buffer
     // is read locked.  Don't forget to release it.
     //
-    fprintf(stderr, "%s: returned %s\n", id, rtn == NULL ? "Failed to get data, giving up." : rtn->key);
+    //fprintf(stdout, "%s: returned %s\n", id, rtn == NULL ? "Failed to get data, giving up." : rtn->key);
   
+    free(reducedKey);
     return rtn;
   }
 
@@ -403,7 +454,7 @@ isImageBufType *isReduceImage(isImageBufContext_t *ibctx, redisContext *rc, json
   //
   
   // Get the unreduced file
-  fprintf(stderr, "%s: Getting raw data for %s\n", id, rtn->key);
+  //fprintf(stdout, "%s: Getting raw data for %s\n", id, rtn->key);
   raw = isGetRawImageBuf(ibctx, rc, job);
   if (raw == NULL) {
     fprintf(stderr, "%s: Failed to get raw data for %s\n", id, rtn->key);
@@ -413,18 +464,15 @@ isImageBufType *isReduceImage(isImageBufContext_t *ibctx, redisContext *rc, json
     // authorities.
     //
     pthread_rwlock_unlock(&rtn->buflock);
-    fprintf(stderr, "%s: Gave up lock for key %s\n", id, reducedKey);
-    
-    fprintf(stderr, "%s: Waiting for ctxMutex\n", id);
     pthread_mutex_lock(&ibctx->ctxMutex);
-    fprintf(stderr, "%s: Got ctxMutex\n", id);
     rtn->in_use--;
     pthread_mutex_unlock(&ibctx->ctxMutex);
-    fprintf(stderr, "%s: Unlocked ctxMutex\n", id);
+
+    free(reducedKey);
     return NULL;
   }
   
-  fprintf(stderr, "%s: Got raw data for %s\n", id, rtn->key);
+  //fprintf(stdout, "%s: Got raw data for %s\n", id, rtn->key);
   // raw is the the raw data we'll be reducing.  rtn is the reduced
   // buffer we'll be filling.
   // 
@@ -433,6 +481,8 @@ isImageBufType *isReduceImage(isImageBufContext_t *ibctx, redisContext *rc, json
   srcWidth  = json_integer_value(json_object_get(raw->meta, "x_pixels_in_detector"));       // width, in pixels, of full input image
   srcHeight = json_integer_value(json_object_get(raw->meta, "y_pixels_in_detector"));       // height, in pixels, of full input image
   
+  dstHeight = (double)srcHeight * (double)dstWidth / (double)srcHeight;
+
   image_depth = json_integer_value(json_object_get(raw->meta, "image_depth"));
   if (image_depth != 2 && image_depth != 4) {
     fprintf(stderr, "%s: bad image depth %d.  Likely this is a serious error somewhere\n", id, image_depth);
@@ -449,7 +499,7 @@ isImageBufType *isReduceImage(isImageBufContext_t *ibctx, redisContext *rc, json
     exit (-1);
   }
 
-  fprintf(stderr, "%s: srcWidth %d  srcHeight %d  image_depth %d  winWidth %d  winHeight %d  dstWidth %d  dstHeight %d\n", id, srcWidth, srcHeight, image_depth, winWidth, winHeight, dstWidth, dstHeight);
+  //fprintf(stdout, "%s: srcWidth %d  srcHeight %d  image_depth %d  winWidth %d  winHeight %d  dstWidth %d  dstHeight %d\n", id, srcWidth, srcHeight, image_depth, winWidth, winHeight, dstWidth, dstHeight);
 
   rtn->buf_width  = dstWidth;
   rtn->buf_height = dstHeight;
@@ -477,31 +527,23 @@ isImageBufType *isReduceImage(isImageBufContext_t *ibctx, redisContext *rc, json
   }
 
   pthread_rwlock_unlock(&raw->buflock);
-  fprintf(stderr, "%s: Gave up lock for key %s\n", id, reducedKey);
 
   // We don't need the raw buffer anymore
-  fprintf(stderr, "%s: Waiting for ctxMutex\n", id);
   pthread_mutex_lock(&ibctx->ctxMutex);
-  fprintf(stderr, "%s: Got ctxMutex\n", id);
   raw->in_use--;
   pthread_mutex_unlock(&ibctx->ctxMutex);
-  fprintf(stderr, "%s: Unlocked ctxMutex\n", id);
 
   //
   // Exchange our write lock for a read lock to let our other threads get to work.
   //
   pthread_rwlock_unlock(&rtn->buflock);
-  fprintf(stderr, "%s: Gave up lock for key %s\n", id, reducedKey);
-
-  fprintf(stderr, "%s: Getting read lock for key %s\n", id, rtn->key);
   pthread_rwlock_rdlock(&rtn->buflock);
-  fprintf(stderr, "%s: Got read lock for key %s\n", id, rtn->key);
-
   //
   // Let the other processes get started on this one too.
   //
   isWriteImageBufToRedis(rtn, rc);
 
+  free(reducedKey);
   return rtn;
 }  
 

@@ -262,7 +262,7 @@ json_t *isH5GetMeta(const char *fn) {
   int i;
   int err;
 
-  fprintf(stderr, "%s: trying to open file %s\n", id, fn);
+  //fprintf(stdout, "%s: trying to open file %s\n", id, fn);
   //
   // Open up the master file
   //
@@ -308,7 +308,7 @@ json_t *isH5GetMeta(const char *fn) {
     fprintf(stderr, "%s: failed to close master file\n", id);
   }
 
-  fprintf(stderr, "%s: returning with metadata\n", id);
+  //fprintf(stdout, "%s: returning with metadata\n", id);
   return meta;
 }
 
@@ -446,7 +446,7 @@ void get_one_frame(const char *fn, int frame, isImageBufType *imb) {
 
   extra = imb->extra;
 
-  fprintf(stderr, "%s: start %s\n", id, extra==NULL ? "extra is null" : "");
+  //fprintf(stdout, "%s: start %s\n", id, extra==NULL ? "extra is null" : "");
   for (fp = extra->frame_discovery_base; fp != NULL; fp = fp->next) {
     fprintf(stderr, "%s: first_frame=%d  last_frame=%d\n", id, fp->first_frame, fp->last_frame);
     if (fp->first_frame <= frame && fp->last_frame >= frame) {
@@ -458,34 +458,29 @@ void get_one_frame(const char *fn, int frame, isImageBufType *imb) {
     return;
   }
 
-  fprintf(stderr, "%s: 20\n", id);
   rank = H5Sget_simple_extent_ndims(fp->file_space);
   if (rank < 0) {
     fprintf(stderr, "%s: Failed to get rank of dataset for file %s\n", id, fn);
     return;
   }
 
-  fprintf(stderr, "%s: 30\n", id);
   if (rank != 3) {
     fprintf(stderr, "%s: Unexpected value of data_set rank.  Got %d but should gotten 3\n", id, rank);
     return;
   }
 
-  fprintf(stderr, "%s: 40\n", id);
   herr = H5Sget_simple_extent_dims( fp->file_space, file_dims, file_max_dims);
   if (herr < 0) {
     fprintf(stderr, "Could not get dataset dimensions\n");
     exit (-1);
   }
 
-  fprintf(stderr, "%s: 50\n", id);
   data_element_size = H5Tget_size( fp->file_type);
   if (data_element_size == 0) {
     fprintf(stderr, "%s: Could not get data_element_size\n", id);
     return;
   }
 
-  fprintf(stderr, "%s: 60\n", id);
   switch(data_element_size) {
   case 4:
     data_buffer_size = file_dims[1] * file_dims[2] * sizeof(uint32_t);
@@ -499,7 +494,6 @@ void get_one_frame(const char *fn, int frame, isImageBufType *imb) {
     return;
   }
 
-  fprintf(stderr, "%s: About to allocate %d bytes\n", id, data_buffer_size);
   data_buffer = calloc(data_buffer_size, 1);
   if (data_buffer == NULL) {
     fprintf(stderr, "%s: Out of memory (data_buffer)\n", id);
@@ -530,20 +524,17 @@ void get_one_frame(const char *fn, int frame, isImageBufType *imb) {
   block[1] = file_dims[1];
   block[2] = file_dims[2];
 
-  fprintf(stderr, "%s: About to select hyperslab\n", id);
   herr = H5Sselect_hyperslab(fp->file_space, H5S_SELECT_SET, start, stride, count, block);
   if (herr < 0) {
     fprintf(stderr, "%s: Could not set hyperslab for frame %d\n", id, frame);
     return;
   }
     
-  fprintf(stderr, "%s: About to read data\n", id);
   herr = H5Dread(fp->data_set, fp->file_type, mem_space, fp->file_space, H5P_DEFAULT, data_buffer);
   if (herr < 0) {
     fprintf(stderr, "%s: Could not read frame %d\n", id, frame);
     return;
   }
-  fprintf(stderr, "%s: Have finished reading data\n", id);
 
   imb->buf = data_buffer;
   imb->buf_size   = data_buffer_size;
@@ -551,7 +542,6 @@ void get_one_frame(const char *fn, int frame, isImageBufType *imb) {
   imb->buf_width  = file_dims[2];
   imb->buf_depth  = data_element_size;
 
-  fprintf(stderr, "%s: Done\n", id);
   return;
 }
 
@@ -562,7 +552,7 @@ void isH5GetData(const char *fn, int frame, isImageBufType *imb) {
   hid_t master_file;
   herr_t herr;
   
-  fprintf(stderr, "%s: enter with fn='%s' frame=%d\n", id, fn, frame);
+  //fprintf(stdout, "%s: enter with fn='%s' frame=%d\n", id, fn, frame);
   extra = imb->extra;
 
   //
@@ -593,8 +583,5 @@ void isH5GetData(const char *fn, int frame, isImageBufType *imb) {
       return;
     }
   }
-  
   get_one_frame(fn, frame, imb);
-  
-  fprintf(stderr, "%s: done\n", id);
 }

@@ -170,7 +170,7 @@ void remakeProcessList(redisContext *rc, redisContext *rcLocal) {
   int i;
   int process_still_exists;
   
-  fprintf(stderr, "%s: starting remake\n", id);
+  //fprintf(stdout, "%s: starting remake\n", id);
 
   hdestroy_r(&worker_table);
   for (n_entries = 0, plp = firstProcessListItem; plp != NULL; plp = plp->next) {
@@ -214,7 +214,7 @@ void remakeProcessList(redisContext *rc, redisContext *rcLocal) {
     isDestroyProcessListItem(plp);
   }
   
-  fprintf(stderr, "%s: found %d entries\n", id, n_entries);
+  //fprintf(stdout, "%s: found %d entries\n", id, n_entries);
 
   errno = 0;
   err = hcreate_r(n_entries + INITIAL_WORKER_TABLE_SIZE, &worker_table);

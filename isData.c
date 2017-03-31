@@ -12,7 +12,7 @@ isImageBufContext_t  *isDataInit(const char *key) {
   isImageBufContext_t *rtn;
   int err;
 
-  fprintf(stderr, "%s: initializing imageBufferTable with %d entries\n", id, N_IMAGE_BUFFERS);
+  //fprintf(stdout, "%s: initializing imageBufferTable with %d entries\n", id, N_IMAGE_BUFFERS);
 
 
   rtn = calloc(1, sizeof(*rtn));
@@ -170,9 +170,10 @@ image_file_type isFileType(const char *fn) {
   int nbytes;
   unsigned int buf4;
 
+  errno = 0;
   fd = open(fn, O_RDONLY);
-  if (fd < 0) {
-    fprintf(stderr, "%s: Could not open file '%s'\n", id, fn);
+  if (fd == -1) {
+    fprintf(stderr, "%s: Could not open file '%s'  uid: %d  gid: %d  error: %s\n", id, fn, geteuid(), getegid(), strerror(errno));
     return UNKNOWN;
   }
 
@@ -201,12 +202,12 @@ image_file_type isFileType(const char *fn) {
     fprintf(stderr, "%s: Could not turn off HDF5 error reporting\n", id);
   }
 
-  ish5 = H5Fis_hdf5(fn);
   herr = H5Eset_auto2(H5E_DEFAULT, (H5E_auto2_t) H5Eprint2, stderr);
   if (herr < 0) {
     fprintf(stderr, "%s: Could not turn back on HDF5 error reporting\n", id);
   }
 
+  ish5 = H5Fis_hdf5(fn);
   if (ish5 > 0) {
     return HDF5;
   }
@@ -231,7 +232,7 @@ isImageBufType *createNewImageBuf(isImageBufContext_t *ibctx, const char *key) {
 
   // call with ctxMutex locked
 
-  fprintf(stderr, "%s: 10\n", id);
+  //fprintf(stdout, "%s: 10\n", id);
 
   rtn = calloc(1, sizeof(*rtn));
   if (rtn == NULL) {
@@ -246,9 +247,7 @@ isImageBufType *createNewImageBuf(isImageBufContext_t *ibctx, const char *key) {
   pthread_rwlock_init(&rtn->buflock, &rwatt);
   pthread_rwlockattr_destroy(&rwatt);
 
-  fprintf(stderr, "%s: Waiting for write lock for key %s\n", id, key);
   pthread_rwlock_wrlock(&rtn->buflock);
-  fprintf(stderr, "%s: Got write lock for key %s\n", id, key);
 
   rtn->in_use = 1;              // we're going to be writing to this buffern then switching to reading it.  Will need to set in_use.
 
@@ -264,11 +263,8 @@ isImageBufType *createNewImageBuf(isImageBufContext_t *ibctx, const char *key) {
     fflush(stderr);
     exit (-1);
   }
-  
-  fprintf(stderr, "%s: nbuffers=%d  N_IMAGE_BUFFERS=%d\n", id, ibctx->n_buffers, N_IMAGE_BUFFERS);
 
   if (++ibctx->n_buffers < N_IMAGE_BUFFERS) {
-    fprintf(stderr, "%s: returning without rebuilding table.  key: %s\n", id, rtn->key);
     return rtn;
   }
 
@@ -341,7 +337,7 @@ isImageBufType *createNewImageBuf(isImageBufContext_t *ibctx, const char *key) {
 
 
   // remember that return value we calculated so long ago?
-  fprintf(stderr, "%s: returning after rebuilding table.  key: %s\n", id, rtn->key);
+  //fprintf(stdout, "%s: returning after rebuilding table.  key: %s\n", id, rtn->key);
   return rtn;
 }
 
@@ -377,9 +373,7 @@ isImageBufType *isGetImageBufFromKey(isImageBufContext_t *ibctx, redisContext *r
 
   rtn = NULL;
 
-  fprintf(stderr, "%s: Waiting for ctxMutex\n", id);
   pthread_mutex_lock(&ibctx->ctxMutex);
-  fprintf(stderr, "%s: Got ctxMutex\n", id);
 
   item.key  = key;
   item.data = NULL;
@@ -390,14 +384,10 @@ isImageBufType *isGetImageBufFromKey(isImageBufContext_t *ibctx, redisContext *r
   }
   
   if (rtn != NULL) {
-    fprintf(stderr, "%s: Found buffer in bufTable for key %s with key %s\n", id, key, rtn->key);
+    //fprintf(stdout, "%s: Found buffer in bufTable for key %s with key %s\n", id, key, rtn->key);
     rtn->in_use++;                              // flag to keep buffer from being deleted before we get the read lock
     pthread_mutex_unlock(&ibctx->ctxMutex);
-    fprintf(stderr, "%s: Unlocked ctxMutex\n", id);
-
-    fprintf(stderr, "%s: Waiting for read lock for key (1) %s\n", id, key);
     pthread_rwlock_rdlock(&rtn->buflock);
-    fprintf(stderr, "%s: Got read lock for key (1) %s\n", id, key);
 
     return rtn;
   }
@@ -412,7 +402,6 @@ isImageBufType *isGetImageBufFromKey(isImageBufContext_t *ibctx, redisContext *r
   // buffer is write locked and in_use = 1
 
   pthread_mutex_unlock(&ibctx->ctxMutex);       // But now we can allow access to the buffers
-  fprintf(stderr, "%s: Unlocked ctxMutex after createnewImageBuf\n", id);
 
   //
   // Three redis queries follow:
@@ -433,7 +422,7 @@ isImageBufType *isGetImageBufFromKey(isImageBufContext_t *ibctx, redisContext *r
   //  same data in the same way.
   //
 
-  fprintf(stderr, "%s: attemping to get meta data for %s\n", id, key);
+  //fprintf(stdout, "%s: attemping to get meta data for %s\n", id, key);
   redisAppendCommand(rc, "HINCRBY %s USERS 1", key);
   redisAppendCommand(rc, "EXPIRE %s %d", key, IS_REDIS_TTL);
   redisAppendCommand(rc, "HMGET %s META WIDTH HEIGHT DEPTH DATA", key);
@@ -448,11 +437,9 @@ isImageBufType *isGetImageBufFromKey(isImageBufContext_t *ibctx, redisContext *r
   }
 
   need_to_read_data = rr->integer == 1;
-  fprintf(stderr, "%s: users = %d  reply type: %d\n", id, (int)rr->integer, rr->type);
+  //fprintf(stdout, "%s: users = %d  reply type: %d\n", id, (int)rr->integer, rr->type);
 
   freeReplyObject(rr);
-
-  fprintf(stderr, "%s: 10\n", id);
 
   //
   // expire reply: we don't need to do anything with this  err = redisGetReply(rc, &rr);
@@ -463,8 +450,6 @@ isImageBufType *isGetImageBufFromKey(isImageBufContext_t *ibctx, redisContext *r
     exit (-1);
   }
   freeReplyObject(rr);
-
-  fprintf(stderr, "%s: 20\n", id);
 
   //
   // Try to get the data.  If there is nothing to get then either get
@@ -502,7 +487,7 @@ isImageBufType *isGetImageBufFromKey(isImageBufContext_t *ibctx, redisContext *r
     rtn->buf_height = atoi(height_rr->str);
     rtn->buf_depth  = atoi(depth_rr->str);
 
-    fprintf(stderr, "%s: key: %s  width: %d  width_type: %d height: %d  height_type: %d  depth: %d  depth_type: %d\n", id, rtn->key, (int)width_rr->integer, width_rr->type, (int)height_rr->integer, height_rr->type, (int)depth_rr->integer, depth_rr->type);
+    //fprintf(stdout, "%s: key: %s  width: %d  width_type: %d height: %d  height_type: %d  depth: %d  depth_type: %d\n", id, rtn->key, (int)width_rr->integer, width_rr->type, (int)height_rr->integer, height_rr->type, (int)depth_rr->integer, depth_rr->type);
 
     rtn->extra = NULL;
 
@@ -512,23 +497,13 @@ isImageBufType *isGetImageBufFromKey(isImageBufContext_t *ibctx, redisContext *r
     }
 
     pthread_rwlock_unlock(&rtn->buflock);
-    fprintf(stderr, "%s: Gave up lock for key %s\n", id, key);
-
-    fprintf(stderr, "%s: Waiting for read lock for key (2) %s\n", id, key);
     pthread_rwlock_rdlock(&rtn->buflock);
-    fprintf(stderr, "%s: Got read lock for key (2) %s\n", id, key);
 
     freeReplyObject(rr);
-
-    fprintf(stderr, "%s: 25\n", id);
-
     return rtn;
-
   }
   // OK, no data yet.
   freeReplyObject(rr);
-
-  fprintf(stderr, "%s: 30\n", id);
 
   if (need_to_read_data) {
     // Who ever called us will go ahead and fill the image data if we
@@ -536,8 +511,6 @@ isImageBufType *isGetImageBufFromKey(isImageBufContext_t *ibctx, redisContext *r
     //
     // In this case we hold on to the write lock.
     //
-
-    fprintf(stderr, "%s: 32\n", id);
     return rtn;
   }
 
@@ -545,7 +518,7 @@ isImageBufType *isGetImageBufFromKey(isImageBufContext_t *ibctx, redisContext *r
   //
   // TODO: evaluate and perhaps implement a timeout and error recovery
   //
-  fprintf(stderr, "%s: About to wait for someone else to write the data\n", id);
+
   rr = redisCommand(rc, "BRPOP %s-READY 0", key);
   if (rr == NULL) {
     fprintf(stderr, "%s: Redis error: %s\n", id, rc->errstr);
@@ -559,12 +532,10 @@ isImageBufType *isGetImageBufFromKey(isImageBufContext_t *ibctx, redisContext *r
     // it is they'll just try reading the file too.
     //
     freeReplyObject(rr);
-    fprintf(stderr, "%s: 35\n", id);
     return rtn;
   }
 
   freeReplyObject(rr);
-  fprintf(stderr, "%s: 40\n", id);
 
   redisAppendCommand(rc, "EXPIRE %s %d", key, IS_REDIS_TTL);
   redisAppendCommand(rc, "HMGET %s META WIDTH HEIGHT DEPTH DATA", key); 
@@ -610,23 +581,15 @@ isImageBufType *isGetImageBufFromKey(isImageBufContext_t *ibctx, redisContext *r
       fprintf(stderr, "%s: Bad buffer size.  Width: %d  Height: %d  Depth: %d  Size: %d\n", id, rtn->buf_width, rtn->buf_height, rtn->buf_depth, rtn->buf_size);
       exit (-1);
     }
-
-    fprintf(stderr, "%s: Gave up lock for key %s\n", id, key);
     pthread_rwlock_unlock(&rtn->buflock);
-
-    fprintf(stderr, "%s: Waiting for read lock for key (3) %s\n", id, key);
     pthread_rwlock_rdlock(&rtn->buflock);
-    fprintf(stderr, "%s: Got read lock for key (3) %s\n", id, key);
 
-    fprintf(stderr, "%s: 45\n", id);
     return rtn;
 
   }
 
   // OK, no data yet.  Don't cry.
   freeReplyObject(rr);
-
-  fprintf(stderr, "%s: 50\n", id);
   return rtn;
 }
 
@@ -637,7 +600,7 @@ void isWriteImageBufToRedis(isImageBufType *imb, redisContext *rc) {
   int i;
   int n;
 
-  fprintf(stderr, "%s: Here I am with Key %s and buf_size %d\n", id, imb->key, imb->buf_size);
+  //fprintf(stdout, "%s: Here I am with Key %s and buf_size %d\n", id, imb->key, imb->buf_size);
 
   redisAppendCommand(rc, "HMSET %s META %s WIDTH %d HEIGHT %d DEPTH %d", imb->key, imb->meta_str, imb->buf_width, imb->buf_height, imb->buf_depth);
   redisAppendCommand(rc, "HSET %s DATA %b", imb->key, imb->buf, imb->buf_size);
@@ -676,7 +639,6 @@ void isWriteImageBufToRedis(isImageBufType *imb, redisContext *rc) {
   }
   n = rr->integer;
   freeReplyObject(rr);
-  fprintf(stderr, "%s: There are %d users,  %d waiting\n", id, n, n-1);
   
   //
   // tell the processes awaiting notification it's time to get back to work
@@ -685,12 +647,9 @@ void isWriteImageBufToRedis(isImageBufType *imb, redisContext *rc) {
     rr = redisCommand(rc, "LPUSH %s-READY ok", imb->key);
     freeReplyObject(rr);
   }
-
-  fprintf(stderr, "%s: There I go with Key %s\n", id, imb->key);
-
 }
 
-/**
+/** Get the unreduced image
  */
 isImageBufType *isGetRawImageBuf(isImageBufContext_t *ibctx, redisContext *rc, json_t *job) {
   static const char *id = FILEID "isGetRawImageBuf";
@@ -738,7 +697,7 @@ isImageBufType *isGetRawImageBuf(isImageBufContext_t *ibctx, redisContext *rc, j
   //
   // Buffer is read locked if it exists, write locked if it does not
   //
-  fprintf(stderr, "%s: about to get image buffer from key %s\n", id, key);
+  // fprintf(stdout, "%s: about to get image buffer from key %s\n", id, key);
 
   rtn = isGetImageBufFromKey(ibctx, rc, key);
   if (rtn->buf != NULL) {
@@ -747,7 +706,7 @@ isImageBufType *isGetRawImageBuf(isImageBufContext_t *ibctx, redisContext *rc, j
     return rtn;
   }
   
-  fprintf(stderr, "%s: About to try and read file %s\n", id, fn);
+  //fprintf(stderr, "%s: About to try and read file %s\n", id, fn);
   // I guess we didn't find our buffer in redis
   //
   // META does not exist or was never entered.  Re-read both meta and data.
@@ -768,12 +727,12 @@ isImageBufType *isGetRawImageBuf(isImageBufContext_t *ibctx, redisContext *rc, j
   default:
     fprintf(stderr, "%s: unknown file type for file %s\n", id, fn);
     pthread_rwlock_unlock(&rtn->buflock);
-    fprintf(stderr, "%s: Gave up lock for key %s\n", id, key);
     free(key);
     return NULL;
   }
 
-  fprintf(stderr, "%s: read file %s\n", id, fn);
+  
+
 
   rtn->meta_str = json_dumps(rtn->meta, JSON_SORT_KEYS | JSON_INDENT(0) | JSON_COMPACT);
   if (rtn->meta_str == NULL) {
@@ -784,10 +743,7 @@ isImageBufType *isGetRawImageBuf(isImageBufContext_t *ibctx, redisContext *rc, j
   isWriteImageBufToRedis(rtn, rc);
 
   pthread_rwlock_unlock(&rtn->buflock);
-  fprintf(stderr, "%s: Gave up lock for key %s\n", id, key);
-  fprintf(stderr, "%s: Waiting for read lock for key (4) %s\n", id, key);
   pthread_rwlock_rdlock(&rtn->buflock);
-  fprintf(stderr, "%s: Got read lock for key (4) %s\n", id, key);
 
   return rtn;
 }

@@ -32,7 +32,7 @@
 #include "is.h"
 
 int main(int argc, char **argv) {
-  static const char *id = "main";
+  static const char *id = FILEID "main";
 
   json_t  *isRequest;
   redisContext *rc;

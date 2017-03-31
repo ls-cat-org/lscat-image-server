@@ -437,7 +437,10 @@ void isRayonixGetData( const char *fn, int frame, isImageBufType *imb) {
   sigaction( SIGBUS, &signew, NULL);
   //
   //
-  imb->buf_size = buf_size;
+  imb->buf_size   = buf_size;
+  imb->buf_width  = inWidth;
+  imb->buf_height = inHeight;
+  imb->buf_depth  = 2;
   imb->buf = buf;
   return;
 }

@@ -1,12 +1,9 @@
 #include "is.h"
 
-
-
-
 void *isWorker(void *voidp) {
   static const char *id = FILEID "isWorker";
   isImageBufContext_t *ibctx;
-  redisContext *rc;
+  redisContext *rcLocal;
   redisReply *reply;
   redisReply *subreply;
   json_t *job;
@@ -20,13 +17,11 @@ void *isWorker(void *voidp) {
   //
   // setup redis
   //
-  rc = redisConnect("127.0.0.1", 6379);
+  rcLocal = redisConnect("127.0.0.1", 6379);
   fflush(stdout);
-  if (rc == NULL || rc->err) {
-    fflush(stderr);
-
-    if (rc) {
-      fprintf(stderr, "%s: Failed to connect to redis: %s\n", id, rc->errstr);
+  if (rcLocal == NULL || rcLocal->err) {
+    if (rcLocal) {
+      fprintf(stderr, "%s: Failed to connect to redis: %s\n", id, rcLocal->errstr);
     } else {
       fprintf(stderr, "%s: Failed to get redis context\n", id);
     }
@@ -38,9 +33,9 @@ void *isWorker(void *voidp) {
     //
     // Wait for something to do
     //
-    reply = redisCommand(rc, "BRPOP %s 0", ibctx->key);
+    reply = redisCommand(rcLocal, "BRPOP %s 0", ibctx->key);
     if (reply == NULL) {
-      fprintf(stderr, "%s: Redis error: %s\n", id, rc->errstr);
+      fprintf(stderr, "%s: Redis error: %s\n", id, rcLocal->errstr);
       exit (-1);
     }
 
@@ -86,10 +81,6 @@ void *isWorker(void *voidp) {
 
     jobstr = json_dumps(job, JSON_INDENT(0) | JSON_COMPACT | JSON_SORT_KEYS);
 
-    if (json_integer_value(json_object_get(job, "esaf")) > 0) {
-      fprintf(stderr, "%s: Got job %s\n", id, subreply->str);
-    }
-
     job_type = json_string_value(json_object_get(job, "type"));
     if (job_type == NULL) {
       fprintf(stderr, "%s: No type parameter in job %s\n", id, jobstr);
@@ -97,7 +88,7 @@ void *isWorker(void *voidp) {
       // Cheapo command parser.  Probably the best way to go considering
       // the small number of commands we'll likely have to service.
       if (strcasecmp("jpeg", job_type) == 0) {
-        isJpeg(ibctx, rc, job);
+        isJpeg(ibctx, rcLocal, job);
       } else {
         fprintf(stderr, "%s: Unknown job type '%s' in job '%s'\n", id, job_type, jobstr);
       }
@@ -116,11 +107,9 @@ void isSupervisor(const char *key) {
   isImageBufContext_t *ibctx;
   int i;
   int err;
-  redisContext *rc;
+  redisContext *rcLocal;
   redisReply *reply;
   pthread_t threads[N_WORKER_THREADS];
-
-  fprintf(stderr, "%s: start process %s\n", id, key);
 
   ibctx = isDataInit(key);
 
@@ -133,7 +122,6 @@ void isSupervisor(const char *key) {
               id, key, err==EAGAIN ? "Insufficient resources" : (err==EINVAL ? "Bad attributes" : (err==EPERM ? "No permission" : "Unknown Reasons")));
       return;
     }
-    fprintf(stderr, "%s: Started worker %d\n", id, i);
   }
 
   // Wait for the workers to stop
@@ -141,13 +129,13 @@ void isSupervisor(const char *key) {
     err = pthread_join(threads[i], NULL);
     switch(err) {
     case EDEADLK:
-      fprintf(stderr, "%s: deadlock detected on join\n", id);
+      fprintf(stderr, "%s: deadlock detected on join for thread %d\n", id, i);
       break;
     case EINVAL:
-      fprintf(stderr, "%s: threadi is unjoinable\n", id);
+      fprintf(stderr, "%s: thread %d is unjoinable\n", id, i);
       break;
     case ESRCH:
-      fprintf(stderr, "%s: thread could not be found\n", id);
+      fprintf(stderr, "%s: thread %d could not be found\n", id, i);
       break;
     }
   }
@@ -156,10 +144,10 @@ void isSupervisor(const char *key) {
   isDataDestroy(ibctx);
 
   // delete all the pending jobs
-  rc = redisConnect("127.0.0.1", 6379);
-  reply = redisCommand(rc, "DEL %s", key);
+  rcLocal = redisConnect("127.0.0.1", 6379);
+  reply = redisCommand(rcLocal, "DEL %s", key);
   if (reply == NULL) {
-    fprintf(stderr, "%s: Redis error: %s\n", id, rc->errstr);
+    fprintf(stderr, "%s: Redis error: %s\n", id, rcLocal->errstr);
     exit (-1);
   }
 
@@ -169,7 +157,7 @@ void isSupervisor(const char *key) {
   }
   
   freeReplyObject(reply);
-  redisFree(rc);
+  redisFree(rcLocal);
 
   return;
 }
