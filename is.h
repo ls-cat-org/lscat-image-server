@@ -25,6 +25,7 @@
 #include <tiffio.h>
 #include <turbojpeg.h>
 #include <unistd.h>
+#include <zmq.h>
 
 #include "isBitmapFont.h"
 
