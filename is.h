@@ -29,12 +29,20 @@
 
 #include "isBitmapFont.h"
 
+// Prefix procedure names with the file name and a space for debug output
 #define FILEID __FILE__ " "
 
+// Keep about this many images in memory
 #define N_IMAGE_BUFFERS 128
-#define IS_JOB_QUEUE_LENGTH 1024
+
+// Each user/esaf combination gets this many threads
 #define N_WORKER_THREADS 5
+
+// Keep images in redis for this long
 #define IS_REDIS_TTL 300
+
+// There is some overhead for jpegs, this should allow enough overhead for output buffer allocation purposes
+#define MIN_JPEG_BUFFER 1024
 
 typedef enum {NOACCESS, READABLE, WRITABLE} image_access_type;
 
@@ -44,7 +52,7 @@ typedef struct isImageBufStruct {
   struct isImageBufStruct *next;        // The next item in our list of buffers
   const char *key;                      // The string that uniquely idenitifies this entry: This is the gid/file path
   pthread_rwlock_t buflock;             // keep our threads from colliding on a specific buffer
-  int in_use;                           // Flag to make sure we don't remove this buffer between the time we write to it and the time we want to read it.  Protect with contex mutex
+  int in_use;                           // Flag to make sure we don't remove this buffer before we can lock it.  Protect with contex mutex
   redisReply *rr;                       // non-NULL when buf points to rr->str
   char *meta_str;                       // String version of the meta object
   json_t *meta;                         // Our meta data
@@ -62,6 +70,7 @@ typedef struct isImageBufContextStruct {
   isImageBufType *first;                // The first image buffer in our linked list
   const char *key;                      // same as the process list key but accessible to the threads: this is the redis key for the job list
   int n_buffers;                        // The number of buffers in the list (so we know when to remake the hash table
+  int max_buffers;                      // Maximum number of buffers allowed in the hash table
   pthread_mutex_t ctxMutex;             //
   struct hsearch_data bufTable;         // Hash table to find the correct buffer quickly
 } isImageBufContext_t;
