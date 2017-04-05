@@ -556,6 +556,10 @@ void isH5GetData(const char *fn, int frame, isImageBufType *imb) {
   int rank;
   int npoints;
   int err;
+  uint32_t first_frame;
+  uint32_t last_frame;
+  frame_discovery_t *fp;
+
   
   //fprintf(stdout, "%s: enter with fn='%s' frame=%d\n", id, fn, frame);
   extra = imb->extra;
@@ -587,6 +591,16 @@ void isH5GetData(const char *fn, int frame, isImageBufType *imb) {
       return;
     }
     
+    first_frame = 0xffffffff;
+    last_frame  = 0;
+    for (fp = extra->frame_discovery_base; fp != NULL; fp = fp->next) {
+      first_frame = first_frame < fp->first_frame ? first_frame : fp->first_frame;
+      last_frame  = last_frame  > fp->last_frame  ? last_frame  : fp->last_frame;
+    }
+
+    set_json_object_integer(id, imb->meta, "first_frame", first_frame);
+    set_json_object_integer(id, imb->meta, "last_frame",  last_frame);
+  
     do {
       //
       // Get the bad pixel map
