@@ -322,7 +322,7 @@ void isJpegBlank(json_t *job) {
     exit (-1);
   }
 
-  out_buffer = calloc(width * height, (sizeof(*out_buffer) + labelHeight) * 3);
+  out_buffer = calloc(width * height, (sizeof(*out_buffer) + labelHeight) * 3 + MIN_JPEG_BUFFER);
   if (out_buffer == NULL) {
     fprintf(stderr, "%s: Out of memory (out_buffer)\n", id);
     exit (-1);
@@ -453,7 +453,7 @@ void isJpeg( isImageBufContext_t *ibctx, redisContext *rc, json_t *job) {
     exit (-1);
   }
 
-  out_buffer = calloc(imb->buf_width * imb->buf_height, (sizeof(*out_buffer) + labelHeight) * 3);
+  out_buffer = calloc(imb->buf_width * imb->buf_height, (sizeof(*out_buffer) + labelHeight) * 3 + MIN_JPEG_BUFFER);
   if (out_buffer == NULL) {
     fprintf(stderr, "%s: Out of memory (out_buffer)\n", id);
     exit (-1);
@@ -512,7 +512,7 @@ void isJpeg( isImageBufContext_t *ibctx, redisContext *rc, json_t *job) {
   cinfo.in_color_space = JCS_RGB;	/* colorspace of input image */
 
   jpeg_set_defaults(&cinfo);
-  jpeg_set_quality( &cinfo, 95, TRUE);
+  jpeg_set_quality( &cinfo, 100, TRUE);
 
   jpeg_start_compress(&cinfo, TRUE);
 
@@ -527,7 +527,12 @@ void isJpeg( isImageBufContext_t *ibctx, redisContext *rc, json_t *job) {
   //fprintf(stdout, "%s: label: %s  labelHeight: %d\n", id, json_string_value(json_object_get(job,"label")), labelHeight);
 
   if (labelHeight && json_string_value(json_object_get(job,"label"))) {
-    snprintf(label, sizeof(label)-1, "%s %d", json_string_value(json_object_get(job,"label")), (int)json_integer_value(json_object_get(job,"frame")));
+    if (json_integer_value(json_object_get(imb->meta, "first_frame")) == json_integer_value(json_object_get(imb->meta, "last_frame"))) {
+      snprintf(label, sizeof(label)-1, "%s", json_string_value(json_object_get(job,"label")));
+    } else {
+      snprintf(label, sizeof(label)-1, "%s %d", json_string_value(json_object_get(job,"label")), (int)json_integer_value(json_object_get(job,"frame")));
+    }
+
     label[sizeof(label)-1] = 0;
 
     isJpegLabel(label, imb->buf_width, labelHeight, &cinfo);
