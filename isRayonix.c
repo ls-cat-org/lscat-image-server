@@ -364,6 +364,9 @@ json_t *isRayonixGetMeta( const char *fn) {
   //  is->b->h_rmsValue              = fh.rms/1000.0;
   //  is->b->h_nSaturated            = fh.n_saturated;
   
+  set_json_object_integer(id, rtn, "first_frame", 1);
+  set_json_object_integer(id, rtn, "last_frame",  1);
+  
   return rtn;
 }
 
