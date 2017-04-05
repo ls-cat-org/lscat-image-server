@@ -4,7 +4,7 @@
 ** returns the maximum value of ha xa by ya box centered on d,l
 */
 uint32_t maxBox16( uint32_t *badPixels, void *buf, int bufWidth, int bufHeight, double k, double l, int yal, int yau, int xal, int xau) {
-  static const char *id = FILEID "maxBo16";
+  static const char *id = FILEID "maxBox16";
   int m, n;
   uint32_t d, d1;
   uint16_t *bp = (uint16_t *) buf;
@@ -455,7 +455,7 @@ isImageBufType *isReduceImage(isImageBufContext_t *ibctx, redisContext *rc, json
     //
     // We either failed completely or succeeded without really trying.
     // Either way we are done here.  When rtn is not null the buffer
-    // is read locked.  Don't forget to release it.
+    // is read locked and in_use incremented.  Don't forget to release it.
     //
     //fprintf(stdout, "%s: returned %s\n", id, rtn == NULL ? "Failed to get data, giving up." : rtn->key);
   
