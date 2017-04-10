@@ -13,12 +13,15 @@ void isJpegLabel(const char *label, int width, int height, struct jpeg_compress_
   int label_xmax;               // RHS of text
   int ib;                       // index in bitmap of current char
   int ix;                       // x position in scan line of current char
-  uint8_t *red, *blue, *green;
-  JSAMPROW row_buffer;
+  unsigned char *red, *blue, *green;
+  unsigned char *row_buffer;
   int i;
   int ci;
+  size_t row_buffer_size;
 
-  row_buffer = calloc(width, sizeof(*row_buffer) * 3);
+  row_buffer_size = width * sizeof(*row_buffer) * 3;
+
+  row_buffer = calloc(1, row_buffer_size);
   if (row_buffer == NULL) {
     fprintf(stderr, "%s: Out of memory (row_buffer)\n", id);
     exit (-1);
@@ -49,7 +52,7 @@ void isJpegLabel(const char *label, int width, int height, struct jpeg_compress_
     green = row_buffer + 1;
     blue  = row_buffer + 2;
     
-    memset( row_buffer, 0xff, 3 * width);
+    memset( row_buffer, 0xff, row_buffer_size);
     
     for (ci=0; label[ci] != 0; ci++) {
       if (label[ci] < 32) {
@@ -96,7 +99,7 @@ void zfree(void *data, void *hint) {
   }
 }
 
-void isJpegSend(json_t *job, json_t *meta, JOCTET *out_buffer, int jpeg_len) {
+void isJpegSend(json_t *job, json_t *meta, unsigned char *out_buffer, int jpeg_len) {
   static const char *id = FILEID "isJpegSend";
 
   /**
@@ -152,17 +155,13 @@ void isJpegSend(json_t *job, json_t *meta, JOCTET *out_buffer, int jpeg_len) {
 
   {
     int opt;
-    opt = -1;
+    opt = 1;
     err = zmq_setsockopt(zsock, ZMQ_SNDTIMEO, &opt, sizeof(opt));
     if (err != 0) {
       fprintf(stderr, "%s: zmq_connect failed: %s\n", id, strerror(errno));
       exit (-1);
     }
   }    
-
-  //  err = zmq_connect(zsock, "tcp://10.1.253.10:60202");
-
-  fprintf(stdout, "%s: got endpoint %s\n", id,  json_string_value(json_object_get(job, "endpoint")));
 
   err = zmq_connect(zsock, json_string_value(json_object_get(job, "endpoint")));
   if (err != 0) {
@@ -186,7 +185,6 @@ void isJpegSend(json_t *job, json_t *meta, JOCTET *out_buffer, int jpeg_len) {
     meta_str = strdup("");
   }
     
-  fprintf(stdout, "%s: about to send publisher %s\n", id, publisher);
   err = zmq_msg_init_data(&zmsg, publisher, strlen(publisher), zfree, NULL);
   if (err != 0) {
     fprintf(stderr, "%s: zmq_msg_init failed (publisher): %s\n", id, zmq_strerror(errno));
@@ -199,7 +197,6 @@ void isJpegSend(json_t *job, json_t *meta, JOCTET *out_buffer, int jpeg_len) {
     exit (-1);
   }
 
-  fprintf(stdout, "%s: about to send job %s\n", id, job_str);
   err = zmq_msg_init_data(&zmsg, job_str, strlen(job_str), zfree, NULL);
   if (err != 0) {
     fprintf(stderr, "%s: zmq_msg_init failed (job_str): %s\n", id, zmq_strerror(errno));
@@ -212,7 +209,6 @@ void isJpegSend(json_t *job, json_t *meta, JOCTET *out_buffer, int jpeg_len) {
     exit (-1);
   }
 
-  fprintf(stdout, "%s: about to send meta %s\n", id, meta_str);
   err = zmq_msg_init_data(&zmsg, meta_str, strlen(meta_str), zfree, NULL);
   if (err != 0) {
     fprintf(stderr, "%s: zmq_msg_init failed (meta_str): %s\n", id, zmq_strerror(errno));
@@ -225,7 +221,6 @@ void isJpegSend(json_t *job, json_t *meta, JOCTET *out_buffer, int jpeg_len) {
     exit (-1);
   }
 
-  fprintf(stdout, "%s: about to send jpeg of length  %d\n", id, jpeg_len);
   err = zmq_msg_init_data(&zmsg, out_buffer, jpeg_len, zfree, NULL);
   if (err != 0) {
     fprintf(stderr, "%s: zmq_msg_init failed (jpeg): %s\n", id, zmq_strerror(errno));
@@ -294,16 +289,18 @@ void isJpegBlank(json_t *job) {
   jmp_buf j_jumpHere;
   struct jpeg_error_mgr jerr;
   struct jpeg_destination_mgr dmgr;
-  JSAMPROW row_buffer;
-  JOCTET *out_buffer;
+  unsigned char *row_buffer;
+  unsigned char *out_buffer;
   int labelHeight;
   int col;
   int row;
   int height;
   int width;
-  uint8_t *red, *blue, *green;
+  unsigned char *red, *blue, *green;
   const char *label;
-    
+  size_t row_buffer_size;
+  size_t out_buffer_size;
+
   width = json_integer_value(json_object_get(job, "xsize"));
   width = width < 8 ? 8 : width;
   height = width;
@@ -316,13 +313,20 @@ void isJpegBlank(json_t *job) {
     labelHeight = labelHeight > 64 ?  0 : labelHeight;    // ignore requests for really big labels
   }
 
-  row_buffer = calloc(width, sizeof(*row_buffer) * 3);
+  row_buffer_size = width * sizeof(*row_buffer) * 3;
+
+  row_buffer = calloc(1, row_buffer_size);
   if (row_buffer == NULL) {
     fprintf(stderr, "%s: Out of memory (row_buffer)\n", id);
     exit (-1);
   }
 
-  out_buffer = calloc(width * height, (sizeof(*out_buffer) + labelHeight) * 3 + MIN_JPEG_BUFFER);
+  out_buffer_size = width * (height + labelHeight) * sizeof(*out_buffer) * 3;
+  if (out_buffer_size < MIN_JPEG_BUFFER) {
+    out_buffer_size = MIN_JPEG_BUFFER;
+  }
+
+  out_buffer = calloc(1, out_buffer_size);
   if (out_buffer == NULL) {
     fprintf(stderr, "%s: Out of memory (out_buffer)\n", id);
     exit (-1);
@@ -364,7 +368,7 @@ void isJpegBlank(json_t *job) {
   dmgr.empty_output_buffer = empty_buffer;
   dmgr.term_destination    = term_buffer;
   dmgr.next_output_byte    = out_buffer;
-  dmgr.free_in_buffer      = (width * height + labelHeight) * 3;
+  dmgr.free_in_buffer      = out_buffer_size;
 
   cinfo.dest = &dmgr;
   cinfo.image_width  = width;
@@ -372,7 +376,7 @@ void isJpegBlank(json_t *job) {
   cinfo.input_components = 3;		/* # of color components per pixel */
   cinfo.in_color_space = JCS_RGB;	/* colorspace of input image */
   jpeg_set_defaults(&cinfo);
-  jpeg_set_quality( &cinfo, 95, TRUE);
+  jpeg_set_quality( &cinfo, 100, TRUE);
   jpeg_start_compress(&cinfo, TRUE);
 
   if (labelHeight) {
@@ -410,13 +414,13 @@ void isJpeg( isImageBufContext_t *ibctx, redisContext *rc, json_t *job) {
   static const char *id = FILEID "isJpeg";
   const char *fn;                       // file name from job.
   isImageBufType *imb;
-  JSAMPROW row_buffer;
-  JOCTET *out_buffer;
+  unsigned char *row_buffer;
+  unsigned char *out_buffer;
   int labelHeight;
   int row, col;
   uint16_t *bp16, v16;
   uint32_t *bp32, v32;
-  uint8_t *red, *blue, *green;
+  unsigned char *red, *blue, *green;
   int32_t wval, bval;
   struct jpeg_compress_struct cinfo;
   int cinfoSetup;
@@ -424,6 +428,8 @@ void isJpeg( isImageBufContext_t *ibctx, redisContext *rc, json_t *job) {
   struct jpeg_error_mgr jerr;
   struct jpeg_destination_mgr dmgr;
   char label[64];
+  size_t row_buffer_size;
+  size_t out_buffer_size;
 
   fn = json_string_value(json_object_get(job, "fn"));
   if (fn == NULL || strlen(fn) == 0) {
@@ -447,13 +453,20 @@ void isJpeg( isImageBufContext_t *ibctx, redisContext *rc, json_t *job) {
   labelHeight = labelHeight < 0  ?  0 : labelHeight;    // labels can't have negative height
   labelHeight = labelHeight > 64 ?  0 : labelHeight;    // ignore requests for really big labels
 
-  row_buffer = calloc(imb->buf_width, sizeof(*row_buffer) * 3);
+  row_buffer_size = imb->buf_width * sizeof(*row_buffer) * 3;
+
+  row_buffer = calloc(1, row_buffer_size);
   if (row_buffer == NULL) {
     fprintf(stderr, "%s: Out of memory (row_buffer)\n", id);
     exit (-1);
   }
 
-  out_buffer = calloc(imb->buf_width * imb->buf_height, (sizeof(*out_buffer) + labelHeight) * 3 + MIN_JPEG_BUFFER);
+  out_buffer_size = imb->buf_width * (imb->buf_height + labelHeight) * sizeof(*out_buffer) * 3;
+  if (out_buffer_size < MIN_JPEG_BUFFER) {
+    out_buffer_size = MIN_JPEG_BUFFER;
+  }
+
+  out_buffer = calloc(1, out_buffer_size);
   if (out_buffer == NULL) {
     fprintf(stderr, "%s: Out of memory (out_buffer)\n", id);
     exit (-1);
@@ -484,11 +497,14 @@ void isJpeg( isImageBufContext_t *ibctx, redisContext *rc, json_t *job) {
     longjmp( *(jmp_buf *)cp->client_data, 1);
   }
 
-  void init_buffer(struct jpeg_compress_struct* cinfo) {}
-  int empty_buffer(struct jpeg_compress_struct* cinfo) {
+  void init_buffer(struct jpeg_compress_struct* cinfop) {
+    cinfop->dest->next_output_byte = out_buffer;
+    cinfop->dest->free_in_buffer   = out_buffer_size;
+  }
+  int empty_buffer(struct jpeg_compress_struct* cinfop) {
     return 1;
   }
-  void term_buffer(struct jpeg_compress_struct* cinfo) {}
+  void term_buffer(struct jpeg_compress_struct* cinfop) {}
 
   cinfo.err = jpeg_std_error(&jerr);
   cinfo.err->error_exit = jerror_handler;
@@ -500,8 +516,6 @@ void isJpeg( isImageBufContext_t *ibctx, redisContext *rc, json_t *job) {
   dmgr.init_destination    = init_buffer;
   dmgr.empty_output_buffer = empty_buffer;
   dmgr.term_destination    = term_buffer;
-  dmgr.next_output_byte    = out_buffer;
-  dmgr.free_in_buffer      = (imb->buf_width * imb->buf_height + labelHeight) * 3;
 
   cinfo.dest = &dmgr;
 
@@ -523,8 +537,6 @@ void isJpeg( isImageBufContext_t *ibctx, redisContext *rc, json_t *job) {
   // the file.  When the number is 1 then don't add the frame number
   // to the label.
   //
-
-  //fprintf(stdout, "%s: label: %s  labelHeight: %d\n", id, json_string_value(json_object_get(job,"label")), labelHeight);
 
   if (labelHeight && json_string_value(json_object_get(job,"label"))) {
     if (json_integer_value(json_object_get(imb->meta, "first_frame")) == json_integer_value(json_object_get(imb->meta, "last_frame"))) {
@@ -557,8 +569,6 @@ void isJpeg( isImageBufContext_t *ibctx, redisContext *rc, json_t *job) {
 
   wval = wval < 0 ? 0 : wval;
   bval = bval <= wval ? wval+1 : bval;  
-
-  fprintf(stdout, "%s: wval=%d  bval=%d\n", id, wval, bval);
 
   if (imb->buf_depth == 2) {
     bp16 = imb->buf;
@@ -621,8 +631,6 @@ void isJpeg( isImageBufContext_t *ibctx, redisContext *rc, json_t *job) {
   }
 
   jpeg_finish_compress(&cinfo);
-
-  //fprintf(stdout, "%s: jpeg size = %d for image %s\n", id, (int)(cinfo.dest->next_output_byte - out_buffer), imb->key);
 
   isJpegSend(job, imb->meta, out_buffer, (int)(cinfo.dest->next_output_byte - out_buffer));
 
