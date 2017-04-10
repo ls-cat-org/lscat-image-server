@@ -36,13 +36,13 @@
 #define N_IMAGE_BUFFERS 128
 
 // Each user/esaf combination gets this many threads
-#define N_WORKER_THREADS 5
+#define N_WORKER_THREADS 8
 
 // Keep images in redis for this long
 #define IS_REDIS_TTL 300
 
 // There is some overhead for jpegs, this should allow enough overhead for output buffer allocation purposes
-#define MIN_JPEG_BUFFER 1024
+#define MIN_JPEG_BUFFER 2048
 
 typedef enum {NOACCESS, READABLE, WRITABLE} image_access_type;
 
@@ -54,7 +54,6 @@ typedef struct isImageBufStruct {
   pthread_rwlock_t buflock;             // keep our threads from colliding on a specific buffer
   int in_use;                           // Flag to make sure we don't remove this buffer before we can lock it.  Protect with contex mutex
   redisReply *rr;                       // non-NULL when buf points to rr->str
-  char *meta_str;                       // String version of the meta object
   json_t *meta;                         // Our meta data
   int buf_size;                         // Size of our buffer in bytes (had better = buf_width * buf_height * buf_depth
   int buf_width;                        // width of the current buffer (may differ from that found in meta)
