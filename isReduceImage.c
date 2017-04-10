@@ -195,8 +195,12 @@ void reduceImage16( isImageBufType *src, isImageBufType *dst, int x, int y, int 
       // "index" of the horizontal position on the original image
       d_col = col * winWidth/(double)(dstWidth) + x;
 
-      pxl = cvtFunc( src->bad_pixel_map, srcBuf, srcWidth, srcHeight, d_row, d_col, yal, yau, xal, xau);
-      
+      if (d_row < 0 || d_row >= src->buf_height || d_col < 0 || d_col >= src->buf_width) {
+        pxl = 0;
+      } else {
+        pxl = cvtFunc( src->bad_pixel_map, srcBuf, srcWidth, srcHeight, d_row, d_col, yal, yau, xal, xau);
+      }
+
       if (pxl != 0xffffffff) {
         sum += pxl;
         ss  += pxl * pxl;
@@ -213,14 +217,12 @@ void reduceImage16( isImageBufType *src, isImageBufType *dst, int x, int y, int 
   rms  = sqrt(ss / n);
   sd   = sqrt(ss /n - mean * mean);
 
-  set_json_object_real(id, src->meta, "mean", mean);
-  set_json_object_real(id, dst->meta, "mean", mean);
-
-  set_json_object_real(id, src->meta, "rms", rms);
-  set_json_object_real(id, dst->meta, "rms", rms);
-
-  set_json_object_real(id, src->meta, "stddev", sd);
-  set_json_object_real(id, dst->meta, "stddev", sd);
+  if (json_integer_value(json_object_get(src->meta,"n")) < n) {
+    set_json_object_integer(id, dst->meta, "n", n);
+    set_json_object_real(id, src->meta, "mean", mean);
+    set_json_object_real(id, src->meta, "rms", rms);
+    set_json_object_real(id, src->meta, "stddev", sd);
+  }
 
   fprintf(stdout, "%s: n=%d mean=%f  rms=%f   stddev=%f  key=%s\n", id, n, mean, rms, sd, src->key);
 }
@@ -311,14 +313,12 @@ void reduceImage32( isImageBufType *src, isImageBufType *dst, int x, int y, int 
   rms  = sqrt(ss / n);
   sd   = sqrt(ss /n - mean * mean);
 
-  set_json_object_real(id, src->meta, "mean", mean);
-  set_json_object_real(id, dst->meta, "mean", mean);
-
-  set_json_object_real(id, src->meta, "rms", rms);
-  set_json_object_real(id, dst->meta, "rms", rms);
-
-  set_json_object_real(id, src->meta, "stddev", sd);
-  set_json_object_real(id, dst->meta, "stddev", sd);
+  if (json_integer_value(json_object_get(src->meta,"n")) < n) {
+    set_json_object_integer(id, dst->meta, "n", n);
+    set_json_object_real(id, src->meta, "mean", mean);
+    set_json_object_real(id, src->meta, "rms", rms);
+    set_json_object_real(id, src->meta, "stddev", sd);
+  }
 
   fprintf(stdout, "%s: n=%d mean=%f  rms=%f   stddev=%f  key=%s\n", id, n, mean, rms, sd, src->key);
 }
@@ -360,7 +360,7 @@ isImageBufType *isReduceImage(isImageBufContext_t *ibctx, redisContext *rc, json
   double zoom;
   double segcol;
   double segrow;
-  double seglen;
+  //  double seglen;
   const char *fn;
   int frame;
   char *reducedKey;
@@ -397,10 +397,12 @@ isImageBufType *isReduceImage(isImageBufContext_t *ibctx, redisContext *rc, json
   //
   // Reality check on segcol and segrow
   //
+  /*
   seglen = ceil(zoom);
   segcol = segcol > seglen - 1. ? seglen - 1. : segcol;
   segrow = segrow > seglen - 1. ? seglen - 1. : segrow;
-  
+  */
+
   //
   // Refuse really tiny conversions
   dstWidth  = dstWidth  < 8 ? 8 : dstWidth;
@@ -521,7 +523,6 @@ isImageBufType *isReduceImage(isImageBufContext_t *ibctx, redisContext *rc, json
 
   rtn->meta = raw->meta;
   json_incref(rtn->meta);
-  rtn->meta_str = json_dumps(rtn->meta, JSON_COMPACT | JSON_SORT_KEYS | JSON_INDENT(0));
 
   x = winWidth  * segcol;
   y = winHeight * segrow;
