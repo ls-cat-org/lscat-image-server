@@ -11,6 +11,9 @@
  * Call with the context in which this buffer was defined locked.
  */
 void destroyImageBuffer(isImageBufType *p) {
+  static const char *id = FILEID "destroyImageBuffer";
+  (void)id;
+
   if (p->rr) {
     // The buffer was from redis: buf and bad pixel map belong to
     // p->rr
@@ -37,10 +40,6 @@ void destroyImageBuffer(isImageBufType *p) {
   if (p->meta) {
     json_decref(p->meta);
     p->meta = NULL;
-  }
-  if (p->meta_str) {
-    free(p->meta_str);
-    p->meta_str = NULL;
   }
   free(p);
 }
@@ -87,7 +86,10 @@ isImageBufContext_t  *isDataInit(const char *key) {
 /** Recycle resources garnered by isDataInit
  */
 void isDataDestroy(isImageBufContext_t *c) {
+  static const char *id = FILEID "isDataDestroy";
   isImageBufType *p, *next;
+  (void)id;
+
   //
   // We are called from isSupervisor after all the threads have been
   // joined: there is no danger of collision and, hence, no need to
@@ -320,7 +322,11 @@ isImageBufType *createNewImageBuf(isImageBufContext_t *ibctx, const char *key) {
     }
   }
 
-  ibctx->max_buffers += 2*i;
+  //
+  // Guess how many buffer we need and double that to make the hash table more efficient.
+  // TODO: Make a better guess by trying to understand what hcreate really needs.
+  //
+  ibctx->max_buffers += 2 * (N_IMAGE_BUFFERS + i);
 
   hdestroy_r(&ibctx->bufTable);
   errno = 0;
@@ -347,7 +353,10 @@ isImageBufType *createNewImageBuf(isImageBufContext_t *ibctx, const char *key) {
     }
 
     ibctx->n_buffers++;
-    p->next = last;
+
+    if (last != NULL) {
+      last->next = p;
+    }
     item.key = (char *)p->key;
     item.data = p;
     last = p;
@@ -495,8 +504,10 @@ isImageBufType *isGetImageBufFromKey(isImageBufContext_t *ibctx, redisContext *r
   image_rr     = rr->element[4];
   badpixels_rr = rr->element[5];
 
-  rtn->meta_str = meta_rr->type == REDIS_REPLY_STRING ? strdup(meta_rr->str) : NULL;
-  rtn->meta = rtn->meta_str == NULL ? NULL : json_loads(rtn->meta_str, 0, &jerr);
+  rtn->meta = NULL;
+  if (meta_rr->type == REDIS_REPLY_STRING) {
+    rtn->meta = json_loads(meta_rr->str, 0, &jerr);
+  }
 
   if (image_rr->type == REDIS_REPLY_STRING) {
     //
@@ -589,8 +600,11 @@ isImageBufType *isGetImageBufFromKey(isImageBufContext_t *ibctx, redisContext *r
   image_rr     = rr->element[4];
   badpixels_rr = rr->element[5];
 
-  rtn->meta_str = meta_rr->type == REDIS_REPLY_STRING ? strdup(meta_rr->str) : NULL;
-  rtn->meta = rtn->meta_str == NULL ? NULL : json_loads(rtn->meta_str, 0, &jerr);
+  rtn->meta = NULL;
+  if (meta_rr->type == REDIS_REPLY_STRING) {
+    rtn->meta = json_loads(meta_rr->str, 0, &jerr);
+  }
+
 
   if (image_rr->type != REDIS_REPLY_STRING) {
     //
@@ -635,11 +649,14 @@ isImageBufType *isGetImageBufFromKey(isImageBufContext_t *ibctx, redisContext *r
 void isWriteImageBufToRedis(isImageBufType *imb, redisContext *rc) {
   static const char *id = FILEID "isWriteImageBufToRedis";
   redisReply *rr;
+  char *meta_str;
   int err;
   int i;
   int n;
 
-  redisAppendCommand(rc, "HMSET %s META %s WIDTH %d HEIGHT %d DEPTH %d", imb->key, imb->meta_str, imb->buf_width, imb->buf_height, imb->buf_depth);
+  meta_str = json_dumps(imb->meta, JSON_COMPACT | JSON_INDENT(0) | JSON_SORT_KEYS);
+
+  redisAppendCommand(rc, "HMSET %s META %s WIDTH %d HEIGHT %d DEPTH %d", imb->key, meta_str, imb->buf_width, imb->buf_height, imb->buf_depth);
   redisAppendCommand(rc, "HSET %s DATA %b", imb->key, imb->buf, imb->buf_size);
   if (imb->bad_pixel_map) {
     redisAppendCommand(rc, "HSET %s BADPIXELS %b", imb->key, imb->bad_pixel_map, sizeof(uint32_t) * imb->buf_width * imb->buf_height);
@@ -755,7 +772,6 @@ isImageBufType *isGetRawImageBuf(isImageBufContext_t *ibctx, redisContext *rc, j
     return rtn;
   }
   
-  //fprintf(stderr, "%s: About to try and read file %s\n", id, fn);
   // I guess we didn't find our buffer in redis
   //
   // META does not exist or was never entered.  Re-read both meta and data.
@@ -778,15 +794,6 @@ isImageBufType *isGetRawImageBuf(isImageBufContext_t *ibctx, redisContext *rc, j
     pthread_rwlock_unlock(&rtn->buflock);
     free(key);
     return NULL;
-  }
-
-  
-
-
-  rtn->meta_str = json_dumps(rtn->meta, JSON_SORT_KEYS | JSON_INDENT(0) | JSON_COMPACT);
-  if (rtn->meta_str == NULL) {
-    fprintf(stderr, "%s: Could not stringify meta object.  This is not supposed to be possible\n", id);
-    exit (-1);
   }
 
   isWriteImageBufToRedis(rtn, rc);
