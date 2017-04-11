@@ -317,6 +317,9 @@ isImageBufType *createNewImageBuf(isImageBufContext_t *ibctx, const char *key) {
   // Count number of buffers still in use
   //
   for(i=0, p=ibctx->first; p != NULL; p=p->next) {
+
+    assert(p->in_use >= 0);
+
     if (p->in_use > 0) {
       i++;
     }
@@ -327,6 +330,8 @@ isImageBufType *createNewImageBuf(isImageBufContext_t *ibctx, const char *key) {
   // TODO: Make a better guess by trying to understand what hcreate really needs.
   //
   ibctx->max_buffers += 2 * (N_IMAGE_BUFFERS + i);
+
+  fprintf(stdout, "%s: ************ Rebuilding hash table. i=%d, max_buffers=%d\n", id, i, ibctx->max_buffers);
 
   hdestroy_r(&ibctx->bufTable);
   errno = 0;
@@ -346,6 +351,8 @@ isImageBufType *createNewImageBuf(isImageBufContext_t *ibctx, const char *key) {
   ibctx->n_buffers = 0;
   for(i=0, p=ibctx->first; p != NULL; p=next) {
     next = p->next;
+
+    assert(p->in_use >= 0);
 
     if (i++ > ibctx->max_buffers/4 && p->in_use <= 0) {
       destroyImageBuffer(p);
@@ -416,6 +423,9 @@ isImageBufType *isGetImageBufFromKey(isImageBufContext_t *ibctx, redisContext *r
   }
   
   if (rtn != NULL) {
+
+    assert(rtn->in_use >= 0);
+
     rtn->in_use++;                              // flag to keep our buffer in scope while we need it
     pthread_mutex_unlock(&ibctx->ctxMutex);
     pthread_rwlock_rdlock(&rtn->buflock);
