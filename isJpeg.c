@@ -488,6 +488,9 @@ void isJpeg( isImageBufContext_t *ibctx, redisContext *rc, json_t *job) {
 
     pthread_mutex_lock(&ibctx->ctxMutex);
     imb->in_use--;
+
+    assert(imb->in_use >= 0);
+
     pthread_mutex_unlock(&ibctx->ctxMutex);
     return;
   }
@@ -644,6 +647,9 @@ void isJpeg( isImageBufContext_t *ibctx, redisContext *rc, json_t *job) {
 
   pthread_mutex_lock(&ibctx->ctxMutex);
   imb->in_use--;
+
+  assert(imb->in_use >= 0);
+
   pthread_mutex_unlock(&ibctx->ctxMutex);
   return;
 }
