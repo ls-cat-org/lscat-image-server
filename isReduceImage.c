@@ -224,7 +224,7 @@ void reduceImage16( isImageBufType *src, isImageBufType *dst, int x, int y, int 
     set_json_object_real(id, src->meta, "stddev", sd);
   }
 
-  fprintf(stdout, "%s: n=%d mean=%f  rms=%f   stddev=%f  key=%s\n", id, n, mean, rms, sd, src->key);
+  //fprintf(stdout, "%s: n=%d mean=%f  rms=%f   stddev=%f  key=%s\n", id, n, mean, rms, sd, src->key);
 }
 
 void reduceImage32( isImageBufType *src, isImageBufType *dst, int x, int y, int winWidth, int winHeight) {
@@ -320,7 +320,7 @@ void reduceImage32( isImageBufType *src, isImageBufType *dst, int x, int y, int 
     set_json_object_real(id, src->meta, "stddev", sd);
   }
 
-  fprintf(stdout, "%s: n=%d mean=%f  rms=%f   stddev=%f  key=%s\n", id, n, mean, rms, sd, src->key);
+  //fprintf(stdout, "%s: n=%d mean=%f  rms=%f   stddev=%f  key=%s\n", id, n, mean, rms, sd, src->key);
 }
 
             
@@ -482,6 +482,7 @@ isImageBufType *isReduceImage(isImageBufContext_t *ibctx, redisContext *rc, json
     pthread_rwlock_unlock(&rtn->buflock);
     pthread_mutex_lock(&ibctx->ctxMutex);
     rtn->in_use--;
+    assert(rtn->in_use >= 0);
     pthread_mutex_unlock(&ibctx->ctxMutex);
 
     free(reducedKey);
@@ -546,6 +547,7 @@ isImageBufType *isReduceImage(isImageBufContext_t *ibctx, redisContext *rc, json
   // We don't need the raw buffer anymore
   pthread_mutex_lock(&ibctx->ctxMutex);
   raw->in_use--;
+  assert(raw->in_use >= 0);
   pthread_mutex_unlock(&ibctx->ctxMutex);
 
   //
