@@ -29,11 +29,14 @@
 
 #include "isBitmapFont.h"
 
+#include <assert.h>
+
+
 // Prefix procedure names with the file name and a space for debug output
 #define FILEID __FILE__ " "
 
 // Keep about this many images in memory
-#define N_IMAGE_BUFFERS 128
+#define N_IMAGE_BUFFERS 1024
 
 // Each user/esaf combination gets this many threads
 #define N_WORKER_THREADS 8
