@@ -1,21 +1,24 @@
 #include "is.h"
 
-#define INITIAL_WORKER_TABLE_SIZE 128
-static int worker_table_size;
-static struct hsearch_data worker_table;
+#define INITIAL_PROCESS_TABLE_SIZE 128
+static int process_table_size;
+static struct hsearch_data process_table;
 static isProcessListType *firstProcessListItem = NULL;
+static zmq_pollitem_t *isZMQPollItems = NULL;
+static int n_processes;
 
 void isProcessListInit() {
   int err;
   firstProcessListItem = NULL;
 
-  worker_table_size = INITIAL_WORKER_TABLE_SIZE;
+  process_table_size = INITIAL_PROCESS_TABLE_SIZE;
   errno = 0;
-  err = hcreate_r(worker_table_size, &worker_table);
+  err = hcreate_r(process_table_size, &process_table);
   if (err == 0) {
     fprintf(stderr, "Fatal error: %s\n", strerror(errno));
     exit (-1);
   }
+  n_processes = 0;
 }
 
 void isStartProcess(isProcessListType *p) {
@@ -68,6 +71,7 @@ void isStartProcess(isProcessListType *p) {
     //
     // In parent.
     //
+    n_processes++;
     p->processID = child;
     return;
   }
@@ -99,11 +103,13 @@ void isStartProcess(isProcessListType *p) {
   isSupervisor(p->key);
 }
 
-isProcessListType *isCreateProcessListItem(json_t *isAuth, int esaf) {
+isProcessListType *isCreateProcessListItem(void *zctx, json_t *isAuth, int esaf) {
   static const char *id = FILEID "isCreateProcessListItem";
   char ourKey[128];
   char *pid;
   isProcessListType *rtn;
+  char dealer_endpoint[256];
+  int err;
 
   pid = (char *)json_string_value(json_object_get(isAuth, "pid"));
 
@@ -126,6 +132,21 @@ isProcessListType *isCreateProcessListItem(json_t *isAuth, int esaf) {
   rtn->isAuth = isAuth;
   json_incref(rtn->isAuth);
     
+  rtn->parent_dealer = zmq_socket(zctx, ZMQ_DEALER);
+  if (rtn->parent_dealer == NULL) {
+    fprintf(stderr, "%s: Could not create parent_dealer socket for %s: %s\n", id, rtn->key, zmq_strerror(errno));
+    exit (-1);
+  }
+  
+  snprintf(dealer_endpoint, sizeof(dealer_endpoint)-1, "ipc://@%s", rtn->key);
+  dealer_endpoint[sizeof(dealer_endpoint)-1] = 0;
+
+  err = zmq_bind(rtn->parent_dealer, dealer_endpoint);
+  if (err == -1) {
+    fprintf(stderr, "%s: Could not bind to socket %s: %s\n", id, dealer_endpoint, zmq_strerror(errno));
+    exit (-1);
+  }
+
   rtn->next = firstProcessListItem;
   firstProcessListItem = rtn;
 
@@ -133,9 +154,90 @@ isProcessListType *isCreateProcessListItem(json_t *isAuth, int esaf) {
   return rtn;
 }
 
+//
+// Recreate (or initially create) the zmq pollitems we need in the main
+// loop to service the zmq sockets on which we rely
+//
+// Call with parent_router to insert as the first item.  Set to null
+// when remaking and it will not be touched.
+//
+// If we need to add other file descriptors to the event loop we'll
+// need to add a mechanism to deal them.
+//
+zmq_pollitem_t *isRemakeZMQPollItems(void *parent_router, void *err_rep, void *err_dealer) {
+  static const char *id = FILEID "isRemakeZMQPollItems";
+  isProcessListType *plp;
+  void *saved_parent_router;
+  void *saved_err_dealer;
+  void *saved_err_rep;
+ int i;
+  
+  // Count the processes that appear to be running as indicated by a
+  // non-null parent_dealer element.  Upon closing a process the
+  // ProcessID will be non-zero while the parent_dealer should be
+  // null, at least until we've successfully "waited" for the child
+  // process to exit.
+  //
+  for (n_processes=0, plp=firstProcessListItem; plp != NULL; plp=plp->next) {
+    if (plp->parent_dealer != NULL) {
+      n_processes++;
+    }
+  }
+
+  saved_parent_router = NULL;
+  if (isZMQPollItems != NULL) {
+    saved_parent_router = isZMQPollItems[0].socket;
+  }
+
+  saved_err_rep = NULL;
+  if (isZMQPollItems != NULL) {
+    saved_err_rep = isZMQPollItems[1].socket;
+  }
+
+  saved_err_dealer = NULL;
+  if (isZMQPollItems != NULL) {
+    saved_err_dealer = isZMQPollItems[2].socket;
+  }
+
+  isZMQPollItems = realloc(isZMQPollItems, (1+n_processes) * sizeof(*isZMQPollItems));
+  if (isZMQPollItems == NULL) {
+    fprintf(stderr, "%s: Out of memory\n", id);
+    exit (-1);
+  }
+
+  // Clear the memory.  Could have used calloc/free instead of
+  // realloc.  Coulda done other stuff too..
+  //
+  memset(isZMQPollItems, 0, (3+n_processes)*sizeof(*isZMQPollItems));
+
+  //
+  isZMQPollItems[0].socket = parent_router ? parent_router : saved_parent_router;
+  isZMQPollItems[0].events = ZMQ_POLLIN;
+
+  isZMQPollItems[1].socket = err_rep ? err_rep : saved_err_rep;
+  isZMQPollItems[1].events = ZMQ_POLLIN;
+
+  isZMQPollItems[2].socket = err_dealer ? err_dealer : saved_err_dealer;
+  isZMQPollItems[2].events = ZMQ_POLLIN;
+
+  for (i=3, plp=firstProcessListItem; plp != NULL; plp = plp->next) {
+    if (plp->parent_dealer != NULL) {
+      isZMQPollItems[i].socket = plp->parent_dealer;
+      isZMQPollItems[i].events = ZMQ_POLLIN;
+      i++;
+    }
+  }
+  return isZMQPollItems;
+}
+
+int isNProcesses() {
+  return n_processes;
+}
+
 void isDestroyProcessListItem(isProcessListType *p) {
   static const char *id = "isDestroyProcessListItem";
   isProcessListType *plp, *last;
+  int err;
 
   last = NULL;
 
@@ -152,13 +254,21 @@ void isDestroyProcessListItem(isProcessListType *p) {
     return;
   }
 
+  err = zmq_close(p->parent_dealer);
+  if (err == -1) {
+    fprintf(stderr, "%s: Could not close parent_dealer for %s: %s\n", id, p->key, zmq_strerror(errno));
+  }
+
+  p->parent_dealer = NULL;
   last->next = p->next;
   json_decref(p->isAuth);
   free((char *)p->key);
   free(p);
+
+  isRemakeZMQPollItems(NULL);
 }
 
-void remakeProcessList(redisContext *rc, redisContext *rcLocal) {
+void remakeProcessList(redisContext *rc) {
   static const char *id = FILEID "remakeProcessList";
   ENTRY item;
   ENTRY *rtn_value;
@@ -167,12 +277,11 @@ void remakeProcessList(redisContext *rc, redisContext *rcLocal) {
   int n_entries;
   const char *pid;
   redisReply *reply;
-  int i;
   int process_still_exists;
   
   //fprintf(stdout, "%s: starting remake\n", id);
 
-  hdestroy_r(&worker_table);
+  hdestroy_r(&process_table);
   for (n_entries = 0, plp = firstProcessListItem; plp != NULL; plp = plp->next) {
     pid = json_string_value(json_object_get(plp->isAuth, "pid"));
     if (pid == NULL) {
@@ -198,16 +307,21 @@ void remakeProcessList(redisContext *rc, redisContext *rcLocal) {
       continue;
     }
     
-    // Here we tell the threads to stop running. Using rpush instead
-    // of lpush means that these are the next commands to be run even
-    // if other things are in the queue.
     //
-    // Threads are not allowed to pop anything else after recieving
-    // the "end" command so we just push "end" as many times as we
-    // have processes.
+    // Stop the child process and its threads
+    //
+    // TODO: put kill/wait/destroy in the main event loop and send sigkill when
+    // sigterm hasn't done the trick.
+    //
 
-    for(i=0; i<N_WORKER_THREADS; i++) {
-      redisCommand(rcLocal, "RPUSH %s end", plp->key);
+    err = kill(plp->processID, SIGTERM);
+    if (err == -1) {
+      fprintf(stderr, "%s: Failed to kill process %d: %s\n", id, plp->processID, strerror(errno));
+    } else {
+      err = waitpid(plp->processID, NULL, WNOHANG);
+      if (err == -1) {
+        fprintf(stderr, "%s: Failed to wait for process %d: %s\n", id, plp->processID, strerror(errno));
+      }
     }
 
     // Go ahead and destroy this process;
@@ -217,7 +331,8 @@ void remakeProcessList(redisContext *rc, redisContext *rcLocal) {
   //fprintf(stdout, "%s: found %d entries\n", id, n_entries);
 
   errno = 0;
-  err = hcreate_r(n_entries + INITIAL_WORKER_TABLE_SIZE, &worker_table);
+  process_table_size = n_entries + INITIAL_PROCESS_TABLE_SIZE;
+  err = hcreate_r(process_table_size, &process_table);
   if (err == 0) {
     fprintf(stderr, "%s: Failed to remake hash table: %s\n", id, strerror(errno));
     exit (-1);
@@ -228,7 +343,7 @@ void remakeProcessList(redisContext *rc, redisContext *rcLocal) {
     item.key  = (char *)plp->key;
     item.data = plp;
     errno = 0;
-    err = hsearch_r(item, ENTER, &rtn_value, &worker_table);
+    err = hsearch_r(item, ENTER, &rtn_value, &process_table);
     if( err == 0) {
       fprintf(stderr, "failed to rebuild process list table: %s\n", strerror(errno));
       exit (-1);
@@ -246,7 +361,7 @@ void listProcesses() {
   }
 }
 
-const char *isFindProcess(const char *pid, int esaf) {
+isProcessListType *isFindProcess(const char *pid, int esaf) {
   char ourKey[128];
   isProcessListType *p;
   ENTRY item;
@@ -260,7 +375,7 @@ const char *isFindProcess(const char *pid, int esaf) {
   item.data = NULL;
   item_return = NULL;
   errno = 0;
-  err = hsearch_r(item, FIND, &item_return, &worker_table);
+  err = hsearch_r(item, FIND, &item_return, &process_table);
   if (err == 0) {
     return NULL;
   }
@@ -270,17 +385,16 @@ const char *isFindProcess(const char *pid, int esaf) {
     listProcesses();
     return NULL;
   }
-  return p->key;
+  return p;
 }
 
-const char *isRun(redisContext *rc, redisContext *rcLocal, json_t *isAuth, int esaf) {
+isProcessListType *isRun(void *zctx, redisContext *rc, json_t *isAuth, int esaf) {
   char ourKey[128];
   char *pid;
   isProcessListType *p;
   ENTRY item;
   ENTRY *item_return;
   int err;
-
 
   //
   // See if we already have this process going
@@ -293,26 +407,26 @@ const char *isRun(redisContext *rc, redisContext *rcLocal, json_t *isAuth, int e
   item.data = NULL;
   item_return = NULL;
   errno = 0;
-  err = hsearch_r(item, FIND, &item_return, &worker_table);
+  err = hsearch_r(item, FIND, &item_return, &process_table);
   if (err != 0) {
     p = item_return->data;
-    return p->key;
+    return p;
   }
 
   //  fprintf( stderr, "isRun: Could not find key %s: %s\n", ourKey, strerror(errno));
   //
   // Process was not found
   //
-  p = isCreateProcessListItem(isAuth, esaf);
+  p = isCreateProcessListItem(zctx, isAuth, esaf);
   item.key  = (char *)p->key;
   item.data = p;
 
   errno = 0;
-  err = hsearch_r(item, ENTER, &item_return, &worker_table);
+  err = hsearch_r(item, ENTER, &item_return, &process_table);
   p = item_return->data;
   if (err == 0) {
     fprintf( stderr, "isRun: Could not ENTER key %s: %s\n", p->key, strerror(errno));
-    remakeProcessList(rc, rcLocal);
+    remakeProcessList(rc);
   }
-  return p->key;
+  return p;
 }

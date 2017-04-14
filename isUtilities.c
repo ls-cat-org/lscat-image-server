@@ -351,3 +351,51 @@ void set_json_object_float_array_2d(const char *cid, json_t *j, const char *k, f
     exit (-1);
   }
 }
+
+void is_zmq_free_fn(void *data, void *hint) {
+  static const char *id = FILEID "is_zmq_free_fn";
+  (void)id;
+
+  if (data != NULL) {
+    free(data);
+  }
+}
+
+void is_zmq_error_reply(zmq_msg_t *msgs, int n_msgs, void *err_dealer, char *fmt, ...) {
+  static const char *id = FILEID "is_zmq_error_reply";
+  char *msg;
+  int msg_len = 4096;
+  va_list arg_ptr;
+  zmq_msg_t zrply;
+  int err;
+  int i;
+
+  // send the envelope message parts to our socket so the reply goes somewhere
+  for (i=0; i<n_msgs; i++) {
+    zmq_msg_send(&msgs[i], err_dealer, ZMQ_SNDMORE);
+    zmq_msg_close(&msgs[i]);
+  }
+
+  msg = calloc(1, msg_len);
+  if (msg == NULL) {
+    fprintf(stderr, "%s: Out of memory\n", id);
+    exit (-1);
+  }
+
+  va_start( arg_ptr, fmt);
+  vsnprintf( msg, msg_len-1, fmt, arg_ptr);
+  va_end( arg_ptr);
+  msg[msg_len-1]=0;
+      
+  zmq_msg_init(&zrply);
+  err = zmq_msg_init_data(&zrply, msg, strlen(msg), is_zmq_free_fn, NULL);
+  if (err == -1) {
+    fprintf(stderr, "%s: Could not create reply message: %s\n", id, zmq_strerror(errno));
+    exit (-1);
+  }
+
+  err = zmq_msg_send(&zrply, rtt_dealer, 0);
+  if (err == -1) {
+    fprintf(stderr, "%s: could not send reply (zrply 1): %s\n", id, zmq_strerror(errno));
+  }
+}

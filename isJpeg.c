@@ -93,82 +93,37 @@ void isJpegLabel(const char *label, int width, int height, struct jpeg_compress_
   free(row_buffer);
 }
 
-void zfree(void *data, void *hint) {
-  if (data != NULL) {
-    free(data);
-  }
-}
-
-void isJpegSend(json_t *job, json_t *meta, unsigned char *out_buffer, int jpeg_len) {
+//
+// Send 4 message to our zmq image server client.  It is expecting the following message parts:
+//
+//   1) error message or an empty message if there is no error
+//
+//   Assuming there has not yet been an error the the following message parts must be sent:
+//
+//   2) job:  the stringified version of the job we are working on.
+//
+//   3) meta: Our meta data from the the image file and/or what we've caluclated
+//
+//   4) jpeg: the jpeg image that we'd like the user to have a look at
+//
+void isJpegSend(isThreadContextType *tcp, json_t *job, json_t *meta, unsigned char *out_buffer, int jpeg_len) {
   static const char *id = FILEID "isJpegSend";
 
-  /**
-   *  We are going to publish this resulting jpeg to redis along with
-   *  the job and meta data objects.  We'll use the redis
-   *  request-response protocol to serialize the objects and image.
-   *  See https://redis.io/topics/protocol for details. We could embed
-   *  any serialization protocol we want to form our message but this
-   *  choice is advantageous for the following reasons:
-   *
-   *    1) It's well documented and complete.
-   *
-   *    2) It's easy to generate and easy to parse.
-   *
-   *    3) If the redis pub/sub model does not work out for us we have
-   *       other options including dumping the message directly to a
-   *       redis key or to an awaiting socket ala our version 1 image
-   *       server.
-   */
   char *job_str;
   char *meta_str;
-  void *zctx;
-  void *zsock;
   int err;
-  zmq_msg_t zmsg;
-  const char *tmp;
-  char *publisher;
+  zmq_msg_t err_msg;
+  zmq_msg_t job_msg;
+  zmq_msg_t meta_msg;
+  zmq_msg_t jpeg_msg;
 
-  tmp = json_string_value(json_object_get(job, "publisher"));
-  if (tmp == NULL) {
-    publisher = strdup("");
-  } else {
-    publisher = strdup(tmp);
-  }
-  if (publisher == NULL) {
-    fprintf(stderr, "%s: Out of memory (publisher)\n", id);
-    exit(-1);
-  }
+  // Compose messages
 
-  errno = 0;
-  zctx = zmq_ctx_new();
-  if (zctx == NULL) {
-    fprintf(stderr, "%s: Oddly, zmq_ctx_new failed: %s\n", id, zmq_strerror(errno));
-    exit (-1);
-  }
-  
-  errno = 0;
-  zsock = zmq_socket(zctx, ZMQ_REQ);
-  if (zsock == NULL) {
-    fprintf(stderr, "%s: Could not create zmq socket: %s\n", id, zmq_strerror(errno));
-    exit (-1);
-  }
+  // Err
+  zmq_msg_init(&err_msg);
 
-  {
-    int opt;
-    opt = 1;
-    err = zmq_setsockopt(zsock, ZMQ_SNDTIMEO, &opt, sizeof(opt));
-    if (err != 0) {
-      fprintf(stderr, "%s: zmq_connect failed: %s\n", id, strerror(errno));
-      exit (-1);
-    }
-  }    
 
-  err = zmq_connect(zsock, json_string_value(json_object_get(job, "endpoint")));
-  if (err != 0) {
-    fprintf(stderr, "%s: zmq_connect failed: %s\n", id, strerror(errno));
-    exit (-1);
-  }
-
+  // Job
   job_str = NULL;
   if (job != NULL) {
     job_str = json_dumps(job, JSON_SORT_KEYS | JSON_INDENT(0) | JSON_COMPACT);
@@ -177,6 +132,13 @@ void isJpegSend(json_t *job, json_t *meta, unsigned char *out_buffer, int jpeg_l
     job_str = strdup("");
   }
 
+  err = zmq_msg_init_data(&job_msg, job_str, strlen(job_str), is_zmq_free_fn, NULL);
+  if (err != 0) {
+    fprintf(stderr, "%s: zmq_msg_init failed (job_str): %s\n", id, zmq_strerror(errno));
+    exit (-1);
+  }
+
+  // Meta
   meta_str = NULL;
   if (meta != NULL) {
     meta_str = json_dumps(meta, JSON_SORT_KEYS | JSON_INDENT(0) | JSON_COMPACT);
@@ -184,105 +146,54 @@ void isJpegSend(json_t *job, json_t *meta, unsigned char *out_buffer, int jpeg_l
   if (meta_str == NULL) {
     meta_str = strdup("");
   }
-    
-  err = zmq_msg_init_data(&zmsg, publisher, strlen(publisher), zfree, NULL);
-  if (err != 0) {
-    fprintf(stderr, "%s: zmq_msg_init failed (publisher): %s\n", id, zmq_strerror(errno));
-    exit (-1);
-  }
-  
-  err = zmq_msg_send(&zmsg, zsock, ZMQ_SNDMORE);
-  if (err < 0) {
-    fprintf(stderr, "%s: sending publisher failed: %s\n", id, zmq_strerror(errno));
-    exit (-1);
-  }
 
-  err = zmq_msg_init_data(&zmsg, job_str, strlen(job_str), zfree, NULL);
-  if (err != 0) {
-    fprintf(stderr, "%s: zmq_msg_init failed (job_str): %s\n", id, zmq_strerror(errno));
-    exit (-1);
-  }
-  
-  err = zmq_msg_send(&zmsg, zsock, ZMQ_SNDMORE);
-  if (err < 0) {
-    fprintf(stderr, "%s: sending job_str failed: %s\n", id, zmq_strerror(errno));
-    exit (-1);
-  }
-
-  err = zmq_msg_init_data(&zmsg, meta_str, strlen(meta_str), zfree, NULL);
-  if (err != 0) {
+  err = zmq_msg_init_data(&meta_msg, meta_str, strlen(meta_str), is_zmq_free_fn, NULL);
+  if (err == -1) {
     fprintf(stderr, "%s: zmq_msg_init failed (meta_str): %s\n", id, zmq_strerror(errno));
     exit (-1);
   }
-  
-  err = zmq_msg_send(&zmsg, zsock, ZMQ_SNDMORE);
-  if (err < 0) {
-    fprintf(stderr, "%s: sending job_str failed: %s\n", id, zmq_strerror(errno));
-    exit (-1);
-  }
 
-  err = zmq_msg_init_data(&zmsg, out_buffer, jpeg_len, zfree, NULL);
-  if (err != 0) {
+
+  // JPEG
+  err = zmq_msg_init_data(&jpeg_msg, out_buffer, jpeg_len, is_zmq_free_fn, NULL);
+  if (err == -1) {
     fprintf(stderr, "%s: zmq_msg_init failed (jpeg): %s\n", id, zmq_strerror(errno));
     exit (-1);
   }
-  
-  err = zmq_msg_send(&zmsg, zsock, 0);
-  if (err < 0) {
-    fprintf(stderr, "%s: sending jpeg failed: %s\n", id, zmq_strerror(errno));
-    exit (-1);
-  }
 
-  err = zmq_close(zsock);
-  if (err != 0) {
-    fprintf(stderr, "%s: closing socket failed: %s\n", id, zmq_strerror(errno));
-    exit (-1);
-  }
-
-  errno = 0;
+  // Send them out
   do {
-    err = zmq_ctx_term(zctx);
-  } while (errno == EINTR);
-
-  if (err != 0) {
-    fprintf(stderr, "%s: failed to terminate zmq context: %s\n", id, zmq_strerror(errno));
-    exit (-1);
-  }
-
-  /*
-  rcRemote = redisConnect(json_string_value(json_object_get(job, "rtn_addr")), json_integer_value(json_object_get(job, "rtn_port")));
-  if (rcRemote == NULL || rcRemote->err) {
-    if (rcRemote) {
-      fprintf(stderr, "%s: Failed to connect to redis %s:%d. Error: %s\n", id, json_string_value(json_object_get(job,"rtn_addr")), (int)json_integer_value(json_object_get(job, "rtn_port")), rcRemote->errstr);
-    } else {
-      fprintf(stderr, "%s: Failed to get redis context\n", id);
+    // Error Message
+    err = zmq_msg_send(&err_msg, tcp->rep, ZMQ_SNDMORE);
+    if (err == -1) {
+      fprintf(stderr, "%s: Could not send empty error frame: %s\n", id, zmq_strerror(errno));
+      break;
     }
-    fflush(stderr);
-    exit (-1);
-  }
-  */
-  /*
-  //                             pub       jlen  job  mlen meta  jlen  jpeg
-  redisCommand(rcRemote, "PUBLISH %s *3\r\n$%d\r\n%s%s$%d\r\n%s%s$%d\r\n%b%s",
-               json_string_value(json_object_get(job, "publisher")),
-               job_str  == NULL ? -1 : strlen(job_str),
-               job_str  == NULL ? "" : job_str,
-               job_str  == NULL ? "" : "\r\n",
-               meta_str == NULL ? -1 : strlen(meta_str),
-               meta_str == NULL ? "" : meta_str,
-               meta_str == NULL ? "" : "\r\n",
-               jpeg_len == 0    ? -1 : jpeg_len,
-               jpeg_len == 0    ? (JOCTET *)"" : out_buffer,
-               jpeg_len,
-               jpeg_len == 0    ? "" : "\r\n"
-               );
-  redisFree(rcRemote);
-  */
 
+    // Job 
+    err = zmq_msg_send(&job_msg, tcp->rep, ZMQ_SNDMORE);
+    if (err < 0) {
+      fprintf(stderr, "%s: sending job_str failed: %s\n", id, zmq_strerror(errno));
+      break;
+    }
+
+    // Meta
+    err = zmq_msg_send(&meta_msg, tcp->rep, ZMQ_SNDMORE);
+    if (err == -1) {
+      fprintf(stderr, "%s: sending meta_str failed: %s\n", id, zmq_strerror(errno));
+      break;
+    }
+
+    // Jpeg
+    err = zmq_msg_send(&jpeg_msg, tcp->rep, 0);
+    if (err == -1) {
+      fprintf(stderr, "%s: sending jpeg failed: %s\n", id, zmq_strerror(errno));
+      break;
+    }
+  } while (0);
 }
 
-
-void isJpegBlank(json_t *job) {
+void isJpegBlank(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
   static const char *id = FILEID "isJpegBlank";
   struct jpeg_compress_struct cinfo;
   int cinfoSetup;
@@ -401,7 +312,7 @@ void isJpegBlank(json_t *job) {
   }
   jpeg_finish_compress(&cinfo);
 
-  isJpegSend(job, NULL, out_buffer, (int)(cinfo.dest->next_output_byte - out_buffer));
+  isJpegSend(tcp, job, NULL, out_buffer, (int)(cinfo.dest->next_output_byte - out_buffer));
   free(row_buffer);
   //
   //  out_buffer is freed by zmq whenever it is done with it
@@ -410,12 +321,11 @@ void isJpegBlank(json_t *job) {
   return;
 }
 
-void isJpeg( isImageBufContext_t *ibctx, redisContext *rc, json_t *job) {
+void isJpeg(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
   static const char *id = FILEID "isJpeg";
   const char *fn;                       // file name from job.
   isImageBufType *imb;
   unsigned char *row_buffer;
-  unsigned char *out_buffer;
   int labelHeight;
   int row, col;
   uint16_t *bp16, v16;
@@ -430,15 +340,17 @@ void isJpeg( isImageBufContext_t *ibctx, redisContext *rc, json_t *job) {
   char label[64];
   size_t row_buffer_size;
   size_t out_buffer_size;
+  unsigned char *out_buffer;
+
 
   fn = json_string_value(json_object_get(job, "fn"));
   if (fn == NULL || strlen(fn) == 0) {
-    isJpegBlank(job);
+    isJpegBlank(wctx, tcp, job);
     return;
   }
 
   // when isReduceImage returns a buffer it is read locked
-  imb = isReduceImage(ibctx, rc, job);
+  imb = isReduceImage(wctx, tcp->rc, job);
   if (imb == NULL) {
     char *tmps;
 
@@ -486,12 +398,12 @@ void isJpeg( isImageBufContext_t *ibctx, redisContext *rc, json_t *job) {
 
     pthread_rwlock_unlock(&imb->buflock);
 
-    pthread_mutex_lock(&ibctx->ctxMutex);
+    pthread_mutex_lock(&wctx->ctxMutex);
     imb->in_use--;
 
     assert(imb->in_use >= 0);
 
-    pthread_mutex_unlock(&ibctx->ctxMutex);
+    pthread_mutex_unlock(&wctx->ctxMutex);
     return;
   }
 
@@ -635,7 +547,7 @@ void isJpeg( isImageBufContext_t *ibctx, redisContext *rc, json_t *job) {
 
   jpeg_finish_compress(&cinfo);
 
-  isJpegSend(job, imb->meta, out_buffer, (int)(cinfo.dest->next_output_byte - out_buffer));
+  isJpegSend(tcp, job, imb->meta, out_buffer, (int)(cinfo.dest->next_output_byte - out_buffer));
 
   free(row_buffer);
   //
@@ -645,11 +557,11 @@ void isJpeg( isImageBufContext_t *ibctx, redisContext *rc, json_t *job) {
 
   pthread_rwlock_unlock(&imb->buflock);
 
-  pthread_mutex_lock(&ibctx->ctxMutex);
+  pthread_mutex_lock(&wctx->ctxMutex);
   imb->in_use--;
 
   assert(imb->in_use >= 0);
 
-  pthread_mutex_unlock(&ibctx->ctxMutex);
+  pthread_mutex_unlock(&wctx->ctxMutex);
   return;
 }

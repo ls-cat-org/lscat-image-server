@@ -353,7 +353,7 @@ void reduceImage32( isImageBufType *src, isImageBufType *dst, int x, int y, int 
  *
  *    read locked buffer
  */
-isImageBufType *isReduceImage(isImageBufContext_t *ibctx, redisContext *rc, json_t *job) {
+isImageBufType *isReduceImage(isWorkerContext_t *wctx, redisContext *rc, json_t *job) {
   static const char *id = FILEID "isReducedImage";
   isImageBufType *rtn;
   isImageBufType *raw;
@@ -451,7 +451,7 @@ isImageBufType *isReduceImage(isImageBufContext_t *ibctx, redisContext *rc, json
  
   //  fprintf(stdout, "%s: about to get image buf from key %s\n", id, reducedKey);
 
-  rtn = isGetImageBufFromKey(ibctx, rc, reducedKey);
+  rtn = isGetImageBufFromKey(wctx, rc, reducedKey);
 
   if (rtn == NULL || rtn->buf != NULL) {
     //
@@ -471,7 +471,7 @@ isImageBufType *isReduceImage(isImageBufContext_t *ibctx, redisContext *rc, json
   
   // Get the unreduced file
   //fprintf(stdout, "%s: Getting raw data for %s\n", id, rtn->key);
-  raw = isGetRawImageBuf(ibctx, rc, job);
+  raw = isGetRawImageBuf(wctx, rc, job);
   if (raw == NULL) {
     fprintf(stderr, "%s: Failed to get raw data for %s\n", id, rtn->key);
     //
@@ -480,10 +480,10 @@ isImageBufType *isReduceImage(isImageBufContext_t *ibctx, redisContext *rc, json
     // authorities.
     //
     pthread_rwlock_unlock(&rtn->buflock);
-    pthread_mutex_lock(&ibctx->ctxMutex);
+    pthread_mutex_lock(&wctx->ctxMutex);
     rtn->in_use--;
     assert(rtn->in_use >= 0);
-    pthread_mutex_unlock(&ibctx->ctxMutex);
+    pthread_mutex_unlock(&wctx->ctxMutex);
 
     free(reducedKey);
     return NULL;
@@ -545,10 +545,10 @@ isImageBufType *isReduceImage(isImageBufContext_t *ibctx, redisContext *rc, json
   pthread_rwlock_unlock(&raw->buflock);
 
   // We don't need the raw buffer anymore
-  pthread_mutex_lock(&ibctx->ctxMutex);
+  pthread_mutex_lock(&wctx->ctxMutex);
   raw->in_use--;
   assert(raw->in_use >= 0);
-  pthread_mutex_unlock(&ibctx->ctxMutex);
+  pthread_mutex_unlock(&wctx->ctxMutex);
 
   //
   // Exchange our write lock for a read lock to let our other threads get to work.

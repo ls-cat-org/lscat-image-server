@@ -46,11 +46,13 @@ void destroyImageBuffer(isImageBufType *p) {
 
 /** Initialize an process's image buffer context
  */
-isImageBufContext_t  *isDataInit(const char *key) {
+isWorkerContext_t  *isDataInit(const char *key) {
   static const char *id = FILEID "isDataInit";
   pthread_mutexattr_t matt;
-  isImageBufContext_t *rtn;
+  isWorkerContext_t *rtn;
   int err;
+  char router_endpoint[128];
+  char dealer_endpoint[128];
 
   rtn = calloc(1, sizeof(*rtn));
   if (rtn == NULL) {
@@ -68,6 +70,34 @@ isImageBufContext_t  *isDataInit(const char *key) {
   rtn->max_buffers = 2 * N_IMAGE_BUFFERS;
   rtn->first     = NULL;
 
+  rtn->zctx = zmq_ctx_new();
+  rtn->router = zmq_socket(rtn->zctx, ZMQ_ROUTER);
+  if (rtn->router == NULL) {
+    fprintf(stderr, "%s: Could not create router socket: %s\n", id, zmq_strerror(errno));
+    exit (-1);
+  }
+  snprintf(router_endpoint, sizeof(router_endpoint)-1, "ipc://@%s", key);
+  router_endpoint[sizeof(router_endpoint)-1] = 0;
+
+  err = zmq_connect(rtn->router, router_endpoint);
+  if (err == -1) {
+    fprintf(stderr, "%s: failed to connect to endpoint %s: %s\n", id, router_endpoint, strerror(errno));
+    exit (-1);
+  }
+                    
+  rtn->dealer = zmq_socket(rtn->zctx, ZMQ_DEALER);
+  if (rtn->dealer == NULL) {
+    fprintf(stderr, "%s: Could not create dealer socket: %s\n", id, zmq_strerror(errno));
+    exit (-1);
+  }
+  snprintf(dealer_endpoint, sizeof(dealer_endpoint)-1, "inproc://#%s", key);
+  dealer_endpoint[sizeof(dealer_endpoint)-1] = 0;
+  err = zmq_bind(rtn->dealer, dealer_endpoint);
+  if (err == -1) {
+    fprintf(stderr, "%s: Could not bind dealer endpoint %s: %s\n", id, dealer_endpoint, strerror(errno));
+    exit (-1);
+  }
+  
   pthread_mutexattr_init(&matt);
   pthread_mutexattr_settype(&matt, PTHREAD_MUTEX_RECURSIVE);
   pthread_mutexattr_setpshared(&matt, PTHREAD_PROCESS_SHARED);
@@ -85,7 +115,7 @@ isImageBufContext_t  *isDataInit(const char *key) {
 
 /** Recycle resources garnered by isDataInit
  */
-void isDataDestroy(isImageBufContext_t *c) {
+void isDataDestroy(isWorkerContext_t *c) {
   static const char *id = FILEID "isDataDestroy";
   isImageBufType *p, *next;
   (void)id;
@@ -253,13 +283,13 @@ image_file_type isFileType(const char *fn) {
 
 /** Create new buffer
  *
- * Call with ibctx->ctxMutex locked
+ * Call with wctx->ctxMutex locked
  *
  * Return with a brand new write locked image buffer and "in_use" set
  * to 1 to keep the buffer from being reclaimed when we give up our
  * write lock in favor of a read lock.
  */
-isImageBufType *createNewImageBuf(isImageBufContext_t *ibctx, const char *key) {
+isImageBufType *createNewImageBuf(isWorkerContext_t *wctx, const char *key) {
   static const char *id = FILEID "createNewImageBuf";
   ENTRY item;
   ENTRY *return_item;
@@ -286,15 +316,15 @@ isImageBufType *createNewImageBuf(isImageBufContext_t *ibctx, const char *key) {
 
   pthread_rwlock_wrlock(&rtn->buflock);
 
-  rtn->in_use = 1;      // in_use is protected by ibctx->ctcMutex
+  rtn->in_use = 1;      // in_use is protected by wctx->ctcMutex
 
-  rtn->next = ibctx->first;
-  ibctx->first = rtn;
+  rtn->next = wctx->first;
+  wctx->first = rtn;
 
   item.key  = (char *)rtn->key;
   item.data = rtn;
   errno = 0;
-  err = hsearch_r(item, ENTER, &return_item, &ibctx->bufTable);
+  err = hsearch_r(item, ENTER, &return_item, &wctx->bufTable);
   //
   // An error here means that we've somehow exceeded the maximum
   // number of entries in the table.  We should have at least a factor
@@ -305,7 +335,7 @@ isImageBufType *createNewImageBuf(isImageBufContext_t *ibctx, const char *key) {
     exit (-1);
   }
 
-  if (++ibctx->n_buffers < ibctx->max_buffers / 2) {
+  if (++wctx->n_buffers < wctx->max_buffers / 2) {
     //
     // We are done.
     //
@@ -316,7 +346,7 @@ isImageBufType *createNewImageBuf(isImageBufContext_t *ibctx, const char *key) {
   //
   // Count number of buffers still in use
   //
-  for(i=0, p=ibctx->first; p != NULL; p=p->next) {
+  for(i=0, p=wctx->first; p != NULL; p=p->next) {
 
     assert(p->in_use >= 0);
 
@@ -329,13 +359,13 @@ isImageBufType *createNewImageBuf(isImageBufContext_t *ibctx, const char *key) {
   // Guess how many buffer we need and double that to make the hash table more efficient.
   // TODO: Make a better guess by trying to understand what hcreate really needs.
   //
-  ibctx->max_buffers += 2 * (N_IMAGE_BUFFERS + i);
+  wctx->max_buffers += 2 * (N_IMAGE_BUFFERS + i);
 
-  fprintf(stdout, "%s: ************ Rebuilding hash table. i=%d, max_buffers=%d\n", id, i, ibctx->max_buffers);
+  fprintf(stdout, "%s: ************ Rebuilding hash table. i=%d, max_buffers=%d\n", id, i, wctx->max_buffers);
 
-  hdestroy_r(&ibctx->bufTable);
+  hdestroy_r(&wctx->bufTable);
   errno = 0;
-  err = hcreate_r( ibctx->max_buffers, &ibctx->bufTable);
+  err = hcreate_r( wctx->max_buffers, &wctx->bufTable);
   if (err == 0) {
     fprintf(stderr, "%s: Failed to initialize hash table\n", id);
     exit (-1);
@@ -348,18 +378,18 @@ isImageBufType *createNewImageBuf(isImageBufContext_t *ibctx, const char *key) {
 
   last = NULL;
   next = NULL;
-  ibctx->n_buffers = 0;
-  for(i=0, p=ibctx->first; p != NULL; p=next) {
+  wctx->n_buffers = 0;
+  for(i=0, p=wctx->first; p != NULL; p=next) {
     next = p->next;
 
     assert(p->in_use >= 0);
 
-    if (i++ > ibctx->max_buffers/4 && p->in_use <= 0) {
+    if (i++ > wctx->max_buffers/4 && p->in_use <= 0) {
       destroyImageBuffer(p);
       continue;
     }
 
-    ibctx->n_buffers++;
+    wctx->n_buffers++;
 
     if (last != NULL) {
       last->next = p;
@@ -367,7 +397,7 @@ isImageBufType *createNewImageBuf(isImageBufContext_t *ibctx, const char *key) {
     item.key = (char *)p->key;
     item.data = p;
     last = p;
-    err = hsearch_r(item, ENTER, &return_item, &ibctx->bufTable);
+    err = hsearch_r(item, ENTER, &return_item, &wctx->bufTable);
     if (err == 0) {
       fprintf(stderr, "%s: Failed to enter item %s\n", id, p->key);
       exit (-1);
@@ -394,7 +424,7 @@ isImageBufType *createNewImageBuf(isImageBufContext_t *ibctx, const char *key) {
  *  processes can get back to work.
  *
  */
-isImageBufType *isGetImageBufFromKey(isImageBufContext_t *ibctx, redisContext *rc, char *key) {
+isImageBufType *isGetImageBufFromKey(isWorkerContext_t *wctx, redisContext *rc, char *key) {
   static const char *id = FILEID "isGetImageBufFromKey";
   isImageBufType *rtn;          // This is our return value
   redisReply *rr;               // our redis reply object pointer
@@ -412,12 +442,12 @@ isImageBufType *isGetImageBufFromKey(isImageBufContext_t *ibctx, redisContext *r
 
   rtn = NULL;
 
-  pthread_mutex_lock(&ibctx->ctxMutex);
+  pthread_mutex_lock(&wctx->ctxMutex);
 
   item.key  = key;
   item.data = NULL;
   errno = 0;
-  err = hsearch_r(item, FIND, &return_item, &ibctx->bufTable);
+  err = hsearch_r(item, FIND, &return_item, &wctx->bufTable);
   if (err != 0) {
     rtn = return_item->data;
   }
@@ -427,7 +457,7 @@ isImageBufType *isGetImageBufFromKey(isImageBufContext_t *ibctx, redisContext *r
     assert(rtn->in_use >= 0);
 
     rtn->in_use++;                              // flag to keep our buffer in scope while we need it
-    pthread_mutex_unlock(&ibctx->ctxMutex);
+    pthread_mutex_unlock(&wctx->ctxMutex);
     pthread_rwlock_rdlock(&rtn->buflock);
 
     return rtn;
@@ -439,10 +469,10 @@ isImageBufType *isGetImageBufFromKey(isImageBufContext_t *ibctx, redisContext *r
   // other writers as well as potential readers.  We'll grab the read
   // lock on the buffer before releasing the context mutex.
   //
-  rtn = createNewImageBuf(ibctx, key);
+  rtn = createNewImageBuf(wctx, key);
   // buffer is write locked and in_use = 1
 
-  pthread_mutex_unlock(&ibctx->ctxMutex);       // We can now allow access to the other buffers
+  pthread_mutex_unlock(&wctx->ctxMutex);       // We can now allow access to the other buffers
 
   //
   // Three redis queries follow:
@@ -728,7 +758,7 @@ void isWriteImageBufToRedis(isImageBufType *imb, redisContext *rc) {
 
 /** Get the unreduced image
  */
-isImageBufType *isGetRawImageBuf(isImageBufContext_t *ibctx, redisContext *rc, json_t *job) {
+isImageBufType *isGetRawImageBuf(isWorkerContext_t *wctx, redisContext *rc, json_t *job) {
   static const char *id = FILEID "isGetRawImageBuf";
   const char *fn;
   int frame;
@@ -775,7 +805,7 @@ isImageBufType *isGetRawImageBuf(isImageBufContext_t *ibctx, redisContext *rc, j
   //
   // fprintf(stdout, "%s: about to get image buffer from key %s\n", id, key);
 
-  rtn = isGetImageBufFromKey(ibctx, rc, key);
+  rtn = isGetImageBufFromKey(wctx, rc, key);
   if (rtn->buf != NULL) {
     fprintf(stderr, "%s: Found buffer for key %s\n", id, key);
     free(key);
