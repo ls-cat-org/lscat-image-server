@@ -52,7 +52,7 @@
 
 // Special reply server to handle errors that occur before we can
 // route the request to the appropriate process
-#define ERR_REP        "iproc://#err_rep"
+#define ERR_REP        "inproc://#err_rep"
 
 typedef enum {NOACCESS, READABLE, WRITABLE} image_access_type;
 
@@ -133,6 +133,7 @@ extern isImageBufType *isReduceImage(isWorkerContext_t *ibctx, redisContext *rc,
 extern isImageBufType *isGetImageBufFromKey(isWorkerContext_t *ibctx, redisContext *rc, char *key);
 extern void isJpeg( isWorkerContext_t *ibctx, isThreadContextType *tcp, json_t *job);
 extern void is_zmq_free_fn(void *data, void *hint);
-extern void is_zmq_error_reply(void *zsock, char *fmt, ...);
-extern zmq_pollitem_t *isRemakeZMQPollItems(void *parent_router);
+extern void is_zmq_error_reply(zmq_msg_t *msgs, int n_msgs, void *err_dealer, char *fmt, ...);
+extern zmq_pollitem_t *isRemakeZMQPollItems(void *parent_router, void *err_rep, void *err_dealer);
 extern int isNProcesses();
+extern zmq_pollitem_t *isGetZMQPollItems();

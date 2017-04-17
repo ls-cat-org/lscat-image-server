@@ -394,7 +394,7 @@ void is_zmq_error_reply(zmq_msg_t *msgs, int n_msgs, void *err_dealer, char *fmt
     exit (-1);
   }
 
-  err = zmq_msg_send(&zrply, rtt_dealer, 0);
+  err = zmq_msg_send(&zrply, err_dealer, 0);
   if (err == -1) {
     fprintf(stderr, "%s: could not send reply (zrply 1): %s\n", id, zmq_strerror(errno));
   }

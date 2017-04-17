@@ -41,6 +41,7 @@ int main(int argc, char **argv) {
 
   void *zctx;
   void *router;
+  void *err_dealer;
   void *err_rep;
   zmq_msg_t zmsg;
   int nreceived;
@@ -147,25 +148,30 @@ int main(int argc, char **argv) {
   // Here is our main loop
   //
   while (1) {
+    zpollitems = isGetZMQPollItems();
+    n_zpollitems = isNProcesses() + 3;
+
     err = zmq_poll(zpollitems, n_zpollitems, -1);
     if (err == -1) {
-      fprintf(stderr, "%s: zmq_poll returned error: %s\n", id, zmq_strerror(errno));
+      fprintf(stderr, "%s: zmq_poll returned error (%d poll items): %s\n", id, n_zpollitems, zmq_strerror(errno));
       exit (-1);
     }
     
     //
     // This is the error responder (err_rep).  Copy messages to the
-    // err_dealer.  The next section will copy the messages back to
-    // the dealer that originated the request.
+    // err_dealer.
     //
 
     if (zpollitems[1].revents & ZMQ_POLLIN) {
+      //
+      // Echo messages sent to our error responder.
+      //
       do {
         zmq_msg_init(&zmsg);
         zmq_msg_recv(&zmsg, err_rep, 0);
         more = zmq_msg_more(&zmsg);
-        zmq_msg_send(&zmsg, err_dealer, more ? ZMQ_SNDMORE : 0);
-        zmsg_close(&zmsg);
+        zmq_msg_send(&zmsg, err_rep, more ? ZMQ_SNDMORE : 0);
+        zmq_close(&zmsg);
       } while(more);
     }
 
@@ -174,14 +180,13 @@ int main(int argc, char **argv) {
     // Transfer all the child process chatter (as well as our error
     // messages) back to the is.js
     //
-    // i==2 is the error response for local errors.  i>2 are from our
-    // child processes and related threads.
     //
     for (i=2; i<=n_zpollitems; i++) {
       if (zpollitems[i].revents & ZMQ_POLLIN) {
         do {
           zmq_msg_init(&zmsg);
           zmq_msg_recv(&zmsg, zpollitems[i].socket, 0);
+          fprintf(stdout, "%s: recv %d bytes from dealer %d\n", id, (int)zmq_msg_size(&zmsg), i);
           more = zmq_msg_more(&zmsg);
           zmq_msg_send(&zmsg, router, more ? ZMQ_SNDMORE : 0);
           zmq_msg_close(&zmsg);
@@ -236,10 +241,11 @@ int main(int argc, char **argv) {
     // Retrieve instructions from our client
     //
 
-    isRequest = json_loads(zmq_msg_data(&zmsg), 0, &jerr);
+    isRequest = json_loadb(zmq_msg_data(&zmsg), zmq_msg_size(&zmsg), 0, &jerr);
+
     if (isRequest == NULL) {
       is_zmq_error_reply(envelope_msgs, n_envelope_msgs, router, "%s: Failed to parse request: %s", id, jerr.text);
-      fprintf(stderr, "%s: Failed to parse '%s': %s\n", id, subreply->str, jerr.text);
+      fprintf(stderr, "%s: Failed to parse '%s': %s\n", id, (char *)zmq_msg_data(&zmsg), jerr.text);
       continue;
     }
 

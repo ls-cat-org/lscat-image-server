@@ -57,12 +57,14 @@ void *isWorker(void *voidp) {
     // Wait for something to do
     //
     zmq_msg_init(&zmsg);
-    do {
-      errno = 0;
-      err = zmq_msg_recv(&zmsg, tc.rep, 0);
-    } while(err == -1 && errno == EINTR);
+    err = zmq_msg_recv(&zmsg, tc.rep, 0);
+    if (err == -1) {
+      fprintf(stderr, "%s: problem receiving message: %s\n", id, zmq_strerror(errno));
+      zmq_msg_close(&zmsg);
+      continue;
+    }
 
-    job = json_loads(zmq_msg_data(&zmsg), 0, &jerr);
+    job = json_loadb(zmq_msg_data(&zmsg), zmq_msg_size(&zmsg), 0, &jerr);
     zmq_msg_close(&zmsg);
 
     if (job == NULL) {
@@ -72,6 +74,8 @@ void *isWorker(void *voidp) {
     }
 
     jobstr = json_dumps(job, JSON_INDENT(0) | JSON_COMPACT | JSON_SORT_KEYS);
+
+    //fprintf(stdout, "%s: got job %s\n", id, jobstr);
 
     job_type = json_string_value(json_object_get(job, "type"));
     if (job_type == NULL) {
@@ -146,6 +150,7 @@ void isSupervisor(const char *key) {
       while(1) {
         zmq_msg_init(&zmsg);
         zmq_msg_recv(&zmsg, wctx->dealer, 0);
+        //fprintf(stdout, "%s: sending to router %d bytes\n", id, (int)zmq_msg_size(&zmsg));
         more = zmq_msg_more(&zmsg);
         zmq_msg_send(&zmsg, wctx->router, more ? ZMQ_SNDMORE : 0);
         zmq_msg_close(&zmsg);
@@ -159,6 +164,7 @@ void isSupervisor(const char *key) {
       while(1) {
         zmq_msg_init(&zmsg);
         zmq_msg_recv(&zmsg, wctx->router, 0);
+        //fprintf(stdout, "%s: sending to dealer %d bytes\n", id, (int)zmq_msg_size(&zmsg));
         more = zmq_msg_more(&zmsg);
         zmq_msg_send(&zmsg, wctx->dealer, more ? ZMQ_SNDMORE : 0);
         zmq_msg_close(&zmsg);

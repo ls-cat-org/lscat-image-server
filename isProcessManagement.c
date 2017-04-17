@@ -150,6 +150,8 @@ isProcessListType *isCreateProcessListItem(void *zctx, json_t *isAuth, int esaf)
   rtn->next = firstProcessListItem;
   firstProcessListItem = rtn;
 
+  isRemakeZMQPollItems(NULL, NULL, NULL);
+
   isStartProcess(rtn);
   return rtn;
 }
@@ -170,7 +172,7 @@ zmq_pollitem_t *isRemakeZMQPollItems(void *parent_router, void *err_rep, void *e
   void *saved_parent_router;
   void *saved_err_dealer;
   void *saved_err_rep;
- int i;
+  int i;
   
   // Count the processes that appear to be running as indicated by a
   // non-null parent_dealer element.  Upon closing a process the
@@ -185,30 +187,20 @@ zmq_pollitem_t *isRemakeZMQPollItems(void *parent_router, void *err_rep, void *e
   }
 
   saved_parent_router = NULL;
+  saved_err_rep       = NULL;
+  saved_err_dealer    = NULL;
   if (isZMQPollItems != NULL) {
     saved_parent_router = isZMQPollItems[0].socket;
+    saved_err_rep       = isZMQPollItems[1].socket;
+    saved_err_dealer    = isZMQPollItems[2].socket;
+    free (isZMQPollItems);
   }
 
-  saved_err_rep = NULL;
-  if (isZMQPollItems != NULL) {
-    saved_err_rep = isZMQPollItems[1].socket;
-  }
-
-  saved_err_dealer = NULL;
-  if (isZMQPollItems != NULL) {
-    saved_err_dealer = isZMQPollItems[2].socket;
-  }
-
-  isZMQPollItems = realloc(isZMQPollItems, (1+n_processes) * sizeof(*isZMQPollItems));
+  isZMQPollItems = calloc(3+n_processes, sizeof(*isZMQPollItems));
   if (isZMQPollItems == NULL) {
     fprintf(stderr, "%s: Out of memory\n", id);
     exit (-1);
   }
-
-  // Clear the memory.  Could have used calloc/free instead of
-  // realloc.  Coulda done other stuff too..
-  //
-  memset(isZMQPollItems, 0, (3+n_processes)*sizeof(*isZMQPollItems));
 
   //
   isZMQPollItems[0].socket = parent_router ? parent_router : saved_parent_router;
@@ -227,6 +219,10 @@ zmq_pollitem_t *isRemakeZMQPollItems(void *parent_router, void *err_rep, void *e
       i++;
     }
   }
+  return isZMQPollItems;
+}
+
+zmq_pollitem_t *isGetZMQPollItems() {
   return isZMQPollItems;
 }
 
@@ -265,7 +261,7 @@ void isDestroyProcessListItem(isProcessListType *p) {
   free((char *)p->key);
   free(p);
 
-  isRemakeZMQPollItems(NULL);
+  isRemakeZMQPollItems(NULL, NULL, NULL);
 }
 
 void remakeProcessList(redisContext *rc) {
@@ -349,6 +345,7 @@ void remakeProcessList(redisContext *rc) {
       exit (-1);
     }
   }
+  isRemakeZMQPollItems(NULL, NULL, NULL);
 }
 
 

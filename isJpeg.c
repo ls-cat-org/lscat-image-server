@@ -117,11 +117,12 @@ void isJpegSend(isThreadContextType *tcp, json_t *job, json_t *meta, unsigned ch
   zmq_msg_t meta_msg;
   zmq_msg_t jpeg_msg;
 
+  fprintf(stdout, "%s: jpeg_len: %d\n", id, jpeg_len);
+
   // Compose messages
 
   // Err
   zmq_msg_init(&err_msg);
-
 
   // Job
   job_str = NULL;
