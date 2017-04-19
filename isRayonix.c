@@ -366,6 +366,8 @@ json_t *isRayonixGetMeta( const char *fn) {
   
   set_json_object_integer(id, rtn, "first_frame", 1);
   set_json_object_integer(id, rtn, "last_frame",  1);
+  set_json_object_string(id, rtn, "fn", fn);
+  set_json_object_integer(id, rtn, "frame", 1);
   
   return rtn;
 }

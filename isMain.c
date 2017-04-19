@@ -181,7 +181,7 @@ int main(int argc, char **argv) {
     // messages) back to the is.js
     //
     //
-    for (i=2; i<=n_zpollitems; i++) {
+    for (i=2; i<n_zpollitems; i++) {
       if (zpollitems[i].revents & ZMQ_POLLIN) {
         do {
           zmq_msg_init(&zmsg);

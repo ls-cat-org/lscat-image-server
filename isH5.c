@@ -307,6 +307,8 @@ json_t *isH5GetMeta(const char *fn) {
     fprintf(stderr, "%s: failed to close master file\n", id);
   }
 
+  set_json_object_string(id, meta, "fn", fn);
+
   //fprintf(stdout, "%s: returning with metadata\n", id);
   return meta;
 }
@@ -563,6 +565,8 @@ void isH5GetData(const char *fn, int frame, isImageBufType *imb) {
   
   //fprintf(stdout, "%s: enter with fn='%s' frame=%d\n", id, fn, frame);
   extra = imb->extra;
+
+  set_json_object_integer(id, imb->meta, "frame", frame);
 
   //
   // Open up the master file
