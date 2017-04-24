@@ -486,6 +486,9 @@ void isJpeg(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
   wval = wval < 0 ? 0 : wval;
   bval = bval <= wval ? wval+1 : bval;  
 
+  set_json_object_integer(id, job, "wval_used", wval);
+  set_json_object_integer(id, job, "bval_used", bval);
+
   if (imb->buf_depth == 2) {
     bp16 = imb->buf;
     for (row=0; row<imb->buf_height; row++) {
