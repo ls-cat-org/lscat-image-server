@@ -111,6 +111,8 @@ void isSupervisor(const char *key) {
   zmq_msg_t zmsg;
   int more;
 
+  mtrace();
+
   si.sa_sigaction = signal_action;
   sigemptyset(&si.sa_mask);
   sigaction( SIGTERM, &si, NULL);
