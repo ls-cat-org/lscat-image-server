@@ -64,6 +64,15 @@ int main(int argc, char **argv) {
   zmq_msg_t envelope_msgs[16];  // routing messages: likely there are no more than 2
   int n_envelope_msgs;
 
+  //mtrace();
+
+  // Make sure we are the only "is" process running on this node.
+  // Needed since we need to bind to a particular ipc socket AND if
+  // our predecessor has died but left its ZMQ threads running we
+  // don't want it to steal our messages (and do nothing with them)
+  //
+  isInit();
+
   n_zpollitems = N_ZPOLLITEMS_INC;
   zpollitems = calloc(n_zpollitems, sizeof(*zpollitems));
   if (zpollitems == NULL) {
@@ -139,16 +148,12 @@ int main(int argc, char **argv) {
     exit (-1);
   }
 
-  zpollitems = isRemakeZMQPollItems(router, err_dealer, err_rep);
-  n_zpollitems = isNProcesses() + 3;
-
-  fprintf(stdout, "%s: n_zpollitems=%d\n", id, n_zpollitems);
-
   //
   // Here is our main loop
   //
   while (1) {
-    zpollitems = isGetZMQPollItems();
+    zpollitems = isRemakeZMQPollItems(router, err_dealer, err_rep);
+    n_zpollitems = isNProcesses() + 3;
     n_zpollitems = isNProcesses() + 3;
 
     err = zmq_poll(zpollitems, n_zpollitems, -1);
