@@ -7,7 +7,61 @@ static isProcessListType *firstProcessListItem = NULL;
 static zmq_pollitem_t *isZMQPollItems = NULL;
 static int n_processes;
 
+void isInit() {
+  static const char *id = FILEID "isInit";
+  FILE *our_pid_file;
+  pid_t old_pid;
+  int nconv;
+  int err;
+
+  do {
+    our_pid_file = fopen(PID_FILE_NAME, "r");
+    if (our_pid_file == NULL) {
+      // Assume we bombed out because the file does not yet exist
+      // rather than some other more insidious reason.
+      break;
+    }
+    
+    errno = 0;
+    nconv = fscanf(our_pid_file, "%d", &old_pid);
+    if (nconv <= 0) {
+      // Make sure we have read the file before we start killing
+      // processes as root.
+      //
+      if (errno != 0) {
+        fprintf(stderr, "%s: failed to read pid file: %s\n", id, strerror(errno));
+      }
+      break;
+    }
+
+    //
+    // Go for the throat right off the bat. TODO: consider being
+    // gentle at first to give the previous process a chance to clean
+    // up.
+    err = kill(-old_pid, 9);
+    if (err == -1 && errno != ESRCH) {
+      fprintf(stderr, "%s: Could not kill previous process: %s\n", id, strerror(errno));
+      break;
+    }
+    
+  } while (0);
+
+  if (our_pid_file != NULL) {
+    fclose(our_pid_file);
+  }
+
+  our_pid_file = fopen(PID_FILE_NAME, "w");
+  if (our_pid_file == NULL) {
+    fprintf(stderr, "%s: Could not open pid file: %s\n", id, strerror(errno));
+    exit (-1);
+  }
+
+  fprintf(our_pid_file, "%d", (int)getpid());
+  fclose(our_pid_file);
+}
+
 void isProcessListInit() {
+  static const char *id = FILEID "isProcessListInit";
   int err;
   firstProcessListItem = NULL;
 
@@ -15,13 +69,14 @@ void isProcessListInit() {
   errno = 0;
   err = hcreate_r(process_table_size, &process_table);
   if (err == 0) {
-    fprintf(stderr, "Fatal error: %s\n", strerror(errno));
+    fprintf(stderr, "%s: Fatal error: %s\n", id, strerror(errno));
     exit (-1);
   }
   n_processes = 0;
 }
 
 void isStartProcess(isProcessListType *p) {
+  static const char *id = FILEID "isStartProcess";
   int child;
   struct passwd *pwds;
   struct passwd *esaf_pwds;
@@ -37,7 +92,7 @@ void isStartProcess(isProcessListType *p) {
   errno = 0;
   pwds = getpwnam(userName);
   if (pwds == NULL) {
-    fprintf(stderr, "Could not start process for user %s: %s\n", userName, strerror(errno));
+    fprintf(stderr, "%s: Could not start process for user %s: %s\n", id, userName, strerror(errno));
     return;
   }
 
@@ -49,7 +104,7 @@ void isStartProcess(isProcessListType *p) {
     errno = 0;
     esaf_pwds = getpwnam(esafUser);
     if (esaf_pwds == NULL) {
-      fprintf(stderr, "isStartProcess: bad esaf user name '%s':%s\n", esafUser, strerror(errno));
+      fprintf(stderr, "%s: isStartProcess: bad esaf user name '%s':%s\n", id, esafUser, strerror(errno));
       return;
     }
     gid = esaf_pwds->pw_gid;
@@ -59,12 +114,12 @@ void isStartProcess(isProcessListType *p) {
     homeDirectory = strdup(pwds->pw_dir);
   }
 
-  fprintf(stdout, "Starting sub process: uid=%d, gid=%d, dir: %s,  User: %s\n", uid, gid, homeDirectory, userName);
+  fprintf(stdout, "%s: Starting sub process: uid=%d, gid=%d, dir: %s,  User: %s\n", id, uid, gid, homeDirectory, userName);
 
   errno = 0;
   child = fork();
   if (child == -1) {
-    fprintf(stderr, "Could not start sub process: %s\n", strerror(errno));
+    fprintf(stderr, "%s: Could not start sub process: %s\n", id, strerror(errno));
     exit (-1);
   }
   if (child) {
@@ -82,7 +137,7 @@ void isStartProcess(isProcessListType *p) {
   errno = 0;
   err = setgid(gid);
   if (err != 0) {
-    fprintf(stderr, "Could not change gid to %d: %s\n", gid, strerror(errno));
+    fprintf(stderr, "%s: Could not change gid to %d: %s\n", id, gid, strerror(errno));
     _exit (-1);
   }
 
@@ -96,7 +151,7 @@ void isStartProcess(isProcessListType *p) {
   errno = 0;
   err = chdir(homeDirectory);
   if (err != 0) {
-    fprintf(stderr, "Could not change working directory to %s: %s\n", homeDirectory, strerror(errno));
+    fprintf(stderr, "%s: Could not change working directory to %s: %s\n", id, homeDirectory, strerror(errno));
     _exit (-1);
   }
 
