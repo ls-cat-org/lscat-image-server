@@ -8,6 +8,7 @@
 #include <jansson.h>
 #include <jpeglib.h>
 #include <math.h>
+#include <mcheck.h>
 #include <openssl/err.h>
 #include <openssl/evp.h>
 #include <openssl/ssl.h>
@@ -31,6 +32,8 @@
 
 #include <assert.h>
 
+// Save our pid so we can autokill stuff later
+#define PID_FILE_NAME "/var/run/is.pid"
 
 // Prefix procedure names with the file name and a space for debug output
 #define FILEID __FILE__ " "
@@ -137,3 +140,4 @@ extern void is_zmq_error_reply(zmq_msg_t *msgs, int n_msgs, void *err_dealer, ch
 extern zmq_pollitem_t *isRemakeZMQPollItems(void *parent_router, void *err_rep, void *err_dealer);
 extern int isNProcesses();
 extern zmq_pollitem_t *isGetZMQPollItems();
+extern void isInit();
