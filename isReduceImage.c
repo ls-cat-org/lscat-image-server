@@ -1,3 +1,8 @@
+/*! @file isReduceImage.c
+ *  @copyright 2017 by Northwestern University All Rights Reserved
+ *  @author Keith Brister
+ *  @brief Reduce full images for the LS-CAT Image Server Version 2
+ */
 #include "is.h"
 
 /*

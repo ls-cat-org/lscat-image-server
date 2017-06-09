@@ -1,3 +1,8 @@
+/*! @file isProcessManagement.c
+ *  @copyright 2017 by Northwestern University All Rights Reserved
+ *  @author Keith Brister
+ *  @brief Process Management Code for the LS-CAT Image Server Version 2
+ */
 #include "is.h"
 
 #define INITIAL_PROCESS_TABLE_SIZE 128
@@ -97,6 +102,7 @@ void isStartProcess(isProcessListType *p) {
   }
 
   uid = pwds->pw_uid;
+
   if (p->esaf > 40000) {
     snprintf(esafUser, sizeof(esafUser)-1, "e%d", p->esaf);
     esafUser[sizeof(esafUser)-1] = 0;
@@ -104,7 +110,7 @@ void isStartProcess(isProcessListType *p) {
     errno = 0;
     esaf_pwds = getpwnam(esafUser);
     if (esaf_pwds == NULL) {
-      fprintf(stderr, "%s: isStartProcess: bad esaf user name '%s':%s\n", id, esafUser, strerror(errno));
+      fprintf(stderr, "%s: bad esaf user name '%s':%s\n", id, esafUser, strerror(errno));
       return;
     }
     gid = esaf_pwds->pw_gid;
@@ -114,7 +120,7 @@ void isStartProcess(isProcessListType *p) {
     homeDirectory = strdup(pwds->pw_dir);
   }
 
-  fprintf(stdout, "%s: Starting sub process: uid=%d, gid=%d, dir: %s,  User: %s\n", id, uid, gid, homeDirectory, userName);
+  fprintf(stdout, "%s: Starting sub process: uid=%d, gid=%d, dir: %s,  User: %s  ESAF: %d\n", id, uid, gid, homeDirectory, userName, p->esaf);
 
   errno = 0;
   child = fork();

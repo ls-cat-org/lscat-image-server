@@ -1,3 +1,8 @@
+/*! @file isUtilities.c
+ *  @copyright 2017 by Northwestern University All Rights Reserved
+ *  @author Keith Brister
+ *  @brief Various and sundry utilities to support the LS-CAT Image Server Version 2
+ */
 #include "is.h"
 //
 // For some reason our isAuth strings come to us with escaped \n line

@@ -1,22 +1,38 @@
-//  Support for text overlays in NDPluginOverlay
-//  Keith Brister 2014-06-26
-//
-//  Adapted for use in LS-CAT Image Server
-//  Copyright 2016 by Northwestern University
-//
-// 6x13
-// -Misc-Fixed-Medium-R-SemiCondensed--13-120-75-75-C-60-ISO10646-1
-//
-// Font from http://www.cl.cam.ac.uk/~mgk25/ucs-fonts.html
-//
-// This font appears to be in the public domain.
-//
-// The full font has been whittled down to the characters 32 through 255.  
-// When UTF-8, in its full glory, is needed it shouldn't be too difficult to support.
-//
-// Created from bdf2c Version 3, (c) 2009, 2010 by Lutz Sammer
-//    License AGPLv3: GNU Affero General Public License version 3
-//
+/** @file isBitmapFont.c
+ *  @brief Provides bit mapped fonts for image overlays
+ *  @date 2014, 2016, 2017
+ *  @copyright 2017 by Northwestern University
+ *  @author Keith Brister
+ *
+ *  Fonts supported:
+ *
+ * 6x13
+ *    -Misc-Fixed-Medium-R-SemiCondensed--13-120-75-75-C-60-ISO10646-1
+ *
+ * 6x13B
+ *    -Misc-Fixed-Bold-R-SemiCondensed--13-120-75-75-C-60-ISO10646-1
+ *
+ * 9x15
+ *    -Misc-Fixed-Medium-R-Normal--15-140-75-75-C-90-ISO10646-1
+ *
+ * 9x15B
+ *    -Misc-Fixed-Bold-R-Normal--15-140-75-75-C-90-ISO10646-1
+ *
+ * The fonts themselves are possibly copyrighted and covered by an MIT
+ * license (as they  are based on fonts in the  X11 distribution).  Or
+ * possibly  they  are  not  copyrighted.  Or  possibly  the  are  not
+ * copyrightable.  The author of this code  has not done any more than
+ * waste some time on Google trying to figure this out without finding
+ * a definitive answer.
+ *
+ * The full fonts have been whittled down to the characters 32 through
+ * 255.  When UTF-8, in its full glory, is needed, it shouldn't be too
+ * difficult to support.
+ *
+ * The arrays below were created from bdf2c Version 3, (c) 2009, 2010
+ * by Lutz Sammer License AGPLv3: GNU Affero General Public License
+ * version 3
+ */
 
 #include "isBitmapFont.h"
 

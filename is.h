@@ -1,3 +1,8 @@
+/*! @file is.h
+ *  @brief Header file to be included in all the V2 image server code.
+ *  @copyright 2017 Northwestern University All Rights Resesrved
+ *  @author Keith Brister
+ */
 #define _GNU_SOURCE
 #define __USE_GNU
 

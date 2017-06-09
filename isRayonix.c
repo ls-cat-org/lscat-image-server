@@ -1,3 +1,8 @@
+/*! @file isRayonix.c
+ *  @copyright 2017 by Northwestern University All Rights Reservered
+ *  @author Keith Brister
+ *  @breif Code to read Rayonix TIFF image files for the LS-CAT Image Server Version 2
+ */
 #include "is.h"
 /*
 **

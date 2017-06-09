@@ -1,3 +1,8 @@
+/*! @file isJpeg.c
+ *  @copyright 2017 by Northwestern University
+ *  @author Keith Brister
+ *  @brief Routines to output jpeg images for the LS-CAT Image Server Version 2
+ */
 #include "is.h"
 
 void isJpegLabel(const char *label, int width, int height, struct jpeg_compress_struct *cinfop) {
@@ -255,6 +260,8 @@ void isJpegBlank(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job)
     }
     free(row_buffer);
     free(out_buffer);
+    is_zmq_error_reply(NULL, 0, tcp->rep, "%s: Jpeg creation failed", id);
+
     return;
   }
 
@@ -357,6 +364,7 @@ void isJpeg(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
 
     tmps = json_dumps(job, JSON_SORT_KEYS | JSON_COMPACT | JSON_INDENT(0));
     fprintf(stderr, "%s: missing data for job %s\n", id, tmps);
+    is_zmq_error_reply(NULL, 0, tcp->rep, "%s: missing data for job %s", id, tmps);
 
     free(tmps);
     return;

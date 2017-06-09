@@ -1,3 +1,8 @@
+/*! @file isWorker.c
+ *  @copyright 2017 by Northwestern University All Rights Reserved
+ *  @author Keith Brister
+ *  @brief Routines to parse instructions from the user and fire off the appropriate actions.
+ */
 #include "is.h"
 static int running = 0;
 
@@ -61,7 +66,17 @@ void *isWorker(void *voidp) {
     if (err == -1) {
       fprintf(stderr, "%s: problem receiving message: %s\n", id, zmq_strerror(errno));
       zmq_msg_close(&zmsg);
-      continue;
+      if (errno == EFSM) {
+        //
+        // Trick to get socket back to the right state
+        //
+        // TODO: How, exactly did we get into the wrote state to begin
+        // with?  Do we have an error somewhere that does not call
+        // is_zmq_error_reply?
+        //
+        is_zmq_error_reply(NULL, 0, tc.rep, "%s: Socket in wrong state", id);
+        continue;
+      }
     }
 
     job = json_loadb(zmq_msg_data(&zmsg), zmq_msg_size(&zmsg), 0, &jerr);

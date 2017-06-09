@@ -277,7 +277,7 @@ image_file_type isFileType(const char *fn) {
     return HDF5;
   }
 
-  fprintf(stderr, "%s: Unknown file type '%s'\n", id, fn);
+  fprintf(stderr, "%s: Unknown file type '%s' buf4 = %x08\n", id, fn, buf4);
   return UNKNOWN;
 }
 
@@ -830,7 +830,7 @@ isImageBufType *isGetRawImageBuf(isWorkerContext_t *wctx, redisContext *rc, json
       
   case UNKNOWN:
   default:
-    fprintf(stderr, "%s: unknown file type for file %s\n", id, fn);
+    fprintf(stderr, "%s: unknown file type '%d' for file %s\n", id, ft, fn);
     pthread_rwlock_unlock(&rtn->buflock);
     free(key);
     return NULL;

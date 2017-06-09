@@ -1,4 +1,3 @@
-
 /** @file isMain.c
  *  @brief Runs the image server main loop
  *  @date 2017

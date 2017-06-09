@@ -3,6 +3,9 @@ all: is
 distclean:
 	@rm -f *.o is
 
+install:
+	install --mode=755 is /usr/local/bin
+
 isData.o: isData.c is.h Makefile
 	gcc -g -Wall -c isData.c
 
