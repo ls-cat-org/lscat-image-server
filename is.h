@@ -35,6 +35,7 @@
 
 #include "isBitmapFont.h"
 
+#define NDEBUG
 #include <assert.h>
 
 // Save our pid so we can autokill stuff later
