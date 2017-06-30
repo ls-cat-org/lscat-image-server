@@ -29,7 +29,7 @@ void isJpegLabel(const char *label, int width, int height, struct jpeg_compress_
   row_buffer = calloc(1, row_buffer_size);
   if (row_buffer == NULL) {
     fprintf(stderr, "%s: Out of memory (row_buffer)\n", id);
-    exit (-1);
+    pthread_exit (NULL);
   }
 
   // Write the label
@@ -140,8 +140,9 @@ void isJpegSend(isThreadContextType *tcp, json_t *job, json_t *meta, unsigned ch
 
   err = zmq_msg_init_data(&job_msg, job_str, strlen(job_str), is_zmq_free_fn, NULL);
   if (err != 0) {
+    is_zmq_error_reply(NULL, 0, tcp->rep, "%s: Could not initialize reply message (job_str)", id);
     fprintf(stderr, "%s: zmq_msg_init failed (job_str): %s\n", id, zmq_strerror(errno));
-    exit (-1);
+    pthread_exit (NULL);
   }
 
   // Meta
@@ -155,16 +156,18 @@ void isJpegSend(isThreadContextType *tcp, json_t *job, json_t *meta, unsigned ch
 
   err = zmq_msg_init_data(&meta_msg, meta_str, strlen(meta_str), is_zmq_free_fn, NULL);
   if (err == -1) {
+    is_zmq_error_reply(NULL, 0, tcp->rep, "%s: Could not initialize reply message (meta_str)", id);
     fprintf(stderr, "%s: zmq_msg_init failed (meta_str): %s\n", id, zmq_strerror(errno));
-    exit (-1);
+    pthread_exit (NULL);
   }
 
 
   // JPEG
   err = zmq_msg_init_data(&jpeg_msg, out_buffer, jpeg_len, is_zmq_free_fn, NULL);
   if (err == -1) {
+    is_zmq_error_reply(NULL, 0, tcp->rep, "%s: Could not initialize reply message (jpeg)", id);
     fprintf(stderr, "%s: zmq_msg_init failed (jpeg): %s\n", id, zmq_strerror(errno));
-    exit (-1);
+    pthread_exit (NULL);
   }
 
   // Send them out
@@ -234,6 +237,7 @@ void isJpegBlank(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job)
 
   row_buffer = calloc(1, row_buffer_size);
   if (row_buffer == NULL) {
+    is_zmq_error_reply(NULL, 0, tcp->rep, "%s: Out of memory (row_buffer)", id);
     fprintf(stderr, "%s: Out of memory (row_buffer)\n", id);
     exit (-1);
   }
@@ -245,6 +249,7 @@ void isJpegBlank(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job)
 
   out_buffer = calloc(1, out_buffer_size);
   if (out_buffer == NULL) {
+    is_zmq_error_reply(NULL, 0, tcp->rep, "%s: Out of memory (out_buffer)", id);
     fprintf(stderr, "%s: Out of memory (out_buffer)\n", id);
     exit (-1);
   }
@@ -261,12 +266,12 @@ void isJpegBlank(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job)
     free(row_buffer);
     free(out_buffer);
     is_zmq_error_reply(NULL, 0, tcp->rep, "%s: Jpeg creation failed", id);
+    fprintf( stderr, "%s: jpeg compression error\n", id);
 
     return;
   }
 
   void jerror_handler( j_common_ptr cp) {
-    fprintf( stderr, "%s: jpeg compression error\n", id);
     longjmp( *(jmp_buf *)cp->client_data, 1);
   }
 
@@ -378,8 +383,9 @@ void isJpeg(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
 
   row_buffer = calloc(1, row_buffer_size);
   if (row_buffer == NULL) {
+    is_zmq_error_reply(NULL, 0, tcp->rep, "%s: Out of memory (row_buffer)", id);
     fprintf(stderr, "%s: Out of memory (row_buffer)\n", id);
-    exit (-1);
+    pthread_exit (NULL);
   }
 
   out_buffer_size = imb->buf_width * (imb->buf_height + labelHeight) * sizeof(*out_buffer) * 3;
@@ -389,8 +395,9 @@ void isJpeg(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
 
   out_buffer = calloc(1, out_buffer_size);
   if (out_buffer == NULL) {
+    is_zmq_error_reply(NULL, 0, tcp->rep, "%s: Out of memory (out_buffer)", id);
     fprintf(stderr, "%s: Out of memory (out_buffer)\n", id);
-    exit (-1);
+    pthread_exit (NULL);
   }
 
   //
@@ -410,6 +417,9 @@ void isJpeg(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
     pthread_mutex_lock(&wctx->ctxMutex);
     imb->in_use--;
 
+    is_zmq_error_reply(NULL, 0, tcp->rep, "%s: jpeg compression error", id);
+    fprintf( stderr, "%s: jpeg compression error\n", id);
+
     assert(imb->in_use >= 0);
 
     pthread_mutex_unlock(&wctx->ctxMutex);
@@ -417,7 +427,6 @@ void isJpeg(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
   }
 
   void jerror_handler( j_common_ptr cp) {
-    fprintf( stderr, "%s: jpeg compression error\n", id);
     longjmp( *(jmp_buf *)cp->client_data, 1);
   }
 

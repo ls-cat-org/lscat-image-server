@@ -563,7 +563,7 @@ isImageBufType *isReduceImage(isWorkerContext_t *wctx, redisContext *rc, json_t 
   //
   // Let the other processes get started on this one too.
   //
-  isWriteImageBufToRedis(rtn, rc);
+  //isWriteImageBufToRedis(rtn, rc);
 
   free(reducedKey);
   return rtn;

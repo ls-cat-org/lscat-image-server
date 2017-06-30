@@ -94,7 +94,9 @@ json_t *get_json( hid_t master_file, h5_to_json_t *htj) {
   hsize_t *dims;
   hsize_t npoints;
   int rank;
-
+  int failed;
+  
+  failed = 0;
   rtn = json_object();
   if (rtn == NULL) {
     fprintf(stderr, "%s: Failed to create return object\n", id);
@@ -104,7 +106,8 @@ json_t *get_json( hid_t master_file, h5_to_json_t *htj) {
   data_set = H5Dopen2( master_file, htj->h5_location, H5P_DEFAULT);
   if (data_set < 0) {
     fprintf(stderr, "%s: Could not open data_set %s\n", id, htj->h5_location);
-    exit (-1);
+    json_decref(rtn);
+    return NULL;
   }
 
   switch(htj->type) {
@@ -112,118 +115,135 @@ json_t *get_json( hid_t master_file, h5_to_json_t *htj) {
     herr = H5Dread(data_set, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &i_value);
     if (herr < 0) {
       fprintf(stderr, "%s: Could not read %s\n", id, htj->h5_location);
-      exit (-1);
+      failed = 1;
+      break;
     }
     set_json_object_integer(id, rtn, htj->json_property_name, i_value);
     break;
-
+      
   case 'f':
     herr = H5Dread(data_set, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &f_value);
     if (herr < 0) {
       fprintf(stderr, "%s: Could not read %s\n", id, htj->h5_location);
-      exit (-1);
+      failed = 1;
+      break;
     }
     set_json_object_real(id, rtn, htj->json_property_name, f_value);
     break;
-
+      
   case 's':
     data_type = H5Dget_type(data_set);
     if (data_type < 0) {
       fprintf(stderr, "%s: Could not get data_type (%s)\n", id, htj->h5_location);
-      exit (-1);
+      failed = 1;
+      break;
     }
     value_length = H5Tget_size(data_type);
-
+      
     if (value_length < 0) {
       fprintf(stderr, "%s: Could not determine length of string for dataset %s\n", id, htj->h5_location);
-      exit (-1);
+      failed = 1;
+      break;
     }
     s_value = calloc(value_length+1, 1);
     if (s_value == NULL) {
       fprintf(stderr, "%s: Out of memory (s_value)\n", id);
-      exit (-1);
+      failed = 1;
+      break;
     }
-    
+      
     mem_type = H5Tcopy(H5T_C_S1);
     if (mem_type < 0) {
       fprintf(stderr, "%s: Could not copy type for %s\n", id, htj->h5_location);
-      exit (-1);
+      failed = 1;
+      break;
     }
-
+      
     herr = H5Tset_size(mem_type, value_length);
     if (herr < 0) {
       fprintf(stderr, "%s: Could not set memory type size (%s)\n", id, htj->h5_location);
-      exit (-1);
+      failed = 1;
+      break;
     }
-
+      
     herr = H5Dread(data_set, mem_type, H5S_ALL, H5S_ALL, H5P_DEFAULT, s_value);
     if (herr < 0) {
       fprintf(stderr, "%s: Could not read %s\n", id, htj->h5_location);
-      exit (-1);
+      failed = 1;
+      break;
     }
-
+      
     set_json_object_string(id, rtn, htj->json_property_name, s_value);
-
+      
     herr = H5Tclose(data_type);
     if (herr < 0) {
       fprintf(stderr, "%s: Could not close data_type (s_value)\n", id);
-      exit (-1);
+      failed = 1;
+      break;
     }
-
+      
     herr = H5Tclose(mem_type);
     if (herr < 0) {
       fprintf(stderr, "%s: Could not close mem_type (s_value)\n", id);
-      exit (-1);
+      failed = 1;
+      break;
     }
     free(s_value);
     s_value = NULL;
     break;
-
+      
   case 'F':
     // Here we assume we know the array length ahead of time.  Probably a bad assumption.
-
+      
     data_space = H5Dget_space(data_set);
     if (data_space < 0) {
       fprintf(stderr, "%s: Could not get data_space (float array)\n", id);
-      exit (-1);
+      failed = 1;
+      break;
     }
-
+      
     rank = H5Sget_simple_extent_ndims(data_space);
     if (rank < 0) {
       fprintf(stderr, "%s: Could not get rank of data space (float array)\n", id);
-      exit (-1);
+      failed = 1;
+      break;
     }
-    
+      
     dims = calloc(rank, sizeof(*dims));
     if (dims == NULL) {
       fprintf(stderr, "%s: Could not allocate memory for dims array (float array)\n", id);
-      exit (-1);
+      failed = 1;
+      break;
     }
-
+      
     herr = H5Sget_simple_extent_dims(data_space, dims, NULL);
     if (herr < 0) {
       fprintf(stderr, "%s: Could not get dimensions of float array\n", id);
-      exit (-1);
+      failed = 1;
+      break;
     }
       
     npoints = H5Sget_simple_extent_npoints(data_space);
     if (npoints < 0) {
       fprintf(stderr, "%s: Failed to get number of elements for float array\n", id);
-      exit (-1);
+      failed = 1;
+      break;
     }
-
+      
     fa_value = calloc( npoints, sizeof(float));
     if (fa_value == NULL) {
       fprintf(stderr, "%s: Out of memory (fa_value)\n", id);
-      exit (-1);
+      failed = 1;
+      break;
     }
-
+      
     herr = H5Dread(data_set, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, fa_value);
     if (herr < 0) {
       fprintf(stderr, "%s: Could not read %d float values from %s\n", id, (int)npoints, htj->h5_location);
-      exit (-1);
+      failed = 1;
+      break;
     }
-
+      
     switch (rank) {
     case 1:
       set_json_object_float_array(id, rtn, htj->json_property_name, fa_value, dims[0]);
@@ -231,27 +251,34 @@ json_t *get_json( hid_t master_file, h5_to_json_t *htj) {
     case 2:
       set_json_object_float_array_2d(id, rtn, htj->json_property_name, fa_value, dims[1], dims[0]);
       break;
-
+        
     default:
       fprintf(stderr, "%s: Unsupported json array rank (%d)\n", id, rank);
-      exit (-1);
+      failed = 1;
+      break;
     }
-
+      
     H5Sclose(data_space);
     free(dims);
     free(fa_value);
     fa_value = NULL;
     break;
-
+      
   default:
     fprintf(stderr, "%s: data_set type code %c not implemented (%s)\n", id, htj->type, htj->h5_location);
-    exit (-1);
+    failed = 1;
+    break;
   }
 
   herr = H5Dclose(data_set);
   if (herr < 0) {
     fprintf(stderr, "%s: could not close dataset for %s\n", id, htj->h5_location);
-    exit (-1);
+    failed = 1;
+  }
+
+  if (failed) {
+    json_decref(rtn);
+    return NULL;
   }
 
   return rtn;
@@ -292,6 +319,9 @@ json_t *isH5GetMeta(const char *fn) {
 
   for (i=0; i < sizeof(json_convert_array)/sizeof(json_convert_array[0]); i++) {
     tmp_obj = get_json(master_file, &json_convert_array[i]);
+    if (!tmp_obj) {
+      return NULL;
+    }
     err = json_object_update(meta, tmp_obj);
     if (err != 0) {
       fprintf(stderr, "%s: Could not update meta_obj\n", id);
@@ -329,8 +359,10 @@ int discovery_cb(hid_t lid, const char *name, const H5L_info_t *info, void *op_d
   hid_t image_nr_high;
   hid_t image_nr_low;
   frame_discovery_t *these_frames, *fp, *fpp;
+  int failed;
 
   extra = op_data;
+  failed = 0;
 
   these_frames = calloc(sizeof(frame_discovery_t), 1);
   if (these_frames == NULL) {
@@ -348,87 +380,104 @@ int discovery_cb(hid_t lid, const char *name, const H5L_info_t *info, void *op_d
     fpp = fp;
   }
 
-  these_frames->next = NULL;
-  if (fpp == NULL) {
-    extra->frame_discovery_base = these_frames;
-  } else {
-    fpp->next = these_frames;
-  }
-
-  if (info->type == H5L_TYPE_EXTERNAL) {
-    herr = H5Lget_val(lid, name, s, sizeof(s), H5P_DEFAULT);
-    if (herr < 0) {
-      fprintf(stderr, "%s: Could not get link value %s\n", id, name);
-      exit (-1);
+  do {
+    these_frames->next = NULL;
+    if (fpp == NULL) {
+      extra->frame_discovery_base = these_frames;
+    } else {
+      fpp->next = these_frames;
     }
 
-    herr = H5Lunpack_elink_val(s, sizeof(s), 0, &fnp, &pp);
+    if (info->type == H5L_TYPE_EXTERNAL) {
+      herr = H5Lget_val(lid, name, s, sizeof(s), H5P_DEFAULT);
+      if (herr < 0) {
+        fprintf(stderr, "%s: Could not get link value %s\n", id, name);
+        failed = 1;
+        break;
+      }
+
+      herr = H5Lunpack_elink_val(s, sizeof(s), 0, &fnp, &pp);
+      if (herr < 0) {
+        fprintf(stderr, "%s: Could not unpack link value for %s\n", id, name);
+        failed = 1;
+        break;
+      }    
+    }
+  
+    these_frames->data_set = H5Dopen2(lid, name, H5P_DEFAULT);
+    if (these_frames->data_set < 0) {
+      fprintf(stderr, "%s: Failed to open dataset %s\n", id, name);
+      failed = 1;
+      break;
+    }
+
+    these_frames->file_space = H5Dget_space(these_frames->data_set);
+    if (these_frames->file_space < 0) {
+      fprintf(stderr, "%s: Could not get data_set space for %s\n", id, name);
+      failed = 1;
+      break;
+    }
+
+    these_frames->file_type = H5Dget_type(these_frames->data_set);
+    if (these_frames->file_type < 0) {
+      fprintf(stderr, "%s: Could not get data_set type for %s\n", id, name);
+      failed = 1;
+      break;
+    }
+
+    image_nr_high = H5Aopen_by_name( lid, name, "image_nr_high", H5P_DEFAULT, H5P_DEFAULT);
+    if (image_nr_high < 0) {
+      fprintf(stderr, "%s: Could not open attribute 'image_nr_high' in linked file %s\n", id, name);
+      failed = 1;
+      break;
+    }
+  
+    herr = H5Aread(image_nr_high, H5T_NATIVE_INT, &(these_frames->last_frame));
     if (herr < 0) {
-      fprintf(stderr, "%s: Could not unpack link value for %s\n", id, name);
-      exit (-1);
-    }    
-  }
+      fprintf(stderr, "%s: Could not read value 'image_nr_high' in linked file %s\n", id, name);
+      failed = 1;
+      break;
+    }
+
+    herr = H5Aclose(image_nr_high);
+    if (herr < 0) {
+      fprintf(stderr, "%s: Failed to close attribute image_nr_high\n", id);
+      failed = 1;
+      break;
+    }
+
+    image_nr_low = H5Aopen_by_name( lid, name, "image_nr_low", H5P_DEFAULT, H5P_DEFAULT);
+    if (image_nr_low < 0) {
+      fprintf(stderr, "%s: Could not open attribute 'image_nr_low' in linked file %s\n", id, name);
+      failed = 1;
+      break;
+    }
   
-  these_frames->data_set = H5Dopen2(lid, name, H5P_DEFAULT);
-  if (these_frames->data_set < 0) {
-    fprintf(stderr, "%s: Failed to open dataset %s\n", id, name);
-    exit (-1);
-  }
+    herr = H5Aread(image_nr_low, H5T_NATIVE_INT, &(these_frames->first_frame));
+    if (herr < 0) {
+      fprintf(stderr, "%s: Could not read value 'image_nr_low' in linked file %s\n", id, name);
+      failed = 1;
+      break;
+    }
 
-  these_frames->file_space = H5Dget_space(these_frames->data_set);
-  if (these_frames->file_space < 0) {
-    fprintf(stderr, "%s: Could not get data_set space for %s\n", id, name);
-    exit (-1);
-  }
+    herr = H5Aclose(image_nr_low);
+    if (herr < 0) {
+      fprintf(stderr, "%s: Failed to close attribute image_nr_low\n", id);
+      failed = 1;
+      break;
+    }
 
-  these_frames->file_type = H5Dget_type(these_frames->data_set);
-  if (these_frames->file_type < 0) {
-    fprintf(stderr, "%s: Could not get data_set type for %s\n", id, name);
-    exit (-1);
-  }
+    these_frames->done_list = calloc( these_frames->last_frame - these_frames->first_frame + 1, 1);
+    if (these_frames->done_list == NULL) {
+      fprintf(stderr, "%s: Out of memory (done_list)\n", id);
+      failed = 1;
+      break;
+    }
+  } while (0);
 
-  image_nr_high = H5Aopen_by_name( lid, name, "image_nr_high", H5P_DEFAULT, H5P_DEFAULT);
-  if (image_nr_high < 0) {
-    fprintf(stderr, "%s: Could not open attribute 'image_nr_high' in linked file %s\n", id, name);
-    exit (-1);
+  if (failed) {
+    return -1;
   }
-  
-  herr = H5Aread(image_nr_high, H5T_NATIVE_INT, &(these_frames->last_frame));
-  if (herr < 0) {
-    fprintf(stderr, "%s: Could not read value 'image_nr_high' in linked file %s\n", id, name);
-    exit (-1);
-  }
-
-  herr = H5Aclose(image_nr_high);
-  if (herr < 0) {
-    fprintf(stderr, "%s: Failed to close attribute image_nr_high\n", id);
-    exit (-1);
-  }
-
-  image_nr_low = H5Aopen_by_name( lid, name, "image_nr_low", H5P_DEFAULT, H5P_DEFAULT);
-  if (image_nr_low < 0) {
-    fprintf(stderr, "%s: Could not open attribute 'image_nr_low' in linked file %s\n", id, name);
-    exit (-1);
-  }
-  
-  herr = H5Aread(image_nr_low, H5T_NATIVE_INT, &(these_frames->first_frame));
-  if (herr < 0) {
-    fprintf(stderr, "%s: Could not read value 'image_nr_low' in linked file %s\n", id, name);
-    exit (-1);
-  }
-
-  herr = H5Aclose(image_nr_low);
-  if (herr < 0) {
-    fprintf(stderr, "%s: Failed to close attribute image_nr_low\n", id);
-    exit (-1);
-  }
-
-  these_frames->done_list = calloc( these_frames->last_frame - these_frames->first_frame + 1, 1);
-  if (these_frames->done_list == NULL) {
-    fprintf(stderr, "%s: Out of memory (done_list)\n", id);
-    exit (-1);
-  }
-
   return 0;
 }
 
@@ -452,7 +501,6 @@ void get_one_frame(const char *fn, int frame, isImageBufType *imb) {
 
   extra = imb->extra;
 
-  //fprintf(stdout, "%s: start %s\n", id, extra==NULL ? "extra is null" : "");
   for (fp = extra->frame_discovery_base; fp != NULL; fp = fp->next) {
     fprintf(stderr, "%s: first_frame=%d  last_frame=%d\n", id, fp->first_frame, fp->last_frame);
     if (fp->first_frame <= frame && fp->last_frame >= frame) {
@@ -566,9 +614,9 @@ void isH5GetData(const char *fn, int frame, isImageBufType *imb) {
   uint32_t first_frame;
   uint32_t last_frame;
   frame_discovery_t *fp;
-
+  int failed;
   
-  //fprintf(stdout, "%s: enter with fn='%s' frame=%d\n", id, fn, frame);
+  failed = 0;
   extra = imb->extra;
 
   set_json_object_integer(id, imb->meta, "frame", frame);
@@ -617,41 +665,48 @@ void isH5GetData(const char *fn, int frame, isImageBufType *imb) {
       data_set = H5Dopen2(master_file, "/entry/instrument/detector/detectorSpecific/pixel_mask", H5P_DEFAULT);
       if (data_set < 0) {
         fprintf(stderr, "%s: Could not open pixel mask data set\n", id);
+        failed = 1;
         break;
       }
       
       data_space = H5Dget_space(data_set);
       if (data_space < 0) {
         fprintf(stderr, "%s: Could not open pixel mask data space\n", id);
+        failed = 1;
         break;
       }
       
       rank = H5Sget_simple_extent_ndims(data_space);
       if (rank < 0) {
         fprintf(stderr, "%s: Could not get pixel mask rank\n", id);
+        failed = 1;
         break;
       }
       
       if (rank != 2) {
         fprintf(stderr, "%s: We do not know how to deal with a pixel mask of rank %d.  It should be 2\n", id, rank);
+        failed = 1;
         break;
       }
       
       err = H5Sget_simple_extent_dims(data_space, dims, NULL);
       if (err < 0) {
-        fprintf(stderr, "%s: Could not get pixelmask dimentions\n", id);
+        fprintf(stderr, "%s: Could not get pixelmask dimensions\n", id);
+        failed = 1;
         break;
       }
       
       npoints = H5Sget_simple_extent_npoints(data_space);
       if (npoints < 0) {
         fprintf(stderr, "%s: Could not get pixel mask dimensions\n", id);
+        failed = 1;
         break;
       }
       
       imb->bad_pixel_map = calloc(npoints, sizeof(uint32_t));
       if (imb->bad_pixel_map == NULL) {
         fprintf(stderr, "%s: Could not allocate memory for the pixelmask\n", id);
+        failed = 1;
         break;
       }
       
@@ -660,9 +715,15 @@ void isH5GetData(const char *fn, int frame, isImageBufType *imb) {
         fprintf(stderr, "%s: Could not read pixelmask data\n", id);
         free(imb->bad_pixel_map);
         imb->bad_pixel_map = NULL;
+        failed = 1;
         break;
       }
     } while(0);
   }
+
+  if (failed) {
+    return;
+  }
+
   get_one_frame(fn, frame, imb);
 }

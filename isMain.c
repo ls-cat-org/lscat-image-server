@@ -62,6 +62,7 @@ int main(int argc, char **argv) {
   int i;
   zmq_msg_t envelope_msgs[16];  // routing messages: likely there are no more than 2
   int n_envelope_msgs;
+  int socket_option;
 
   //mtrace();
 
@@ -125,6 +126,20 @@ int main(int argc, char **argv) {
     exit (-1);
   }
 
+  socket_option = 0;
+  err = zmq_setsockopt(router, ZMQ_RCVHWM, &socket_option, sizeof(socket_option));
+  if (err == -1) {
+    fprintf(stderr, "%s: Could not set RCVHWM for router: %s\n", id, zmq_strerror(errno));
+    exit (-1);
+  }
+
+  socket_option = 0;
+  err = zmq_setsockopt(router, ZMQ_SNDHWM, &socket_option, sizeof(socket_option));
+  if (err == -1) {
+    fprintf(stderr, "%s: Could not set SNDHWM for router: %s\n", id, zmq_strerror(errno));
+    exit (-1);
+  }
+
   // Connection to our interal error handler
   //
   // Just so we don't have to dig down any further into the internal
@@ -134,6 +149,25 @@ int main(int argc, char **argv) {
   // but then, why?  It's not really that complicated (right).
   //
   err_dealer = zmq_socket(zctx, ZMQ_DEALER);
+  if (err_dealer == NULL) {
+    fprintf(stderr, "%s: Could not create dealer socket: %s\n", id, zmq_strerror(errno));
+    exit (-1);
+  }
+
+  socket_option = 0;
+  err = zmq_setsockopt(err_dealer, ZMQ_RCVHWM, &socket_option, sizeof(socket_option));
+  if (err == -1) {
+    fprintf(stderr, "%s: Could not set RCVHWM for err_dealer: %s\n", id, zmq_strerror(errno));
+    exit (-1);
+  }
+
+  socket_option = 0;
+  err = zmq_setsockopt(err_dealer, ZMQ_SNDHWM, &socket_option, sizeof(socket_option));
+  if (err == -1) {
+    fprintf(stderr, "%s: Could not set SNDHWM for err_dealer: %s\n", id, zmq_strerror(errno));
+    exit (-1);
+  }
+
   err        = zmq_bind(err_dealer, ERR_REP);
   if (err == -1) {
     fprintf(stderr, "%s: Could not bind err_dealer to socket %s: %s\n", id, ERR_REP, zmq_strerror(errno));
@@ -141,6 +175,25 @@ int main(int argc, char **argv) {
   }
 
   err_rep = zmq_socket(zctx, ZMQ_REP);
+  if (err_rep == NULL) {
+    fprintf(stderr, "%s: Could not create err_rep socket: %s\n", id, zmq_strerror(errno));
+    exit (-1);
+  }
+
+  socket_option = 0;
+  err = zmq_setsockopt(err_rep, ZMQ_RCVHWM, &socket_option, sizeof(socket_option));
+  if (err == -1) {
+    fprintf(stderr, "%s: Could not set RCVHWM for err_rep: %s\n", id, zmq_strerror(errno));
+    exit (-1);
+  }
+
+  socket_option = 0;
+  err = zmq_setsockopt(err_rep, ZMQ_SNDHWM, &socket_option, sizeof(socket_option));
+  if (err == -1) {
+    fprintf(stderr, "%s: Could not set SNDHWM for err_rep: %s\n", id, zmq_strerror(errno));
+    exit (-1);
+  }
+
   err     = zmq_connect(err_rep, ERR_REP);
   if (err == -1) {
     fprintf(stderr, "%s: Could not connect err_rep to socket %s: %s\n", id, ERR_REP, zmq_strerror(errno));
@@ -190,7 +243,6 @@ int main(int argc, char **argv) {
         do {
           zmq_msg_init(&zmsg);
           zmq_msg_recv(&zmsg, zpollitems[i].socket, 0);
-          fprintf(stdout, "%s: recv %d bytes from dealer %d\n", id, (int)zmq_msg_size(&zmsg), i);
           more = zmq_msg_more(&zmsg);
           zmq_msg_send(&zmsg, router, more ? ZMQ_SNDMORE : 0);
           zmq_msg_close(&zmsg);

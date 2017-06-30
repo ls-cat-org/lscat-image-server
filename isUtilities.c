@@ -249,6 +249,44 @@ void set_json_object_integer(const char *cid, json_t *j, const char *key, int va
 //
 // Convenence routine for setting an integer value in a json object
 //
+void set_json_object_integer_array( const char *cid, json_t *j, const char *key, int values[], int n) {
+  static const char *id = "set_json_object_integer_array";
+  json_t *tmp_obj;
+  json_t *tmp2_obj;
+  int err;
+  int i;
+
+  tmp_obj = json_array();
+  if (tmp_obj == NULL) {
+    fprintf(stderr, "%s->%s: Could not create json array object for key '%s'\n", cid, id, key);
+    exit (-1);
+  }
+
+  for (i=0; i<n; i++) {
+    tmp2_obj = json_integer(values[i]);
+    if (tmp2_obj == NULL) {
+      fprintf(stderr, "%s->%s: Could not create integer object for index %d\n", cid, id, i);
+      exit (-1);
+    }
+    
+    err = json_array_append_new(tmp_obj,tmp2_obj);
+    if (err == -1) {
+      fprintf(stderr, "%s->%s: Could not append array index %d to json_array\n", cid, id, i);
+      exit (-1);
+    }
+
+  }
+
+  err = json_object_set_new(j, key, tmp_obj);
+  if (err != 0) {
+    fprintf(stderr, "%s->%s: Could not add key '%s' to json object\n", cid, id, key);
+    exit (-1);
+  }
+}
+
+//
+// Convenence routine for setting a real value in a json object
+//
 void set_json_object_real(const char *cid, json_t *j, const char *key, double value) {
   static const char *id = "set_json_object_real";
   json_t *tmp_obj;
@@ -274,7 +312,7 @@ void set_json_object_real(const char *cid, json_t *j, const char *key, double va
 /** Support for a one dimensional array of doubles
  */
 void set_json_object_float_array( const char *cid, json_t *j, const char *key, float *values, int n) {
-  static const char *id = "set_json_object_integer_array";
+  static const char *id = "set_json_object_float_array";
   json_t *tmp_obj;
   json_t *tmp2_obj;
   int err;
@@ -355,6 +393,24 @@ void set_json_object_float_array_2d(const char *cid, json_t *j, const char *k, f
     fprintf(stderr, "%s->%s: Could not add key %s to json object\n", cid, id, k);
     exit (-1);
   }
+}
+
+
+int get_integer_from_json_object(const char *cid, json_t *j, char *key) {
+  static const char *id = "get_integer_from_json_object";
+  json_t *tmp_obj;
+  
+  tmp_obj = json_object_get(j, key);
+  if (tmp_obj == NULL) {
+    fprintf(stderr, "%s->%s: Failed to get integer '%s' from json object\n", cid, id, key);
+    exit (-1);
+  }
+  if (json_typeof(tmp_obj) != JSON_INTEGER) {
+    fprintf(stderr, "%s->%s: json key '%s' did not hold an integer.  Got type %d\n", cid, id, key, json_typeof(tmp_obj));
+    exit (-1);
+  }
+
+  return (int)json_integer_value(tmp_obj);
 }
 
 void is_zmq_free_fn(void *data, void *hint) {

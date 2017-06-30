@@ -23,6 +23,7 @@ void *isWorker(void *voidp) {
   char dealer_endpoint[128];
   zmq_msg_t zmsg;
   int err;
+  int socket_option;
 
   // make gcc happy
   wctx = voidp;
@@ -30,6 +31,20 @@ void *isWorker(void *voidp) {
   tc.rep = zmq_socket(wctx->zctx, ZMQ_REP);
   if (tc.rep == NULL) {
     fprintf(stderr, "%s: failed to create zmq socket: %s\n", id, zmq_strerror(errno));
+    exit (-1);
+  }
+
+  socket_option = 0;
+  err = zmq_setsockopt(tc.rep, ZMQ_RCVHWM, &socket_option, sizeof(socket_option));
+  if (err == -1) {
+    fprintf(stderr, "%s: Could not set RCVHWM for rc.rep: %s\n", id, zmq_strerror(errno));
+    exit (-1);
+  }
+
+  socket_option = 0;
+  err = zmq_setsockopt(tc.rep, ZMQ_SNDHWM, &socket_option, sizeof(socket_option));
+  if (err == -1) {
+    fprintf(stderr, "%s: Could not set SNDHWM for rc.rep: %s\n", id, zmq_strerror(errno));
     exit (-1);
   }
 
@@ -46,7 +61,6 @@ void *isWorker(void *voidp) {
   // setup redis
   //
   tc.rc = redisConnect("127.0.0.1", 6379);
-  fflush(stdout);
   if (tc.rc == NULL || tc.rc->err) {
     if (tc.rc != NULL) {
       fprintf(stderr, "%s: Failed to connect to redis: %s\n", id, tc.rc->errstr);
@@ -70,7 +84,7 @@ void *isWorker(void *voidp) {
         //
         // Trick to get socket back to the right state
         //
-        // TODO: How, exactly did we get into the wrote state to begin
+        // TODO: How, exactly did we get into the wrong state to begin
         // with?  Do we have an error somewhere that does not call
         // is_zmq_error_reply?
         //
@@ -89,8 +103,6 @@ void *isWorker(void *voidp) {
     }
 
     jobstr = json_dumps(job, JSON_INDENT(0) | JSON_COMPACT | JSON_SORT_KEYS);
-
-    //fprintf(stdout, "%s: got job %s\n", id, jobstr);
 
     job_type = json_string_value(json_object_get(job, "type"));
     if (job_type == NULL) {
@@ -167,7 +179,6 @@ void isSupervisor(const char *key) {
       while(1) {
         zmq_msg_init(&zmsg);
         zmq_msg_recv(&zmsg, wctx->dealer, 0);
-        //fprintf(stdout, "%s: sending to router %d bytes\n", id, (int)zmq_msg_size(&zmsg));
         more = zmq_msg_more(&zmsg);
         zmq_msg_send(&zmsg, wctx->router, more ? ZMQ_SNDMORE : 0);
         zmq_msg_close(&zmsg);
@@ -181,7 +192,6 @@ void isSupervisor(const char *key) {
       while(1) {
         zmq_msg_init(&zmsg);
         zmq_msg_recv(&zmsg, wctx->router, 0);
-        //fprintf(stdout, "%s: sending to dealer %d bytes\n", id, (int)zmq_msg_size(&zmsg));
         more = zmq_msg_more(&zmsg);
         zmq_msg_send(&zmsg, wctx->dealer, more ? ZMQ_SNDMORE : 0);
         zmq_msg_close(&zmsg);

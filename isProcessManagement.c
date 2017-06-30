@@ -171,6 +171,7 @@ isProcessListType *isCreateProcessListItem(void *zctx, json_t *isAuth, int esaf)
   isProcessListType *rtn;
   char dealer_endpoint[256];
   int err;
+  int socket_option;
 
   pid = (char *)json_string_value(json_object_get(isAuth, "pid"));
 
@@ -199,6 +200,20 @@ isProcessListType *isCreateProcessListItem(void *zctx, json_t *isAuth, int esaf)
     exit (-1);
   }
   
+  socket_option = 0;
+  err = zmq_setsockopt(rtn->parent_dealer, ZMQ_RCVHWM, &socket_option, sizeof(socket_option));
+  if (err == -1) {
+    fprintf(stderr, "%s: Could not set RCVWM for parent_dealer: %s\n", id, zmq_strerror(errno));
+    exit (-1);
+  }
+
+  socket_option = 0;
+  err = zmq_setsockopt(rtn->parent_dealer, ZMQ_SNDHWM, &socket_option, sizeof(socket_option));
+  if (err == -1) {
+    fprintf(stderr, "%s: Could not set SNDWM for parent_dealer: %s\n", id, zmq_strerror(errno));
+    exit (-1);
+  }
+
   snprintf(dealer_endpoint, sizeof(dealer_endpoint)-1, "ipc://@%s", rtn->key);
   dealer_endpoint[sizeof(dealer_endpoint)-1] = 0;
 
