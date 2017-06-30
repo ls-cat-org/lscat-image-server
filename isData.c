@@ -53,6 +53,7 @@ isWorkerContext_t  *isDataInit(const char *key) {
   int err;
   char router_endpoint[128];
   char dealer_endpoint[128];
+  int socket_option;
 
   rtn = calloc(1, sizeof(*rtn));
   if (rtn == NULL) {
@@ -76,6 +77,21 @@ isWorkerContext_t  *isDataInit(const char *key) {
     fprintf(stderr, "%s: Could not create router socket: %s\n", id, zmq_strerror(errno));
     exit (-1);
   }
+
+  socket_option = 0;
+  err = zmq_setsockopt(rtn->router, ZMQ_RCVHWM, &socket_option, sizeof(socket_option));
+  if (err == -1) {
+    fprintf(stderr, "%s: Could not set RCVHWM for router: %s\n", id, zmq_strerror(errno));
+    exit (-1);
+  }
+
+  socket_option = 0;
+  err = zmq_setsockopt(rtn->router, ZMQ_SNDHWM, &socket_option, sizeof(socket_option));
+  if (err == -1) {
+    fprintf(stderr, "%s: Could not set SNDHWM for router: %s\n", id, zmq_strerror(errno));
+    exit (-1);
+  }
+
   snprintf(router_endpoint, sizeof(router_endpoint)-1, "ipc://@%s", key);
   router_endpoint[sizeof(router_endpoint)-1] = 0;
 
@@ -90,6 +106,21 @@ isWorkerContext_t  *isDataInit(const char *key) {
     fprintf(stderr, "%s: Could not create dealer socket: %s\n", id, zmq_strerror(errno));
     exit (-1);
   }
+
+  socket_option = 0;
+  err = zmq_setsockopt(rtn->dealer, ZMQ_RCVHWM, &socket_option, sizeof(socket_option));
+  if (err == -1) {
+    fprintf(stderr, "%s: Could not set RCVHWM for dealer: %s\n", id, zmq_strerror(errno));
+    exit (-1);
+  }
+
+  socket_option = 0;
+  err = zmq_setsockopt(rtn->dealer, ZMQ_SNDHWM, &socket_option, sizeof(socket_option));
+  if (err == -1) {
+    fprintf(stderr, "%s: Could not set SNDHWM for dealer: %s\n", id, zmq_strerror(errno));
+    exit (-1);
+  }
+
   snprintf(dealer_endpoint, sizeof(dealer_endpoint)-1, "inproc://#%s", key);
   dealer_endpoint[sizeof(dealer_endpoint)-1] = 0;
   err = zmq_bind(rtn->dealer, dealer_endpoint);
@@ -836,7 +867,7 @@ isImageBufType *isGetRawImageBuf(isWorkerContext_t *wctx, redisContext *rc, json
     return NULL;
   }
 
-  isWriteImageBufToRedis(rtn, rc);
+  //isWriteImageBufToRedis(rtn, rc);
 
   pthread_rwlock_unlock(&rtn->buflock);
   pthread_rwlock_rdlock(&rtn->buflock);
