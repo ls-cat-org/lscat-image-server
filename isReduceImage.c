@@ -549,8 +549,7 @@ isImageBufType *isReduceImage(isWorkerContext_t *wctx, redisContext *rc, json_t 
 
   pthread_rwlock_unlock(&raw->buflock);
 
-  // We don't need the raw buffer anymore
-  pthread_mutex_lock(&wctx->ctxMutex);
+  // We don't need the raw buffer anymore  pthread_mutex_lock(&wctx->ctxMutex);
   raw->in_use--;
   assert(raw->in_use >= 0);
   pthread_mutex_unlock(&wctx->ctxMutex);

@@ -505,6 +505,14 @@ isImageBufType *isGetImageBufFromKey(isWorkerContext_t *wctx, redisContext *rc, 
 
   pthread_mutex_unlock(&wctx->ctxMutex);       // We can now allow access to the other buffers
 
+  #ifdef IS_IGNORE_REDIS_STORE
+  //
+  // Just return now if we have not found a buffer.  Our caller will
+  // fill.  Leave with buffer write locked and in_use non-zero
+  //
+  return rtn;
+  #endif
+
   //
   // Three redis queries follow:
   //  1) increment properties 'USERS' in for our key
@@ -867,7 +875,9 @@ isImageBufType *isGetRawImageBuf(isWorkerContext_t *wctx, redisContext *rc, json
     return NULL;
   }
 
-  //isWriteImageBufToRedis(rtn, rc);
+  #ifndef IS_IGNORE_REDIS_STORE
+  isWriteImageBufToRedis(rtn, rc);
+  #endif
 
   pthread_rwlock_unlock(&rtn->buflock);
   pthread_rwlock_rdlock(&rtn->buflock);

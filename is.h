@@ -38,6 +38,9 @@
 #define NDEBUG
 #include <assert.h>
 
+// The redis store needs some debugging.  Ignore it for now
+#define IS_IGNORE_REDIS_STORE
+
 // Save our pid so we can autokill stuff later
 #define PID_FILE_NAME "/var/run/is.pid"
 
@@ -45,10 +48,10 @@
 #define FILEID __FILE__ " "
 
 // Keep about this many images in memory
-#define N_IMAGE_BUFFERS 1024
+#define N_IMAGE_BUFFERS 4096
 
 // Each user/esaf combination gets this many threads
-#define N_WORKER_THREADS 8
+#define N_WORKER_THREADS 1
 
 // Keep images in redis for this long
 #define IS_REDIS_TTL 300

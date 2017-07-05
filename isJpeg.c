@@ -414,11 +414,11 @@ void isJpeg(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
 
     pthread_rwlock_unlock(&imb->buflock);
 
-    pthread_mutex_lock(&wctx->ctxMutex);
-    imb->in_use--;
-
     is_zmq_error_reply(NULL, 0, tcp->rep, "%s: jpeg compression error", id);
     fprintf( stderr, "%s: jpeg compression error\n", id);
+
+    pthread_mutex_lock(&wctx->ctxMutex);
+    imb->in_use--;
 
     assert(imb->in_use >= 0);
 
