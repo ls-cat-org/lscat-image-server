@@ -51,7 +51,7 @@
 #define N_IMAGE_BUFFERS 4096
 
 // Each user/esaf combination gets this many threads
-#define N_WORKER_THREADS 1
+#define N_WORKER_THREADS 16
 
 // Keep images in redis for this long
 #define IS_REDIS_TTL 300
