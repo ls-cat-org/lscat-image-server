@@ -14,6 +14,8 @@ void destroyImageBuffer(isImageBufType *p) {
   static const char *id = FILEID "destroyImageBuffer";
   (void)id;
 
+  fprintf(stdout, "%s: destroying image buffer %s\n", id, p->key);
+
   if (p->rr) {
     // The buffer was from redis: buf and bad pixel map belong to
     // p->rr
@@ -42,6 +44,7 @@ void destroyImageBuffer(isImageBufType *p) {
     p->meta = NULL;
   }
   free(p);
+  fprintf(stdout, "%s: done\n", id);
 }
 
 /** Initialize an process's image buffer context
@@ -151,6 +154,7 @@ void isDataDestroy(isWorkerContext_t *c) {
   isImageBufType *p, *next;
   (void)id;
 
+  fprintf(stdout, "%s: start\n", id);
   //
   // We are called from isSupervisor after all the threads have been
   // joined: there is no danger of collision and, hence, no need to
@@ -169,6 +173,7 @@ void isDataDestroy(isWorkerContext_t *c) {
   pthread_mutex_destroy(&c->ctxMutex);
   free((char *)c->key);
   free(c);
+  fprintf(stdout, "%s: Done\n", id);
 }
 
 /** Locate file and make sure we can read it.
@@ -377,17 +382,17 @@ isImageBufType *createNewImageBuf(isWorkerContext_t *wctx, const char *key) {
   //
   // Count number of buffers still in use
   //
+  fprintf(stdout, "%s: Rebuilding hash table\n", id);
+
   for(i=0, p=wctx->first; p != NULL; p=p->next) {
-
     assert(p->in_use >= 0);
-
     if (p->in_use > 0) {
       i++;
     }
   }
 
   //
-  // Guess how many buffer we need and double that to make the hash table more efficient.
+  // Guess how many buffers we need and double that to make the hash table more efficient.
   // TODO: Make a better guess by trying to understand what hcreate really needs.
   //
   wctx->max_buffers += 2 * (N_IMAGE_BUFFERS + i);

@@ -140,8 +140,8 @@ void isJpegSend(isThreadContextType *tcp, json_t *job, json_t *meta, unsigned ch
 
   err = zmq_msg_init_data(&job_msg, job_str, strlen(job_str), is_zmq_free_fn, NULL);
   if (err != 0) {
-    is_zmq_error_reply(NULL, 0, tcp->rep, "%s: Could not initialize reply message (job_str)", id);
     fprintf(stderr, "%s: zmq_msg_init failed (job_str): %s\n", id, zmq_strerror(errno));
+    is_zmq_error_reply(NULL, 0, tcp->rep, "%s: Could not initialize reply message (job_str)", id);
     pthread_exit (NULL);
   }
 
@@ -156,8 +156,8 @@ void isJpegSend(isThreadContextType *tcp, json_t *job, json_t *meta, unsigned ch
 
   err = zmq_msg_init_data(&meta_msg, meta_str, strlen(meta_str), is_zmq_free_fn, NULL);
   if (err == -1) {
-    is_zmq_error_reply(NULL, 0, tcp->rep, "%s: Could not initialize reply message (meta_str)", id);
     fprintf(stderr, "%s: zmq_msg_init failed (meta_str): %s\n", id, zmq_strerror(errno));
+    is_zmq_error_reply(NULL, 0, tcp->rep, "%s: Could not initialize reply message (meta_str)", id);
     pthread_exit (NULL);
   }
 
@@ -165,8 +165,8 @@ void isJpegSend(isThreadContextType *tcp, json_t *job, json_t *meta, unsigned ch
   // JPEG
   err = zmq_msg_init_data(&jpeg_msg, out_buffer, jpeg_len, is_zmq_free_fn, NULL);
   if (err == -1) {
-    is_zmq_error_reply(NULL, 0, tcp->rep, "%s: Could not initialize reply message (jpeg)", id);
     fprintf(stderr, "%s: zmq_msg_init failed (jpeg): %s\n", id, zmq_strerror(errno));
+    is_zmq_error_reply(NULL, 0, tcp->rep, "%s: Could not initialize reply message (jpeg)", id);
     pthread_exit (NULL);
   }
 
@@ -237,8 +237,8 @@ void isJpegBlank(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job)
 
   row_buffer = calloc(1, row_buffer_size);
   if (row_buffer == NULL) {
-    is_zmq_error_reply(NULL, 0, tcp->rep, "%s: Out of memory (row_buffer)", id);
     fprintf(stderr, "%s: Out of memory (row_buffer)\n", id);
+    is_zmq_error_reply(NULL, 0, tcp->rep, "%s: Out of memory (row_buffer)", id);
     exit (-1);
   }
 
@@ -249,8 +249,8 @@ void isJpegBlank(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job)
 
   out_buffer = calloc(1, out_buffer_size);
   if (out_buffer == NULL) {
-    is_zmq_error_reply(NULL, 0, tcp->rep, "%s: Out of memory (out_buffer)", id);
     fprintf(stderr, "%s: Out of memory (out_buffer)\n", id);
+    is_zmq_error_reply(NULL, 0, tcp->rep, "%s: Out of memory (out_buffer)", id);
     exit (-1);
   }
 
@@ -265,9 +265,8 @@ void isJpegBlank(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job)
     }
     free(row_buffer);
     free(out_buffer);
-    is_zmq_error_reply(NULL, 0, tcp->rep, "%s: Jpeg creation failed", id);
     fprintf( stderr, "%s: jpeg compression error\n", id);
-
+    is_zmq_error_reply(NULL, 0, tcp->rep, "%s: Jpeg creation failed", id);
     return;
   }
 
@@ -383,8 +382,8 @@ void isJpeg(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
 
   row_buffer = calloc(1, row_buffer_size);
   if (row_buffer == NULL) {
-    is_zmq_error_reply(NULL, 0, tcp->rep, "%s: Out of memory (row_buffer)", id);
     fprintf(stderr, "%s: Out of memory (row_buffer)\n", id);
+    is_zmq_error_reply(NULL, 0, tcp->rep, "%s: Out of memory (row_buffer)", id);
     pthread_exit (NULL);
   }
 
@@ -395,8 +394,8 @@ void isJpeg(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
 
   out_buffer = calloc(1, out_buffer_size);
   if (out_buffer == NULL) {
-    is_zmq_error_reply(NULL, 0, tcp->rep, "%s: Out of memory (out_buffer)", id);
     fprintf(stderr, "%s: Out of memory (out_buffer)\n", id);
+    is_zmq_error_reply(NULL, 0, tcp->rep, "%s: Out of memory (out_buffer)", id);
     pthread_exit (NULL);
   }
 
@@ -414,8 +413,8 @@ void isJpeg(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
 
     pthread_rwlock_unlock(&imb->buflock);
 
-    is_zmq_error_reply(NULL, 0, tcp->rep, "%s: jpeg compression error", id);
     fprintf( stderr, "%s: jpeg compression error\n", id);
+    is_zmq_error_reply(NULL, 0, tcp->rep, "%s: jpeg compression error", id);
 
     pthread_mutex_lock(&wctx->ctxMutex);
     imb->in_use--;

@@ -64,6 +64,9 @@ int main(int argc, char **argv) {
   int n_envelope_msgs;
   int socket_option;
 
+  fprintf(stdout, "Welcome to the LS-CAT Image Server by Keith Brister ©2017 by Northwestern University.  All rights reserved.\n");
+
+
   //mtrace();
 
   // Make sure we are the only "is" process running on this node.
@@ -300,8 +303,8 @@ int main(int argc, char **argv) {
     isRequest = json_loadb(zmq_msg_data(&zmsg), zmq_msg_size(&zmsg), 0, &jerr);
 
     if (isRequest == NULL) {
-      is_zmq_error_reply(envelope_msgs, n_envelope_msgs, router, "%s: Failed to parse request: %s", id, jerr.text);
       fprintf(stderr, "%s: Failed to parse '%s': %s\n", id, (char *)zmq_msg_data(&zmsg), jerr.text);
+      is_zmq_error_reply(envelope_msgs, n_envelope_msgs, router, "%s: Failed to parse request: %s", id, jerr.text);
       continue;
     }
 
@@ -309,8 +312,8 @@ int main(int argc, char **argv) {
     if (pid == NULL) {
       char *tmpstr;
       tmpstr = json_dumps(isRequest, JSON_SORT_KEYS | JSON_COMPACT | JSON_INDENT(0));
-      is_zmq_error_reply(envelope_msgs, n_envelope_msgs, router, "%s: request does not contain pid", id);
       fprintf(stderr, "%s: isRequest without pid: %s\n", id, tmpstr);
+      is_zmq_error_reply(envelope_msgs, n_envelope_msgs, router, "%s: request does not contain pid", id);
       free(tmpstr);
 
       json_decref(isRequest);
@@ -320,6 +323,7 @@ int main(int argc, char **argv) {
     esaf = json_integer_value(json_object_get(isRequest, "esaf"));
 
     isAuth = NULL;
+    fprintf(stdout, "%s: got pid %s  esaf %d\n", id, pid, esaf);
     pli = isFindProcess(pid, esaf);
     if (pli == NULL) {
       //
@@ -338,11 +342,11 @@ int main(int argc, char **argv) {
 
       if (reply->type != REDIS_REPLY_ARRAY) {
         if (subreply->type == REDIS_REPLY_NIL) {
-          is_zmq_error_reply(envelope_msgs, n_envelope_msgs, router, "%s: Process %s is not active", id, pid);
           fprintf(stderr, "%s: Process %s is not active\n", id, pid);
+          is_zmq_error_reply(envelope_msgs, n_envelope_msgs, router, "%s: Process %s is not active", id, pid);
         } else {
-          is_zmq_error_reply(envelope_msgs, n_envelope_msgs, router, "%s: Process %s is not authorized (1)", id, pid);
           fprintf(stderr, "%s: Redis hmget isAuth isAuthSig did not return an array, got type %d\n", id, reply->type);
+          is_zmq_error_reply(envelope_msgs, n_envelope_msgs, router, "%s: Process %s is not authorized (1)", id, pid);
         }
 
         json_decref(isRequest);
@@ -352,8 +356,8 @@ int main(int argc, char **argv) {
 
       subreply = reply->element[0];
       if (subreply->type != REDIS_REPLY_STRING) {
-        is_zmq_error_reply(envelope_msgs, n_envelope_msgs, router, "%s: Process %s is not authorized (2)", id, pid);
         fprintf(stderr, "%s: isAuth reply is not a string, got type %d\n", id, subreply->type);
+        is_zmq_error_reply(envelope_msgs, n_envelope_msgs, router, "%s: Process %s is not authorized (2)", id, pid);
         
         json_decref(isRequest);
         freeReplyObject(reply);
@@ -363,8 +367,8 @@ int main(int argc, char **argv) {
 
       subreply = reply->element[1];
       if (subreply->type != REDIS_REPLY_STRING) {
-          is_zmq_error_reply(envelope_msgs, n_envelope_msgs, router, "%s: Process %s is not authorized (3)", id, pid);
         fprintf(stderr, "%s: isAuthSig reply is not a string, got type %d\n", id, subreply->type);
+        is_zmq_error_reply(envelope_msgs, n_envelope_msgs, router, "%s: Process %s is not authorized (3)", id, pid);
         
         json_decref(isRequest);
         freeReplyObject(reply);
@@ -373,8 +377,8 @@ int main(int argc, char **argv) {
       isAuthSig = subreply->str;
         
       if (!verifyIsAuth( isAuth_str, isAuthSig)) {
-        is_zmq_error_reply(envelope_msgs, n_envelope_msgs, router, "%s: Process %s is not authorized (4)", id, pid);
         fprintf(stderr, "%s: Bad isAuth signature for pid %s: isAuth_str: '%s'\n", id, pid, isAuth_str);
+        is_zmq_error_reply(envelope_msgs, n_envelope_msgs, router, "%s: Process %s is not authorized (4)", id, pid);
 
         json_decref(isRequest);
         freeReplyObject(reply);
@@ -383,8 +387,8 @@ int main(int argc, char **argv) {
 
       isAuth = json_loads(isAuth_str, 0, &jerr);
       if (isRequest == NULL) {
-        is_zmq_error_reply(envelope_msgs, n_envelope_msgs, router, "%s: Process %s is not authorized (5)", id, pid);
         fprintf(stderr, "%s: Failed to parse '%s': %s\n", id, subreply->str, jerr.text);
+        is_zmq_error_reply(envelope_msgs, n_envelope_msgs, router, "%s: Process %s is not authorized (5)", id, pid);
 
         json_decref(isRequest);
         freeReplyObject(reply);
@@ -397,16 +401,16 @@ int main(int argc, char **argv) {
       freeReplyObject(reply);
 
       if (strcmp(pid, json_string_value(json_object_get(isAuth, "pid"))) != 0) {
-        is_zmq_error_reply(envelope_msgs, n_envelope_msgs, err_dealer, "%s: Process %s is not authorized (6)", id, pid);
         fprintf(stderr, "%s: pid from request does not match pid from isAuth: '%s' vs '%s'\n", id, pid, json_string_value(json_object_get(isAuth, "pid")));
+        is_zmq_error_reply(envelope_msgs, n_envelope_msgs, err_dealer, "%s: Process %s is not authorized (6)", id, pid);
 
         json_decref(isRequest);
         json_decref(isAuth);
         continue;
       }
       if (!isEsafAllowed(isAuth, esaf)) {
-        is_zmq_error_reply(envelope_msgs, n_envelope_msgs, router, "%s: Process %s is not authorized for esaf %d", id, pid, esaf);
         fprintf(stderr, "%s: user %s is not permitted to access esaf %d\n", id, json_string_value(json_object_get(isAuth, "uid")), esaf);
+        is_zmq_error_reply(envelope_msgs, n_envelope_msgs, router, "%s: Process %s is not authorized for esaf %d", id, pid, esaf);
         
         json_decref(isRequest);
         json_decref(isAuth);
@@ -436,8 +440,9 @@ int main(int argc, char **argv) {
       }
 
       if (reply->integer != 1) {
-        is_zmq_error_reply(envelope_msgs, n_envelope_msgs, router, "%s: Process %s is not authorized (7)", id, pid);
         fprintf(stderr, "%s: Process %s is no longer active\n", id, pid);
+        is_zmq_error_reply(envelope_msgs, n_envelope_msgs, router, "%s: Process %s is not authorized (7)", id, pid);
+
         //
         // TODO: We need to periodically purge our process list of inactive processes
         //

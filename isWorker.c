@@ -97,8 +97,8 @@ void *isWorker(void *voidp) {
     zmq_msg_close(&zmsg);
 
     if (job == NULL) {
-      is_zmq_error_reply(NULL, 0, tc.rep, "%s: Could not parse request: %s", id, jerr.text);
       fprintf(stderr, "%s: Failed to parse request: %s\n", id, jerr.text);
+      is_zmq_error_reply(NULL, 0, tc.rep, "%s: Could not parse request: %s", id, jerr.text);
       continue;
     }
 
@@ -106,16 +106,16 @@ void *isWorker(void *voidp) {
 
     job_type = json_string_value(json_object_get(job, "type"));
     if (job_type == NULL) {
-      is_zmq_error_reply(NULL, 0, tc.rep, "%s: No type parameter in job %s", id, jobstr);
       fprintf(stderr, "%s: No type parameter in job %s\n", id, jobstr);
+      is_zmq_error_reply(NULL, 0, tc.rep, "%s: No type parameter in job %s", id, jobstr);
     } else {
       // Cheapo command parser.  Probably the best way to go considering
       // the small number of commands we'll likely have to service.
       if (strcasecmp("jpeg", job_type) == 0) {
         isJpeg(wctx, &tc, job);
       } else {
-        is_zmq_error_reply(NULL, 0, tc.rep, "%s: Unknown job type '%s' in job '%s'", id, job_type, jobstr);
         fprintf(stderr, "%s: Unknown job type '%s' in job '%s'\n", id, job_type, jobstr);
+        is_zmq_error_reply(NULL, 0, tc.rep, "%s: Unknown job type '%s' in job '%s'", id, job_type, jobstr);
       }
     }
     free(jobstr);

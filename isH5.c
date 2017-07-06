@@ -502,13 +502,12 @@ void get_one_frame(const char *fn, int frame, isImageBufType *imb) {
   extra = imb->extra;
 
   for (fp = extra->frame_discovery_base; fp != NULL; fp = fp->next) {
-    fprintf(stderr, "%s: first_frame=%d  last_frame=%d\n", id, fp->first_frame, fp->last_frame);
     if (fp->first_frame <= frame && fp->last_frame >= frame) {
       break;
     }
   }
   if (fp == NULL) {
-    fprintf(stderr, "%s: Could not file frame %d in file %s\n", id, frame, fn);
+    fprintf(stderr, "%s: Could not find frame %d in file %s\n", id, frame, fn);
     return;
   }
 
