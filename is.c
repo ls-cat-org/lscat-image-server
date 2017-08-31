@@ -117,10 +117,8 @@ void imBufGarbageCollect( imBufType *ib) {
 //
 imBufType *imBufGet( char *fn) {
   int i;
-  int foundIt;
   int nuse;
 
-  foundIt = 0;
   for( i=0; i<NIBUFS; i++) {
     pthread_mutex_lock( &ibUseMutex);
     if( ibs[i].fn != NULL && strcmp( ibs[i].fn, fn) == 0) {

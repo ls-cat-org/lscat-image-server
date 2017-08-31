@@ -326,7 +326,6 @@ void ib2profile( isType *is) {
   int s;		// parametric 'index' along line
   int smin, smax;	// limit of s
   int n;		// number of points to plot
-  unsigned short *buf;	// our image buffer
   unsigned short *maxs; // array of maxima from the images
   unsigned short *mins; // array of minima from the images
   unsigned short *aves; // array of averages from the images
@@ -348,8 +347,6 @@ void ib2profile( isType *is) {
   }
   // now we know there is some data
   pthread_rwlock_rdlock( &(is->b->datalock));
-
-  buf = is->b->buf;
 
   // compute distance in input image to traverse and add one to get number of points from one end to the other
   n = sqrt( (double)(is->pbx - is->pax)*(is->pbx - is->pax) + (is->pby - is->pay)*(is->pby - is->pay)) + 1;

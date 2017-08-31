@@ -9,16 +9,16 @@ copyright:
 	@echo " "
 
 is: is.c is.h mr.c isGlobals.c imtype.c pgConn.c ib.c Makefile
-	gcc -Wall -O3 -ffast-math -o is is.c isGlobals.c ib.c mr.c imtype.c pgConn.c  -ltiff -ljpeg -lm -lpq
+	gcc -Wall -O3 -ffast-math -o is is.c isGlobals.c ib.c mr.c imtype.c pgConn.c  -ltiff -ljpeg -lm -lpq -pthread
 
 isp: is.c is.h mr.c isGlobals.c imtype.c pgConn.c ib.c Makefile
-	gcc -Wall -g -O3 -ffast-math -DPROFILE -o isp is.c isGlobals.c ib.c mr.c imtype.c pgConn.c  -ltiff -ljpeg -lm -lpq -pg
+	gcc -Wall -g -O3 -ffast-math -DPROFILE -o isp is.c isGlobals.c ib.c mr.c imtype.c pgConn.c  -ltiff -ljpeg -lm -lpq -pg -pthread
 
 isdebug: is.c is.h mr.c isGlobals.c imtype.c pgConn.c ib.c Makefile
-	gcc -Wall -g -ffast-math -o isdebug is.c isGlobals.c ib.c mr.c imtype.c pgConn.c  -ltiff -ljpeg -lm -lpq
+	gcc -Wall -g -ffast-math -o isdebug is.c isGlobals.c ib.c mr.c imtype.c pgConn.c  -ltiff -ljpeg -lm -lpq -pthread
 
 clean:
-	rm -f is *.jpeg *.o *~
+	rm -f is isp isdebug *.jpeg *.o *~
 
 dist:
 	ln -fs . is-$(VERSION)
@@ -27,8 +27,5 @@ dist:
 	rm -f is-$(VERSION)
 
 install: is
-	install isScreenrc /pf/etc
-	install ls_run_is /pf/bin
-	install is /pf/bin/linux-x86_64
-	install -d /usr/lib/ocf/resource.d/ls-cat
-	install -t /usr/lib/ocf/resource.d/ls-cat  ImageServer.py 
+	install ls_run_is /usr/local/bin
+	install is /usr/local/bin

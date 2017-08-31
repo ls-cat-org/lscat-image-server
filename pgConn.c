@@ -43,7 +43,6 @@ void dbInit() {
 
 void dbWait() {
   struct pollfd pfd;
-  int pstat;
   PGnotify *pn;
 
   pfd.fd     = PQsocket( db);
@@ -55,9 +54,8 @@ void dbWait() {
   if( pn != NULL) {
     // got a notify (free it)
     PQfreemem( pn);
-  } else {
-    // wait for a notify
-    pstat = poll( &pfd, 1, -1);
+  } else {    // wait for a notify
+    poll( &pfd, 1, -1);
   }
 
   // got a notify (probably)
