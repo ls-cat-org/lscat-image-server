@@ -377,7 +377,7 @@ json_t *isRayonixGetMeta( const char *fn) {
   return rtn;
 }
 
-void isRayonixGetData( const char *fn, int frame, isImageBufType *imb) {
+void isRayonixGetData( const char *fn, isImageBufType *imb) {
   static const char *id = "marTiffGetData";
 
   //

@@ -850,6 +850,7 @@ isImageBufType *isGetRawImageBuf(isWorkerContext_t *wctx, redisContext *rc, json
   // fprintf(stdout, "%s: about to get image buffer from key %s\n", id, key);
 
   rtn = isGetImageBufFromKey(wctx, rc, key);
+  rtn->frame = frame;
   if (rtn->buf != NULL) {
     fprintf(stderr, "%s: Found buffer for key %s\n", id, key);
     free(key);
@@ -863,13 +864,13 @@ isImageBufType *isGetRawImageBuf(isWorkerContext_t *wctx, redisContext *rc, json
   switch (ft) {
   case HDF5:
     rtn->meta = isH5GetMeta(fn);
-    isH5GetData(fn, frame, rtn);
+    isH5GetData(fn, rtn);
     break;
       
   case RAYONIX:
   case RAYONIX_BS:
     rtn->meta = isRayonixGetMeta(fn);
-    isRayonixGetData(fn, frame, rtn);
+    isRayonixGetData(fn, rtn);
     break;
       
   case UNKNOWN:

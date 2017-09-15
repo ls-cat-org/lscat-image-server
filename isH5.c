@@ -5,24 +5,35 @@
  */
 #include "is.h"
 
+/** Frames found when searching the data files.  Each data file is
+ ** queried to find its first and last frame numbers so we know which
+ ** file to open when looking for a particular frame number.  BTW,
+ ** frame numbers start at 1.
+ */
 typedef struct frame_discovery_struct {
-  struct frame_discovery_struct *next;
-  hid_t data_set;
-  hid_t file_space;
-  hid_t file_type;
-  int32_t first_frame;
-  int32_t last_frame;
-  char *done_list;
+  struct frame_discovery_struct *next;  //!< The index frame_discovery_struct in our list
+  hid_t data_set;                       //!< our h5 dataset
+  hid_t file_space;                     //!< the file space
+  hid_t file_type;                      //!< the file type, of course
+  int32_t first_frame;                  //!< first frame number in this dataset
+  int32_t last_frame;                   //!< last frame number in this dataset
+  char *done_list;                      //!< List of frames we've processed already.  Not yet used in this project.
 } frame_discovery_t;
 
+/** Extra information. We need to keep track of so we don't have to
+ ** recalculate it for the next query.
+ */
 typedef struct isH5extraStruct {
-  frame_discovery_t *frame_discovery_base;
+  frame_discovery_t *frame_discovery_base;   //!< List of discovered frames
 } isH5extra_t;
 
+/** h5 to json equivalencies.  We read HDF5 properties and convert
+ ** them to json to use and/or transmit back to the user's browser.
+ */
 typedef struct h5_to_json_struct {
-  char *h5_location;
-  char *json_property_name;
-  char type;
+  char *h5_location;                    //!< HDF5 property name
+  char *json_property_name;             //!< JSON equivalent
+  char type;                            //!< i=int, f=float, s=string, F=float array
 } h5_to_json_t;
 
 h5_to_json_t json_convert_array[] = {
@@ -78,23 +89,35 @@ h5_to_json_t json_convert_array[] = {
   { "/entry/instrument/detector/detectorSpecific/y_pixels_in_detector",            "y_pixels_in_detector",                            'i'}
 };
 
+/** Get a hdf5 property as a JSON object.
+ **
+ ** @param[in]  master_file  Our open master file
+ **
+ ** @param[in]  htj          names of h5 and json objects with their type
+ **
+ ** @returns JSON object or NULL on a problem with the data file.
+ **
+ ** @remark Be sure to call json_decref on the returned object when
+ ** done.  Programming errors are fatal with a brief but descriptive
+ ** unique message.
+ **/
 json_t *get_json( hid_t master_file, h5_to_json_t *htj) {
   static const char *id = FILEID "get_json";
-  json_t *rtn;
-  herr_t herr;
-  hid_t data_set;
-  hid_t data_type;
-  hid_t data_space;
-  hid_t mem_type;
-  int32_t i_value;
-  float   f_value;
-  float  *fa_value;
-  char   *s_value;
-  hsize_t value_length;
-  hsize_t *dims;
-  hsize_t npoints;
-  int rank;
-  int failed;
+  json_t *rtn;          // our returned object
+  herr_t herr;          // h5 error
+  hid_t data_set;       // our data set
+  hid_t data_type;      // data type
+  hid_t data_space;     // data space
+  hid_t mem_type;       // in memory type
+  int32_t i_value;      // integer value
+  float   f_value;      // float value
+  float  *fa_value;     // float array value
+  char   *s_value;      // string value
+  hsize_t value_length; // length of string to read
+  hsize_t *dims;        // current size of each array dimension
+  hsize_t npoints;      // total number of array elements
+  int rank;             // rank of the array to read
+  int failed;           // 0 = AOK, 1 = Failure
   
   failed = 0;
   rtn = json_object();
@@ -284,16 +307,25 @@ json_t *get_json( hid_t master_file, h5_to_json_t *htj) {
   return rtn;
 }
 
+/** Read the meta data from a file.
+ **
+ ** @param[in] fn Name of the master file to open
+ **
+ ** @returns JSON object contianing the metadata.  json_decref must be
+ ** called when you are done with it.  Null is returned on an error
+ ** with the file.
+ **
+ ** @remark Programming errors are fatal.
+ */
 json_t *isH5GetMeta(const char *fn) {
   static const char *id = FILEID "isH5Jpeg";
-  hid_t master_file;
-  herr_t herr;
-  json_t *meta;
-  json_t *tmp_obj;
-  int i;
-  int err;
+  hid_t master_file;            // master file object
+  herr_t herr;                  // error from an h5 call
+  json_t *meta;                 // our meta data return object
+  json_t *tmp_obj;              // temporary json object used to create meta
+  int i;                        // loop over json conversion array
+  int err;                      // error code for procedures that like to return ints.
 
-  //fprintf(stdout, "%s: trying to open file %s\n", id, fn);
   //
   // Open up the master file
   //
@@ -348,18 +380,34 @@ json_t *isH5GetMeta(const char *fn) {
   return meta;
 }
 
+/** Callback for H5Lvisit_by_name
+ **
+ ** @param[in] lid       hdf5 link idenifier
+ **
+ ** @param[in] name      name of the hdf5 property relative to 'lid'
+ **
+ ** @param[in] info      description of the link
+ **
+ ** @param[in] op_data   Pointer to our list of discovered frames
+ **
+ ** @returns -1 on failure, 0 on success (keep going), 1 on success
+ ** (stop since we found what we are looking for)
+ **  
+ */
 int discovery_cb(hid_t lid, const char *name, const H5L_info_t *info, void *op_data) {
   static const char *id = FILEID "discovery_cb";
-  isH5extra_t *extra;
-
-  char s[256];
-  const char *fnp;
-  const char *pp;
-  herr_t herr;
-  hid_t image_nr_high;
-  hid_t image_nr_low;
-  frame_discovery_t *these_frames, *fp, *fpp;
-  int failed;
+  isH5extra_t *extra;                   // cast op_data into something useful
+  /*
+  char s[256];                          // retrieve string from to parse file name and 
+  const char *fnp;                      // file name pointer
+  const char *pp;                       // path name pointer
+  */
+  herr_t herr;                          // h5 error code
+  hid_t image_nr_high;                  // largest frame number number in this file
+  hid_t image_nr_low;                   // smallest frame number in this file
+  frame_discovery_t *these_frames,      // current entry in our list for discovered frames
+    *fp, *fpp;                          // used to walk the frame_discovery linked list
+  int failed;                           // 0 = AOK, 1 = success but don't go on, -1 = failed
 
   extra = op_data;
   failed = 0;
@@ -371,23 +419,29 @@ int discovery_cb(hid_t lid, const char *name, const H5L_info_t *info, void *op_d
   }
 
   //
-  // setting next is more trouble than normal since we want to keep
+  // setting member "next" is a bit of trouble since we want to keep
   // the data in the same order that we were called.
   //
 
+  // Find the last non-null frame discovery pointer
   fpp = NULL;
   for (fp = extra->frame_discovery_base; fp != NULL; fp = fp->next) {
     fpp = fp;
   }
 
-  do {
-    these_frames->next = NULL;
-    if (fpp == NULL) {
-      extra->frame_discovery_base = these_frames;
-    } else {
-      fpp->next = these_frames;
-    }
+  // Initialize these_frames
+  these_frames->next = NULL;
+  if (fpp == NULL) {
+    extra->frame_discovery_base = these_frames;
+  } else {
+    fpp->next = these_frames;
+  }
 
+  //
+  // Error Breakout Box: set failed to one and break to perform cleanup and return.
+  //
+  do {
+    /*
     if (info->type == H5L_TYPE_EXTERNAL) {
       herr = H5Lget_val(lid, name, s, sizeof(s), H5P_DEFAULT);
       if (herr < 0) {
@@ -403,7 +457,7 @@ int discovery_cb(hid_t lid, const char *name, const H5L_info_t *info, void *op_d
         break;
       }    
     }
-  
+    */
     these_frames->data_set = H5Dopen2(lid, name, H5P_DEFAULT);
     if (these_frames->data_set < 0) {
       fprintf(stderr, "%s: Failed to open dataset %s\n", id, name);
@@ -481,39 +535,43 @@ int discovery_cb(hid_t lid, const char *name, const H5L_info_t *info, void *op_d
   return 0;
 }
 
-void get_one_frame(const char *fn, int frame, isImageBufType *imb) {
+/** Find a single frame in the named file.
+ **
+ ** @param[in,out] imb frame buffer to place our info in
+ **
+ */
+void get_one_frame(isImageBufType *imb) {
   static const char *id = FILEID "get_one_frame";
-  isH5extra_t *extra;
-  frame_discovery_t *fp;
-  int rank;
-  herr_t herr;
-  hsize_t file_dims[3];
-  hsize_t file_max_dims[3];
-  int data_element_size;
-  char *data_buffer;
-  int   data_buffer_size;
-  hid_t mem_space;
-  hsize_t mem_dims[2];
-  hsize_t start[3];
-  hsize_t stride[3];
-  hsize_t count[3];
-  hsize_t block[3];
+  isH5extra_t *extra;           // where we stored our frame discovery results
+  frame_discovery_t *fp;        // Speaking of the devil
+  int rank;                     // number of data dimensions (it had better be three)
+  herr_t herr;                  // h5 error code
+  hsize_t file_dims[3];         // size H x W x (number of frames)
+  int data_element_size;        // 4 for 32 bit ints, 2 for 16
+  char *data_buffer;            // Where we'll put our data
+  int   data_buffer_size;       // number of bytes to store a frame
+  hid_t mem_space;              // where we'll put our data according to h5
+  hsize_t mem_dims[2];          // size of our memory accrding to h5
+  hsize_t start[3];             // our data slice that includes our frame
+  hsize_t stride[3];            // a single step toward our frame
+  hsize_t count[3];             // number of frames to select (yeah, it's one)
+  hsize_t block[3];             // size of block to select (Spoiler alert: it's one frame)
 
   extra = imb->extra;
 
   for (fp = extra->frame_discovery_base; fp != NULL; fp = fp->next) {
-    if (fp->first_frame <= frame && fp->last_frame >= frame) {
+    if (fp->first_frame <= imb->frame && fp->last_frame >= imb->frame) {
       break;
     }
   }
   if (fp == NULL) {
-    fprintf(stderr, "%s: Could not find frame %d in file %s\n", id, frame, fn);
+    fprintf(stderr, "%s: Could not find frame %d in file %s\n", id, imb->frame, imb->key);
     return;
   }
 
   rank = H5Sget_simple_extent_ndims(fp->file_space);
   if (rank < 0) {
-    fprintf(stderr, "%s: Failed to get rank of dataset for file %s\n", id, fn);
+    fprintf(stderr, "%s: Failed to get rank of dataset for file %s\n", id, imb->key);
     return;
   }
 
@@ -522,7 +580,7 @@ void get_one_frame(const char *fn, int frame, isImageBufType *imb) {
     return;
   }
 
-  herr = H5Sget_simple_extent_dims( fp->file_space, file_dims, file_max_dims);
+  herr = H5Sget_simple_extent_dims( fp->file_space, file_dims, NULL);
   if (herr < 0) {
     fprintf(stderr, "Could not get dataset dimensions\n");
     exit (-1);
@@ -561,7 +619,7 @@ void get_one_frame(const char *fn, int frame, isImageBufType *imb) {
     return;
   }
 
-  start[0] = frame-1;
+  start[0] = imb->frame - 1;
   start[1] = 0;
   start[2] = 0;
 
@@ -579,13 +637,13 @@ void get_one_frame(const char *fn, int frame, isImageBufType *imb) {
 
   herr = H5Sselect_hyperslab(fp->file_space, H5S_SELECT_SET, start, stride, count, block);
   if (herr < 0) {
-    fprintf(stderr, "%s: Could not set hyperslab for frame %d\n", id, frame);
+    fprintf(stderr, "%s: Could not set hyperslab for frame %d\n", id, imb->frame);
     return;
   }
     
   herr = H5Dread(fp->data_set, fp->file_type, mem_space, fp->file_space, H5P_DEFAULT, data_buffer);
   if (herr < 0) {
-    fprintf(stderr, "%s: Could not read frame %d\n", id, frame);
+    fprintf(stderr, "%s: Could not read frame %d\n", id, imb->frame);
     return;
   }
 
@@ -598,27 +656,33 @@ void get_one_frame(const char *fn, int frame, isImageBufType *imb) {
   return;
 }
 
-
-void isH5GetData(const char *fn, int frame, isImageBufType *imb) {
+/** Return a single frame from the named file.
+ **
+ ** @param[in] fn  name of the file
+ **
+ ** @param[out] imb frame buffer to place our info in
+ **
+ */
+void isH5GetData(const char *fn, isImageBufType *imb) {
   static const char *id = FILEID "isH5GetData";
-  isH5extra_t *extra;
-  hid_t master_file;
-  herr_t herr;
-  hid_t data_set;
-  hid_t data_space;
-  hsize_t dims[2];
-  int rank;
-  int npoints;
-  int err;
-  uint32_t first_frame;
-  uint32_t last_frame;
-  frame_discovery_t *fp;
-  int failed;
+  isH5extra_t *extra;           // pointer to frame discovery list
+  hid_t master_file;            // the master file, of course
+  herr_t herr;                  // h5 error code
+  hid_t data_set;               // bad pixel map in h5 file
+  hid_t data_space;             // h5 data space for bad pixel map
+  hsize_t dims[2];              // dimensions of bad pixel map
+  int rank;                     // number of pixel map dimensions (it had better be 2)
+  int npoints;                  // number of entries in the bad pixel map
+  int err;                      // error code from routines that return integer error codes
+  uint32_t first_frame;         // first frame referenced by master file
+  uint32_t last_frame;          // last frame referenced by master file
+  frame_discovery_t *fp;        // used to loop through discovery list
+  int failed;                   // set to 1 before breaking out of the our box
   
   failed = 0;
   extra = imb->extra;
 
-  set_json_object_integer(id, imb->meta, "frame", frame);
+  set_json_object_integer(id, imb->meta, "frame", imb->frame);
 
   //
   // Open up the master file
@@ -657,6 +721,9 @@ void isH5GetData(const char *fn, int frame, isImageBufType *imb) {
     set_json_object_integer(id, imb->meta, "first_frame", first_frame);
     set_json_object_integer(id, imb->meta, "last_frame",  last_frame);
   
+    //
+    // Our error breakout box
+    //
     do {
       //
       // Get the bad pixel map
@@ -721,8 +788,14 @@ void isH5GetData(const char *fn, int frame, isImageBufType *imb) {
   }
 
   if (failed) {
+    //
+    // Don't read the frame itself if we've run into problems
+    //
     return;
   }
 
-  get_one_frame(fn, frame, imb);
+  //
+  // Palm off the actual work to this routine
+  //
+  get_one_frame(imb);
 }
