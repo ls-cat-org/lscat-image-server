@@ -5,9 +5,30 @@
  */
 #include "is.h"
 
-/*
-** returns the maximum value of ha xa by ya box centered on d,l
-*/
+/** For 16 bit images, this returns the maximum value of ha xa by ya box centered on (k,l).
+ ** 
+ ** @param badPixels     Our bad pixel map
+ **
+ ** @param buf           Buffer contianing our image
+ **
+ ** @param bufWidth      image width
+ ** 
+ ** @param bufHeight     image height
+ **
+ ** @param k             index along height around which to find the max
+ **
+ ** @param l             index along width around which to find the max
+ **
+ ** @param yal           box extends this distance above k
+ **
+ ** @param yau           box extends this distance below k
+ **
+ ** @param xal           box extends this distance to the left of l
+ **
+ ** @param xah           box extens this distance to the right of l
+ **
+ ** @returns Maximum value found in the box.  Bad pixels are ignored.
+ */
 uint32_t maxBox16( uint32_t *badPixels, void *buf, int bufWidth, int bufHeight, double k, double l, int yal, int yau, int xal, int xau) {
   static const char *id = FILEID "maxBox16";
   int m, n;
@@ -51,9 +72,30 @@ uint32_t maxBox16( uint32_t *badPixels, void *buf, int bufWidth, int bufHeight, 
 }
 
 
-/*
-** returns the maximum value of ha xa by ya box centered on d,l
-*/
+/** For 32 bit images, this returns the maximum value of ha xa by ya box centered on (k,l).
+ ** 
+ ** @param badPixels     Our bad pixel map
+ **
+ ** @param buf           Buffer contianing our image
+ **
+ ** @param bufWidth      image width
+ ** 
+ ** @param bufHeight     image height
+ **
+ ** @param k             index along height around which to find the max
+ **
+ ** @param l             index along width around which to find the max
+ **
+ ** @param yal           box extends this distance above k
+ **
+ ** @param yau           box extends this distance below k
+ **
+ ** @param xal           box extends this distance to the left of l
+ **
+ ** @param xah           box extens this distance to the right of l
+ **
+ ** @returns Maximum value found in the box.  Bad pixels are ignored.
+ */
 uint32_t maxBox32( uint32_t *badPixels, void *buf, int bufWidth, int bufHeight, double k, double l, int yal, int yau, int xal, int xau) {
   static const char *id = FILEID "maxBox32";
   int m, n;
@@ -97,6 +139,30 @@ uint32_t maxBox32( uint32_t *badPixels, void *buf, int bufWidth, int bufHeight, 
   return d;
 }
 
+/** For 16 bit images, this returns the nearest value to (k,l).
+ ** 
+ ** @param badPixels     Our bad pixel map
+ **
+ ** @param buf           Buffer contianing our image
+ **
+ ** @param bufWidth      image width
+ ** 
+ ** @param bufHeight     image height
+ **
+ ** @param k             index along height around which to find the max
+ **
+ ** @param l             index along width around which to find the max
+ **
+ ** @param yal           Dummy
+ **
+ ** @param yau           Dummy
+ **
+ ** @param xal           Dummy
+ **
+ ** @param xah           Dummy
+ **
+ ** @returns nearest value.  Bad pixels return 0
+ */
 uint32_t nearest16( uint32_t *badPixels, void *buf, int bufWidth, int bufHeight, double k, double l, int yal, int yau, int xal, int xau) {
   static const char *id = FILEID "nearest16";
   uint16_t *bp = (uint16_t *)buf;
@@ -115,6 +181,30 @@ uint32_t nearest16( uint32_t *badPixels, void *buf, int bufWidth, int bufHeight,
   return rtn;
 }
 
+/** For 32 bit images, this returns the nearest value to (k,l).
+ ** 
+ ** @param badPixels     Our bad pixel map
+ **
+ ** @param buf           Buffer contianing our image
+ **
+ ** @param bufWidth      image width
+ ** 
+ ** @param bufHeight     image height
+ **
+ ** @param k             index along height around which to find the max
+ **
+ ** @param l             index along width around which to find the max
+ **
+ ** @param yal           Dummy
+ **
+ ** @param yau           Dummy
+ **
+ ** @param xal           Dummy
+ **
+ ** @param xah           Dummy
+ **
+ ** @returns nearest value.  Bad pixels return 0
+ */
 uint32_t nearest32( uint32_t *badPixels, void *buf, int bufWidth, int bufHeight, double k, double l, int yal, int yau, int xal, int xau) {
   static const char *id = FILEID "nearest32";
   int index;
@@ -133,6 +223,20 @@ uint32_t nearest32( uint32_t *badPixels, void *buf, int bufWidth, int bufHeight,
   return rtn;
 }
 
+/** Reduce the given 16 bit image
+ **
+ ** @param  src       Full sized source image
+ **
+ ** @param  dst       Reduced destination image
+ **
+ ** @param  x         Left edge on source image
+ **
+ ** @param  y         Top of source image
+ **
+ ** @param  winWidth  Width of portion of the source we want to look at
+ **
+ ** @param  winHeight Height of the portion of the source we want to look at
+ */
 void reduceImage16( isImageBufType *src, isImageBufType *dst, int x, int y, int winWidth, int winHeight) {
   static const char *id = FILEID "reduceImage16";
 
@@ -232,6 +336,20 @@ void reduceImage16( isImageBufType *src, isImageBufType *dst, int x, int y, int 
   //fprintf(stdout, "%s: n=%d mean=%f  rms=%f   stddev=%f  key=%s\n", id, n, mean, rms, sd, src->key);
 }
 
+/** Reduce the given 32 bit image
+ **
+ ** @param  src       Full sized source image
+ **
+ ** @param  dst       Reduced destination image
+ **
+ ** @param  x         Left edge on source image
+ **
+ ** @param  y         Top of source image
+ **
+ ** @param  winWidth  Width of portion of the source we want to look at
+ **
+ ** @param  winHeight Height of the portion of the source we want to look at
+ */
 void reduceImage32( isImageBufType *src, isImageBufType *dst, int x, int y, int winWidth, int winHeight) {
   static const char *id = FILEID "reduceImage32";
   uint32_t (*cvtFunc)(uint32_t *, void *, int, int, double, double, int, int, int, int);
@@ -330,33 +448,36 @@ void reduceImage32( isImageBufType *src, isImageBufType *dst, int x, int y, int 
 
             
 /** Image reduction is defined by a "zoom" and a "sector".
- *
- *  The width and heigh of the original image are divided by "zoom"
- *  and the resulting segments addressed by column and row indices
- *  starting with the upper left hand corner.  For example:
- *
- *  Zoom: 4 gives 16 segments from [0,0] to [3,3].  Zoom: 1.5 gives 4
- *  segments from [0,] to [1,1] where the right half of [0,1] is
- *  blank, the bottom half of [0,1] is blank, and only the upper left
- *  hand quadrant of [1,1] is potentially non-blank.
- *
- *
- *  Call with
- *
- *    @param rc redisContext* Open redis context to local redis server
- *
- *    @param job.fn     string   File name of the data we are interested in
- *    @param job.frame  integer  Requested frame.  Default is 1
- *    @param job.zoom   double   Ratio of full source image to the portion of the source image we are processing. Zoom will be rounded to the nearest 0.1
- *    @param job.segcol integer  See above for discussion of col/row/zoom
- *    @param job.segrow integer  
- *    @param job.xsize  integer  Width of output image in pixels
- *    @param job.ysize  integer  Height of output image in pixels
- *
- *
- *  Return with
- *
- *    read locked buffer
+ **
+ **  The width and heigh of the original image are divided by "zoom"
+ **  and the resulting segments addressed by column and row indices
+ **  starting with the upper left hand corner.  For example:
+ **
+ **  Zoom: 4 gives 16 segments from [0,0] to [3,3].  Zoom: 1.5 gives 4
+ **  segments from [0,] to [1,1] where the right half of [0,1] is
+ **  blank, the bottom half of [0,1] is blank, and only the upper left
+ **  hand quadrant of [1,1] is potentially non-blank.
+ **
+ **
+ **  Call with
+ **
+ **    @param wctx                Our worker contex
+ **    @param wctx.ctxMutex       Mutex to keep from stepping on the toes of other workers
+ **
+ **    @param rc redisContext*    Open redis context to local redis server
+ **
+ **    @param job.fn     string   File name of the data we are interested in
+ **    @param job.frame  integer  Requested frame.  Default is 1
+ **    @param job.zoom   double   Ratio of full source image to the portion of the source image we are processing. Zoom will be rounded to the nearest 0.1
+ **    @param job.segcol integer  See above for discussion of col/row/zoom
+ **    @param job.segrow integer  
+ **    @param job.xsize  integer  Width of output image in pixels
+ **    @param job.ysize  integer  Height of output image in pixels
+ **
+ **
+ **  Return with
+ **
+ **    read locked buffer
  */
 isImageBufType *isReduceImage(isWorkerContext_t *wctx, redisContext *rc, json_t *job) {
   static const char *id = FILEID "isReducedImage";
@@ -391,7 +512,7 @@ isImageBufType *isReduceImage(isWorkerContext_t *wctx, redisContext *rc, json_t 
   
   //
   // Reality check on zoom
-  //
+M  //
   zoom = (floor(10.0*zoom+0.5))/10.0;   // round to the nearest 0.1
   if (zoom <= 1.0) {
     zoom = 1.0;
