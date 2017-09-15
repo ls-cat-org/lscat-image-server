@@ -6,12 +6,24 @@
 #include "is.h"
 static int running = 0;
 
+/** handle signals by lowering the running flag.
+ ** 
+ ** @param sig the signal number
+ **
+ ** @param si  siginfo struction
+ **
+ ** @param dummy unused user data
+ */
 void signal_action(int sig, siginfo_t *si, void *dummy) {
   if (sig == SIGTERM || sig == SIGINT) {
     running = 0;
   }
 }
 
+/** Dispatch jobs sent from the supervisor via zmq
+ **
+ ** @param voidp  opaque pointer to our worker context
+ */
 void *isWorker(void *voidp) {
   static const char *id = FILEID "isWorker";
   isThreadContextType tc;
@@ -124,6 +136,10 @@ void *isWorker(void *voidp) {
   return NULL;
 }
 
+/** Dispatch workers and pass to them the jobs we receive.
+ ** 
+ ** @param key  Unique identifer for this user in this ESAF group
+ */
 void isSupervisor(const char *key) {
   static const char *id = FILEID "isSupervisor";
   static struct sigaction si;

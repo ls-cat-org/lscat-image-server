@@ -5,9 +5,22 @@
  */
 #include "is.h"
 
+/** Put a label on the image.
+ **
+ ** @param[in] label  pointer to the label text
+ **
+ ** @param[in] width  width of label in pixels
+ **
+ ** @param[in] height  height of label in pixels
+ **
+ ** @param[in,out] cinfop  jpeg creation structure
+ **
+ ** @todo Select the correct font to best fit the label in the height and width constraints.
+ **
+ */
 void isJpegLabel(const char *label, int width, int height, struct jpeg_compress_struct *cinfop) {
   static const char *id = FILEID "isJpegLabel";
-  const isBitmapFontType *bmp;          // Our chosen bitmap font
+  const isBitmapFontType *bmp;  // Our chosen bitmap font
   uint16_t mask;                // used to find bit in font
   int sbc;                      // the "sub" byte in the font needed for font width > 8
   int bpc;                      // bytes per character.  ie, 1 for 6x13, 2 for 9x15
@@ -18,11 +31,11 @@ void isJpegLabel(const char *label, int width, int height, struct jpeg_compress_
   int label_xmax;               // RHS of text
   int ib;                       // index in bitmap of current char
   int ix;                       // x position in scan line of current char
-  unsigned char *red, *blue, *green;
-  unsigned char *row_buffer;
-  int i;
-  int ci;
-  size_t row_buffer_size;
+  unsigned char *red, *blue, *green;    // separate pointers to the pixel colors (all in row_buffer)
+  unsigned char *row_buffer;    // a single row of pixels
+  int i;                        // counter to be sure the label does not extend beyond its given height
+  int ci;                       // index into label to select which character we are working on
+  size_t row_buffer_size;       // size of row_buffer, of course
 
   row_buffer_size = width * sizeof(*row_buffer) * 3;
 
@@ -98,29 +111,40 @@ void isJpegLabel(const char *label, int width, int height, struct jpeg_compress_
   free(row_buffer);
 }
 
-//
-// Send 4 message to our zmq image server client.  It is expecting the following message parts:
-//
-//   1) error message or an empty message if there is no error
-//
-//   Assuming there has not yet been an error the the following message parts must be sent:
-//
-//   2) job:  the stringified version of the job we are working on.
-//
-//   3) meta: Our meta data from the the image file and/or what we've caluclated
-//
-//   4) jpeg: the jpeg image that we'd like the user to have a look at
-//
+
+/** Send 4 message to our zmq image server client.  It is expecting the following message parts:
+ **
+ **  1) Error message or an empty message if there is no error.
+ **     Assume there has not yet been an error the the following
+ **     message parts must also be sent:
+ **
+ **  2) job:  the stringified version of the job we are working on.
+ **
+ **  3) meta: Our meta data from the the image file and/or what we've caluclated
+ **
+ **  4) jpeg: the jpeg image that we'd like the user to have a look at
+ **
+ ** @param[in] tcp   Our thread context
+ **
+ ** @param[in] job   The JSON object sent from the client
+ **
+ ** @param[in] meta  The JSON object representing the meta data from our image
+ **
+ ** @param[in] out_buffer The jpeg image we are about to send
+ **
+ ** @param[in] jpeg_len The length of out_buffer
+ **
+*/
 void isJpegSend(isThreadContextType *tcp, json_t *job, json_t *meta, unsigned char *out_buffer, int jpeg_len) {
   static const char *id = FILEID "isJpegSend";
 
-  char *job_str;
-  char *meta_str;
-  int err;
-  zmq_msg_t err_msg;
-  zmq_msg_t job_msg;
-  zmq_msg_t meta_msg;
-  zmq_msg_t jpeg_msg;
+  char *job_str;                // stringified version of job
+  char *meta_str;               // stringified version of meta
+  int err;                      // error code from routies that return integers
+  zmq_msg_t err_msg;            // error message to send via zmq
+  zmq_msg_t job_msg;            // the job message to send via zmq
+  zmq_msg_t meta_msg;           // the metadata to send via zmq
+  zmq_msg_t jpeg_msg;           // the jpeg as a zmq message
 
   fprintf(stdout, "%s: jpeg_len: %d\n", id, jpeg_len);
 
@@ -202,24 +226,33 @@ void isJpegSend(isThreadContextType *tcp, json_t *job, json_t *meta, unsigned ch
   } while (0);
 }
 
+/** Send a blank image used as a placeholder.
+ **
+ ** @param[in] wctx  info for this worker
+ **
+ ** @param[in] tcp   info for this thread
+ **
+ ** @param[in] job   the job that we are responding to
+ **
+ */
 void isJpegBlank(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
   static const char *id = FILEID "isJpegBlank";
-  struct jpeg_compress_struct cinfo;
-  int cinfoSetup;
-  jmp_buf j_jumpHere;
-  struct jpeg_error_mgr jerr;
-  struct jpeg_destination_mgr dmgr;
-  unsigned char *row_buffer;
-  unsigned char *out_buffer;
-  int labelHeight;
-  int col;
-  int row;
-  int height;
-  int width;
-  unsigned char *red, *blue, *green;
-  const char *label;
-  size_t row_buffer_size;
-  size_t out_buffer_size;
+  struct jpeg_compress_struct cinfo;            // jpeg context
+  int cinfoSetup;                               // flag so we only destroy cinfo if it had been set up
+  jmp_buf j_jumpHere;                           // Yeah, libjpeg likes long jumps.
+  struct jpeg_error_mgr jerr;                   // libjpeg error handline
+  struct jpeg_destination_mgr dmgr;             // support for libjpeg
+  unsigned char *row_buffer;                    // a single row of pixels
+  unsigned char *out_buffer;                    // a place to put the rows as they are completed
+  int labelHeight;                              // The height of the requested label (if any)
+  int col;                                      // loop over the width of the image
+  int row;                                      // loop over the height of the image
+  int height;                                   // the image height
+  int width;                                    // the image width
+  unsigned char *red, *blue, *green;            // pointers to the pixel color components
+  const char *label;                            // a string version of our label (extracted from job)
+  size_t row_buffer_size;                       // the size of row_buffer
+  size_t out_buffer_size;                       // the size of out_buffer
 
   width = json_integer_value(json_object_get(job, "xsize"));
   width = width < 8 ? 8 : width;

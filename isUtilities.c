@@ -4,11 +4,15 @@
  *  @brief Various and sundry utilities to support the LS-CAT Image Server Version 2
  */
 #include "is.h"
-//
-// For some reason our isAuth strings come to us with escaped \n line
-// endings instead of the unescaped \r\n line endings that gpgme
-// requires;
-//
+
+/** For some reason our isAuth strings come to us with escaped \\n line
+ ** endings instead of the unescaped \\r\\n line endings that gpgme
+ ** requires.
+ ** 
+ ** @param[in] s String to fix
+ **
+ ** @returns fixed string.  Call "free" when done with it.
+*/
 char *fixLineFeeds( const char *s) {
   int i;
   const char *in;
@@ -57,11 +61,16 @@ char *fixLineFeeds( const char *s) {
 
 
 /** openssl_vase64_decode
- *  From https://github.com/exabytes18/OpenSSL-Base64/blob/master/base64.c
- *
- *  Shouldn't this be in some nice library I could include?
+ ** From https://github.com/exabytes18/OpenSSL-Base64/blob/master/base64.c
+ **
+ ** Shouldn't this be in some nice library I could include?
+ **
+ ** @param[in] encoded_bytes   String that we'd like to decode
+ **
+ ** @param[out] decoded_bytes The happy decoded string
+ **
+ ** @param[out] decoded_length As the name suggests, this is the length of our decoded string.
  */
-
 void openssl_base64_decode(char *encoded_bytes, char **decoded_bytes, ssize_t *decoded_length) {
   BIO *bioMem, *b64;
   ssize_t buffer_length;
@@ -77,6 +86,20 @@ void openssl_base64_decode(char *encoded_bytes, char **decoded_bytes, ssize_t *d
   BIO_free_all(bioMem);
 }
 
+/** Verify a signature
+ **
+ ** @param msg    Message to verify
+ **
+ ** @param mlen   Length of our message msg
+ **
+ ** @param sig    Signature to verify against
+ **
+ ** @param slen   Length of our signature sig
+ **
+ ** @param pkey   Public key of the signer
+ **
+ ** @returns -1 on failed verification, 0 on success
+ */
 int verify_it(const unsigned char* msg, size_t mlen, char* sig, size_t slen, EVP_PKEY* pkey) {
   static const char *id = FILEID "verify_it";
   /* Returned to caller */
@@ -138,6 +161,15 @@ int verify_it(const unsigned char* msg, size_t mlen, char* sig, size_t slen, EVP
   return !!result;
 }
 
+/** Check that the isAuth message is valid
+ **
+ ** @param[in] isAuth        Plain text string we'd like to verify
+ **
+ ** @param[in] isAuthSig_str Encrypted signature of the message
+ **
+ ** @returns 0 on failure, 1 on success
+ **
+ */
 int verifyIsAuth( char *isAuth, char *isAuthSig_str) {
   static const char *id = FILEID "verifyIsAuth";
   FILE *fp;
@@ -167,6 +199,15 @@ int verifyIsAuth( char *isAuth, char *isAuthSig_str) {
 }
 
 
+/** Check that an ESAF is allowed by isAuth.
+ ** Here we assume that isAuth's signature has been verified.
+ ** 
+ ** @param isAuth   JSON object containing ESAFS we are allowed to use, among other things.
+ **
+ ** @param esaf     ESAF number we wish to check
+ **
+ ** @returns 1 on esaf allowed, 0 on esaf not allowed
+ */
 int isEsafAllowed(json_t *isAuth, int esaf) {
   json_t *allowedESAFs;
   size_t i;
@@ -193,9 +234,19 @@ int isEsafAllowed(json_t *isAuth, int esaf) {
   return 0;
 }
 
-//
-// Convenence routine for setting a string value in a json object
-//
+/** Convenence routine for setting a string value in a json object.
+ **
+ ** @param[in]     cid String identifing the calling routine for use in error messages
+ **
+ ** @param[in,out] j   JSON object in which we are setting the key
+ **
+ ** @param[in]     key Sure enough, this is the name of the key
+ **
+ ** @param[in]     fmt printf style format string
+ **
+ ** @param[in]     ... Arguments as specified by fmt
+ **
+ */
 void set_json_object_string(const char *cid, json_t *j, const char *key, const char *fmt, ...) {
   static const char *id = "set_json_object_string";
   va_list arg_ptr;
@@ -225,9 +276,17 @@ void set_json_object_string(const char *cid, json_t *j, const char *key, const c
 }
 
 
-//
-// Convenence routine for setting an integer value in a json object
-//
+
+/** Convenence routine for setting an integer value in a json object
+ **
+ ** @param[in] cid    String identifying the calling routine.  Used for error messages.
+ **
+ ** @param[in,out] j  JSON object to modify
+ **
+ ** @param[in] key    Name of the key to add to j
+ **
+ ** @param[in] value  Integer value to add
+ */
 void set_json_object_integer(const char *cid, json_t *j, const char *key, int value) {
   static const char *id = "set_json_object_integer";
   json_t *tmp_obj;
@@ -246,9 +305,18 @@ void set_json_object_integer(const char *cid, json_t *j, const char *key, int va
 }
 
 
-//
-// Convenence routine for setting an integer value in a json object
-//
+/** Convenence routine for setting an integer value in a json object
+ **
+ ** @param cid    Name of calling routine for error messages
+ **
+ ** @param j      JSON object to modify
+ **
+ ** @param key    Key to add to j
+ **
+ ** @param values Array of integers to add under key
+ **
+ ** @param n      Number of elements in the array "values"
+ */
 void set_json_object_integer_array( const char *cid, json_t *j, const char *key, int values[], int n) {
   static const char *id = "set_json_object_integer_array";
   json_t *tmp_obj;
@@ -284,9 +352,17 @@ void set_json_object_integer_array( const char *cid, json_t *j, const char *key,
   }
 }
 
-//
-// Convenence routine for setting a real value in a json object
-//
+/** Convenence routine for setting a real value in a json object
+ **
+ ** @param cid    Name of calling routine for constructing error messages
+ **
+ ** @param j      JSON object to modify
+ ** 
+ ** @param key    Key to add to j
+ **
+ ** @param value  Value to assign to the key
+ **
+ */
 void set_json_object_real(const char *cid, json_t *j, const char *key, double value) {
   static const char *id = "set_json_object_real";
   json_t *tmp_obj;
@@ -310,6 +386,16 @@ void set_json_object_real(const char *cid, json_t *j, const char *key, double va
 }
 
 /** Support for a one dimensional array of doubles
+ **
+ ** @param cid     Name of calling routine
+ **
+ ** @param j       JSON object to modify
+ **
+ ** @param key     Key to modify or add to j
+ **
+ ** @param values  One dimensional array of floats
+ **
+ ** @param n       Number of elements in values
  */
 void set_json_object_float_array( const char *cid, json_t *j, const char *key, float *values, int n) {
   static const char *id = "set_json_object_float_array";
@@ -346,6 +432,20 @@ void set_json_object_float_array( const char *cid, json_t *j, const char *key, f
   }
 }
 
+/** Convenience routine to add a 2d array of floats to a json object.
+ **
+ ** @param cid   Name of calling routine
+ **
+ ** @param j     JSON object to modify
+ **
+ ** @param k     Key to place the array in
+ **
+ ** @param v     Our array
+ **
+ ** @param rows  Number of rows
+ ** 
+ ** @param cols  Number of columns
+ */
 void set_json_object_float_array_2d(const char *cid, json_t *j, const char *k, float *v, int rows, int cols) {
   const static char *id = "set_json_object_float_array_2d";
   json_t *tmp_obj;
@@ -395,7 +495,19 @@ void set_json_object_float_array_2d(const char *cid, json_t *j, const char *k, f
   }
 }
 
-
+/** convenence routine to extract an integer from an object
+ **
+ ** Without this the caller would have to generate a temporary json
+ ** object to hold the value.
+ **
+ ** @param cid   Name of calling routine
+ **
+ ** @param j     JSON object hiding our value
+ **
+ ** @param key   Key corresponding to our integer
+ **
+ ** @return Value of said integer.
+ */
 int get_integer_from_json_object(const char *cid, json_t *j, char *key) {
   static const char *id = "get_integer_from_json_object";
   json_t *tmp_obj;
@@ -413,6 +525,12 @@ int get_integer_from_json_object(const char *cid, json_t *j, char *key) {
   return (int)json_integer_value(tmp_obj);
 }
 
+/** ZMQ needs us to pass a free routine to free data whenever it is done with it.
+ **
+ ** @param data   data to free
+ **
+ ** @param hint   opaque pointer to use at our whim.  It's unused
+ */
 void is_zmq_free_fn(void *data, void *hint) {
   static const char *id = FILEID "is_zmq_free_fn";
   (void)id;
@@ -422,6 +540,19 @@ void is_zmq_free_fn(void *data, void *hint) {
   }
 }
 
+/** Routine to send error messages back through the ZMQ maze in case we have nothing real to send
+ **
+ ** @param msgs         List of messages to send
+ **
+ ** @param n_msgs        Number of messsages in our list
+ **
+ ** @param err_dealer   ZMQ dealer that handles messages
+ **
+ ** @param fmt          printf style format string
+ **
+ ** @param ...          parameters as specified by fmt
+ **
+ */
 void is_zmq_error_reply(zmq_msg_t *msgs, int n_msgs, void *err_dealer, char *fmt, ...) {
   static const char *id = FILEID "is_zmq_error_reply";
   char *msg;

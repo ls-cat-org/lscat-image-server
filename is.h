@@ -115,7 +115,6 @@ typedef struct isProcessListStruct {
   int esaf;                             //!< Our esaf
   pid_t processID;                      //!< The process id returned to the parent by fork
   json_t *isAuth;                       //!< Authenticated user name, role, and list of allowed esafs
-  int do_not_call;                      //!< 
   void *parent_dealer;                  //!< parent side of parent/child proxy (ipc)
 } isProcessListType;
 

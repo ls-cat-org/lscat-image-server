@@ -2,6 +2,7 @@
  *  @brief Runs the image server main loop
  *  @date 2017
  *  @copyright 2017 by Northwestern University
+ *  @author Keith Brister
  *
  *	gcc -Wall isEiger.c -o isEiger -lhdf5 -lhiredis -llz4 -ljansson -lpthread
  *
@@ -27,6 +28,8 @@
  *  will attempt to act only upon data that the user has access to.
  *  For that we rely on the normal Unix file user and group access
  *  system.
+ *
+ *  ![Image Server Data Flow](../../isOverview.png)
  */
 #include "is.h"
 
