@@ -1,17 +1,35 @@
-/*! @file isProcessManagement.c
- *  @copyright 2017 by Northwestern University All Rights Reserved
- *  @author Keith Brister
- *  @brief Process Management Code for the LS-CAT Image Server Version 2
+/** @file isProcessManagement.c
+ ** @copyright 2017 by Northwestern University All Rights Reserved
+ ** @author Keith Brister
+ ** @brief Process Management Code for the LS-CAT Image Server Version 2
+ **
+ ** Processes are kept track of using a linked list of @c
+ ** isProcessListType. In order to speed up access to a given process
+ ** we use a hash table which is rebuilt whenever necessary from the
+ ** linked list.
+ **
  */
+
+/** All header files are placed in @c is.h to ensure consistent definitions.
+ */ 
 #include "is.h"
 
+/** Number of process table in to make room for initially       */
 #define INITIAL_PROCESS_TABLE_SIZE 128
+
+/** Current size of our proccess table                          */
 static int process_table_size;
+
+/** hash table for our processes                                */
 static struct hsearch_data process_table;
+
+/** First process in our linked list                            */
 static isProcessListType *firstProcessListItem = NULL;
 static zmq_pollitem_t *isZMQPollItems = NULL;
 static int n_processes;
 
+/** On startup ensure that other verions of this program are killed.
+ */
 void isInit() {
   static const char *id = FILEID "isInit";
   FILE *our_pid_file;
@@ -65,6 +83,8 @@ void isInit() {
   fclose(our_pid_file);
 }
 
+/** Initialize our process list and hash table
+ */
 void isProcessListInit() {
   static const char *id = FILEID "isProcessListInit";
   int err;
@@ -80,6 +100,21 @@ void isProcessListInit() {
   n_processes = 0;
 }
 
+/** Launch a new process.
+ **
+ ** The process will run as the requesting user with the group number
+ ** based on the esaf number in the home directory of the esaf user.
+ ** Although we try to ensure that the user has access to the
+ ** requested ESAF the operating system will back this up by refusing
+ ** to allow access if the user is not, in fact, a member of the esaf
+ ** group.
+ **
+ ** @param p  Object to launch
+ **  @li @c p->isAuth      Our permissions object
+ **  @li @c p->isAuth->uid Our user name
+ **  @li @c p->esaf        The current ESAF
+ **  @li @c p->processID   ID of forked child (so we can kill it later)
+ */
 void isStartProcess(isProcessListType *p) {
   static const char *id = FILEID "isStartProcess";
   int child;
@@ -164,6 +199,19 @@ void isStartProcess(isProcessListType *p) {
   isSupervisor(p->key);
 }
 
+
+/** Generate a new entry in the process linked list as well as the
+ ** process hash table.
+ **
+ ** @param zctx The ZMQ context we'll use to communicate with the process
+ **
+ ** @param isAuth Our permissions
+ **   @li @c pid   Process identifier for this user instance
+ **
+ ** @param esaf   ESAF number our user is trying to access
+ **
+ ** @returns New process list item with ZMQ set up to communicate with the 
+ */
 isProcessListType *isCreateProcessListItem(void *zctx, json_t *isAuth, int esaf) {
   static const char *id = FILEID "isCreateProcessListItem";
   char ourKey[128];

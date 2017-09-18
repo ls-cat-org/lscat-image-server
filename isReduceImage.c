@@ -25,7 +25,7 @@
  **
  ** @param xal           box extends this distance to the left of l
  **
- ** @param xah           box extens this distance to the right of l
+ ** @param xau           box extens this distance to the right of l
  **
  ** @returns Maximum value found in the box.  Bad pixels are ignored.
  */
@@ -92,7 +92,7 @@ uint32_t maxBox16( uint32_t *badPixels, void *buf, int bufWidth, int bufHeight, 
  **
  ** @param xal           box extends this distance to the left of l
  **
- ** @param xah           box extens this distance to the right of l
+ ** @param xau           box extens this distance to the right of l
  **
  ** @returns Maximum value found in the box.  Bad pixels are ignored.
  */
@@ -159,7 +159,7 @@ uint32_t maxBox32( uint32_t *badPixels, void *buf, int bufWidth, int bufHeight, 
  **
  ** @param xal           Dummy
  **
- ** @param xah           Dummy
+ ** @param xau           Dummy
  **
  ** @returns nearest value.  Bad pixels return 0
  */
@@ -201,7 +201,7 @@ uint32_t nearest16( uint32_t *badPixels, void *buf, int bufWidth, int bufHeight,
  **
  ** @param xal           Dummy
  **
- ** @param xah           Dummy
+ ** @param xau           Dummy
  **
  ** @returns nearest value.  Bad pixels return 0
  */
@@ -461,18 +461,19 @@ void reduceImage32( isImageBufType *src, isImageBufType *dst, int x, int y, int 
  **
  **  Call with
  **
- **    @param wctx                Our worker contex
- **    @param wctx.ctxMutex       Mutex to keep from stepping on the toes of other workers
+ **    @param wctx        Our worker contex:
+ **      @li @c wctx->ctxMutex  Keep our parallel worlds from colliding
  **
- **    @param rc redisContext*    Open redis context to local redis server
+ **    @param rc          Open redis context to local redis server
  **
- **    @param job.fn     string   File name of the data we are interested in
- **    @param job.frame  integer  Requested frame.  Default is 1
- **    @param job.zoom   double   Ratio of full source image to the portion of the source image we are processing. Zoom will be rounded to the nearest 0.1
- **    @param job.segcol integer  See above for discussion of col/row/zoom
- **    @param job.segrow integer  
- **    @param job.xsize  integer  Width of output image in pixels
- **    @param job.ysize  integer  Height of output image in pixels
+ **    @param job         Request from user.  We use the following properties here
+ **      @li @c job->fn     File name of the data we are interested in
+ **      @li @c job->frame  Requested frame.  Default is 1
+ **      @li @c job->zoom   Ratio of full source image to the portion of the source image we are processing. Zoom will be rounded to the nearest 0.1
+ **      @li @c job->segcol See above for discussion of col/row/zoom
+ **      @li @c job->segrow See above for discussion of col/row/zoom
+ **      @li @c job->xsize  Width of output image in pixels
+ **      @li @c job->ysize  Height of output image in pixels
  **
  **
  **  Return with

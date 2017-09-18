@@ -1,7 +1,7 @@
-/*! @file isRayonix.c
- *  @copyright 2017 by Northwestern University All Rights Reservered
- *  @author Keith Brister
- *  @breif Code to read Rayonix TIFF image files for the LS-CAT Image Server Version 2
+/** @file isRayonix.c
+ ** @copyright 2017 by Northwestern University All Rights Reservered
+ ** @author Keith Brister
+ ** @brief Code to read Rayonix TIFF image files for the LS-CAT Image Server Version 2
  */
 #include "is.h"
 /*
@@ -18,9 +18,16 @@
 **
 */
 
+/** uint16_t                            */
 #define UINT16  unsigned short
+
+/** int16_t                             */
 #define INT16 short
+
+/** uint32_t                            */
 #define UINT32  unsigned int
+
+/** int32_t                             */
 #define INT32 int
 /*
    Currently frames are always written as defined below:
@@ -34,22 +41,22 @@
 //#define LITTLE_ENDIAN 1234
 //#define BIG_ENDIAN  4321
 
-/* possible orientations of frame data (stored in orienation field) */
-#define HFAST     0  /* Horizontal axis is fast */
-#define VFAST     1  /* Vertical axis is fast */
+/* possible orientations of frame data (stored in orienation field)     */
+#define HFAST     0  /*!< Horizontal axis is fast                       */
+#define VFAST     1  /*!< Vertical axis is fast                         */
 
-/* possible origins of frame data (stored in origin field) */
-#define UPPER_LEFT    0
-#define LOWER_LEFT    1
-#define UPPER_RIGHT   2
-#define LOWER_RIGHT   3
+/* possible origins of frame data (stored in origin field)              */
+#define UPPER_LEFT    0         /*!< origin is upper left               */
+#define LOWER_LEFT    1         /*!< origin is lower left               */
+#define UPPER_RIGHT   2         /*!< origin is upper right              */
+#define LOWER_RIGHT   3         /*!< origin is lower right              */
 
 /* possible view directions of frame data for
-   the given orientation and origin (stored in view_direction field) */
-#define FROM_SOURCE   0
-#define TOWARD_SOURCE   1
+   the given orientation and origin (stored in view_direction field)    */
+#define FROM_SOURCE   0         /*!< We are riding the x-ray beam       */
+#define TOWARD_SOURCE 1         /*!< We are looing in to the beam       */
 
-#define MAXIMAGES 9
+#define MAXIMAGES 9             /*!< Some array sizes, not sure why.    */
 
 /** Header structure for Rayonix Tiff images.
  */
@@ -232,12 +239,19 @@ typedef struct frame_header_type {
 } frame_header;
 
 
-//
-// The comment string might look something like this:
-//    detector='Rayonix MX-225 s/n 001' LS_CAT_Beamline='21-ID-E' kappa=0.0 omega=235.0
-//
-// This routine attempts to parse out the detector or LS_CAT_Beamline parameters and return them in a malloc char array
-//
+/** Some important items have no place in the Rayonix header so we place the in the comments.
+ ** The comment string might look something like this:
+ ** detector='Rayonix MX-225 s/n 001' LS_CAT_Beamline='21-ID-E' kappa=0.0 omega=235.0
+ **
+ ** This routine attempts to parse out the detector or LS_CAT_Beamline parameters and return them in a malloc char array
+ **
+ ** @param cp           Pointer to the comment string.
+ **
+ ** @param needle       parameter to search for
+ **
+ ** @returns string with our parameter's value or null if not found.  Be sure to free it later.
+ **
+ */
 char *parseComment( char const *cp, char const *needle) {
   static const char *id = "parseComment";
   char *p;    // pointer into the comment string
@@ -272,6 +286,12 @@ char *parseComment( char const *cp, char const *needle) {
   return rtn;
 }
 
+/** Retrieve only the meta data from the image file.
+ **
+ ** @param fn Our file name
+ **
+ ** @returns JSON object chock full of  our metadata.
+ */
 json_t *isRayonixGetMeta( const char *fn) {
   static const char *id = "marTiffGetHeader";
   //
@@ -379,6 +399,12 @@ json_t *isRayonixGetMeta( const char *fn) {
   return rtn;
 }
 
+/** Retreive a buffer full of image
+ **
+ ** @param[in]  fn   Filename we'd like to process
+ **
+ ** @param[out] imb  Image buffer we'd like to fill 
+ */
 void isRayonixGetData( const char *fn, isImageBufType *imb) {
   static const char *id = "marTiffGetData";
 

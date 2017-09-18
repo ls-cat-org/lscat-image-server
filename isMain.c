@@ -29,7 +29,6 @@
  *  For that we rely on the normal Unix file user and group access
  *  system.
  *
- *  ![Image Server Data Flow](../../isOverview.png)
  */
 #include "is.h"
 
