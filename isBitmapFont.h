@@ -1,23 +1,27 @@
-//  Support for text overlays in NDPluginOverlay
-//  Keith Brister 2014-06-26
-//
-//  Adapted to LS-CAT Image Server
-//  December 2016
-//  Copyright 2016 by Northwestern University
-//
-// Modified output from bdf2c 
-// (c) 2009, 2010 Lutz Sammer, License: AGPLv3
+/** @file isBitmapFont.h
+ ** @copyright 2014-2016 by Northwestern University
+ ** @author Keith Brister
+ **
+ **  Support for text overlays in NDPluginOverlay
+ **
+ ** Modified output from [bdf2c](https://sourceforge.net/projects/bdf2c/)
+ ** Also see the github project at https://github.com/pixelmatix/bdf2c
+ ** (c) 2009, 2010 Lutz Sammer, License: AGPLv3
+ */
 
+/** Our font definition: size plus all those bits.
+ */
 typedef struct isBitmapFontStruct {
-  const unsigned char width;            ///< max. character width
-  const unsigned char height;           ///< character height
+  const unsigned char width;      ///< max. character width
+  const unsigned char height;     ///< character height
   const unsigned char *bitmap;    ///< bitmap of all characters
 } isBitmapFontType;
-
 
 extern const isBitmapFontType isBitmapFontBitmaps[];
 extern const int n_isBitmapFontBitmaps;
 
+/** @cond Doxygen_Suppresion
+ */
 #define ________ 0x00
 #define _______X 0x01
 #define ______X_ 0x02
@@ -275,3 +279,5 @@ extern const int n_isBitmapFontBitmaps;
 #define XXXXXXX_ 0xFE
 #define XXXXXXXX 0xFF
 
+/** @endcond
+ */
