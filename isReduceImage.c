@@ -513,7 +513,7 @@ isImageBufType *isReduceImage(isWorkerContext_t *wctx, redisContext *rc, json_t 
   
   //
   // Reality check on zoom
-M  //
+  //
   zoom = (floor(10.0*zoom+0.5))/10.0;   // round to the nearest 0.1
   if (zoom <= 1.0) {
     zoom = 1.0;
