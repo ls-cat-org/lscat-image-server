@@ -193,7 +193,7 @@ image_access_type isFindFile(const char *fn) {
   int stat_errno;
 
   //
-  // Oddly, we can open a file even when stat itself would fails.
+  // Oddly, we can open a file even when stat itself would fail.
   // Stat needs to have all the directories above the file to be
   // accessable while open does not.  Hence, we first open the file
   // and then use fstat instead of stat.
@@ -208,7 +208,7 @@ image_access_type isFindFile(const char *fn) {
   errno = 0;
   err = fstat(fd, &buf);
   stat_errno = errno;
-  close(fd);
+  close(fd);                    // let's not be leaking file descriptors
 
   if (err != 0) {
     fprintf(stderr, "%s: Could not find file '%s': %s\n", id, fn, strerror(stat_errno));
@@ -221,7 +221,7 @@ image_access_type isFindFile(const char *fn) {
   }
 
   //
-  // Walk through the readable possibilities.  Consider that the
+  // Walk through the readability possibilities.  Consider that the
   // ownership and group privileges may be more restrictive than the
   // world privileges.
   //
