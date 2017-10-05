@@ -1,42 +1,43 @@
-/** @file isBitmapFont.c
- *  @brief Provides bit mapped fonts for image overlays
- *  @date 2014, 2016, 2017
- *  @copyright 2017 by Northwestern University
- *  @author Keith Brister
- *
- *  Fonts supported:
- *
- * 6x13
- *    -Misc-Fixed-Medium-R-SemiCondensed--13-120-75-75-C-60-ISO10646-1
- *
- * 6x13B
- *    -Misc-Fixed-Bold-R-SemiCondensed--13-120-75-75-C-60-ISO10646-1
- *
- * 9x15
- *    -Misc-Fixed-Medium-R-Normal--15-140-75-75-C-90-ISO10646-1
- *
- * 9x15B
- *    -Misc-Fixed-Bold-R-Normal--15-140-75-75-C-90-ISO10646-1
- *
- * The fonts themselves are possibly copyrighted and covered by an MIT
- * license (as they  are based on fonts in the  X11 distribution).  Or
- * possibly  they  are  not  copyrighted.  Or  possibly  the  are  not
- * copyrightable.  The author of this code  has not done any more than
- * waste some time on Google trying to figure this out without finding
- * a definitive answer.
- *
- * The full fonts have been whittled down to the characters 32 through
- * 255.  When UTF-8, in its full glory, is needed, it shouldn't be too
- * difficult to support.
- *
- * The arrays below were created from bdf2c Version 3, (c) 2009, 2010
- * by Lutz Sammer License AGPLv3: GNU Affero General Public License
- * version 3
+/**  @file isBitmapFont.c
+ **  @brief Provides bit mapped fonts for image overlays
+ **  @date 2014, 2016, 2017
+ **  @copyright 2017 by Northwestern University
+ **  @author Keith Brister
+ **
+ **  Fonts supported:
+ **
+ ** 6x13
+ **    -Misc-Fixed-Medium-R-SemiCondensed--13-120-75-75-C-60-ISO10646-1
+ **
+ ** 6x13B
+ **    -Misc-Fixed-Bold-R-SemiCondensed--13-120-75-75-C-60-ISO10646-1
+ **
+ ** 9x15
+ **    -Misc-Fixed-Medium-R-Normal--15-140-75-75-C-90-ISO10646-1
+ **
+ ** 9x15B
+ **    -Misc-Fixed-Bold-R-Normal--15-140-75-75-C-90-ISO10646-1
+ **
+ ** The fonts themselves are possibly copyrighted and covered by an MIT
+ ** license (as they  are based on fonts in the  X11 distribution).  Or
+ ** possibly  they  are  not  copyrighted.  Or  possibly  the  are  not
+ ** copyrightable.  The author of this code  has not done any more than
+ ** waste some time on Google trying to figure this out without finding
+ ** a definitive answer.
+ **
+ ** The full fonts have been whittled down to the characters 32
+ ** through 255.  When UTF-8, in its full glory, is needed, it
+ ** shouldn't be too difficult to support.
+ **
+ ** The arrays below were created from bdf2c Version 3, (c) 2009, 2010
+ ** by Lutz Sammer License AGPLv3: GNU Affero General Public License
+ ** version 3
  */
 
 #include "isBitmapFont.h"
 
-/// character bitmap for each encoding
+/** character bitmap for the 6 by 13 font.
+ */
 const unsigned char font_6x13[] = {
 //  32 $20 'space'
 //    width 6, bbx 0, bby -2, bbw 6, bbh 13
@@ -2907,6 +2908,8 @@ const unsigned char font_6x13[] = {
 
 
 
+/** character bitmap for the 6 by 13 Bold font.
+ */
 const unsigned char font_6x13B[] = {
 //  32 $20 'space'
 //    width 6, bbx 0, bby -2, bbw 6, bbh 13
@@ -5776,8 +5779,9 @@ const unsigned char font_6x13B[] = {
 };
 
 
-    /// character bitmap for each encoding
-static const unsigned char font_9x15[] = {
+/** character bitmap for the 9 by 15 font.
+ */
+const unsigned char font_9x15[] = {
 //  32 $20 'space'
 //    width 9, bbx 0, bby -3, bbw 9, bbh 15
     ________,________,
@@ -9027,7 +9031,9 @@ static const unsigned char font_9x15[] = {
     __XXXX__,________
 };
 
-static const unsigned char font_9x15B[] = {
+/** character bitmap for the 9 by 15 Bold font.
+ */
+const unsigned char font_9x15B[] = {
 //  32 $20 'space'
 //    width 9, bbx 0, bby -3, bbw 9, bbh 15
     ________,________,
@@ -12278,6 +12284,8 @@ static const unsigned char font_9x15B[] = {
 };
 
 
+/** Table of supported bitmap fonts
+ */
 const isBitmapFontType isBitmapFontBitmaps[] = {
   { 6, 13, font_6x13},
   { 6, 13, font_6x13B},
@@ -12285,4 +12293,6 @@ const isBitmapFontType isBitmapFontBitmaps[] = {
   { 9, 15, font_9x15B}
 };
 
+/** Number of fonts we support.
+ */
 const int n_isBitmapFontBitmaps = 4;
