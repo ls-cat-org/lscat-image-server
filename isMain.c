@@ -37,6 +37,15 @@
  ** @todo As the name implies this should be the amount we increase
  ** the list.  Currently this list is a fixed size and this approach
  ** is probably a bad idea and should be reevaluated.
+ **
+ ** @todo We only correctly deal with the case were there is only one
+ ** message part after the envelope messages.  Well, we do send on
+ ** additional message parts but only in the (hopefully normal case)
+ ** where there are no errors.  If there is an error then these extra
+ ** messages parts go unread.  Probably this is a mistake but we do
+ ** not yet have a use case for these extra parts so even if we did
+ ** something clever we'd not be able to test it.  Hence this little
+ ** warning message.
  */
 #define N_ZPOLLITEMS_INC 128
 
@@ -402,7 +411,6 @@ int main(int argc, char **argv) {
       fprintf(stderr, "%s: isRequest without pid: %s\n", id, tmpstr);
       is_zmq_error_reply(envelope_msgs, n_envelope_msgs, err_dealer, "%s: request does not contain pid", id);
       free(tmpstr);
-
       json_decref(isRequest);
       continue;
     }
@@ -543,6 +551,9 @@ int main(int argc, char **argv) {
 
     json_decref(isRequest);
 
+    //
+    // Send our evelope messages to the supervisor (through parent_dealer)
+    //
     for (i=0; i<n_envelope_msgs; i++) {
       zmq_msg_send(&envelope_msgs[i], pli->parent_dealer, ZMQ_SNDMORE);
       zmq_msg_close(&envelope_msgs[i]);
@@ -553,8 +564,7 @@ int main(int argc, char **argv) {
 
     //
     // If there just happens to be some more message parts to pass on
-    // to the thread that's actually doing some work this is where the
-    // magic happens.
+    // this is where that magic happens.
     //
     while (more) {
       zmq_msg_init(&zmsg);
