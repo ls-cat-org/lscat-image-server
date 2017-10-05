@@ -2,6 +2,7 @@ all: is
 
 distclean:
 	@rm -f *.o is
+	@rm -rf docs
 
 install:
 	install --mode=755 is /usr/local/bin
