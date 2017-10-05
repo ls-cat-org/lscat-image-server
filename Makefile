@@ -4,6 +4,14 @@ distclean:
 	@rm -f *.o is
 	@rm -rf docs
 
+clean:
+	@rm -f *.o is
+
+.PHONY: docs
+docs:
+	doxygen isDoxygen.config
+	(cd docs/latex; make)
+
 install:
 	install --mode=755 is /usr/local/bin
 
