@@ -32,11 +32,13 @@ static int n_processes;
  */
 void isInit() {
   static const char *id = FILEID "isInit";
-  FILE *our_pid_file;
-  pid_t old_pid;
-  int nconv;
-  int err;
+  FILE *our_pid_file;           // Read old pid and then write new pid
+  pid_t old_pid;                // old pid: kill on sight
+  int nconv;                    // 1 if successfully read pid from file, <1 otherwise
+  int err;                      // kill function return value
 
+  // Error recovery block
+  //
   do {
     our_pid_file = fopen(PID_FILE_NAME, "r");
     if (our_pid_file == NULL) {
@@ -66,7 +68,6 @@ void isInit() {
       fprintf(stderr, "%s: Could not kill previous process: %s\n", id, strerror(errno));
       break;
     }
-    
   } while (0);
 
   if (our_pid_file != NULL) {
@@ -87,14 +88,14 @@ void isInit() {
  */
 void isProcessListInit() {
   static const char *id = FILEID "isProcessListInit";
-  int err;
-  firstProcessListItem = NULL;
+  int err;                                              // hcreate return value
 
-  process_table_size = INITIAL_PROCESS_TABLE_SIZE;
-  errno = 0;
+  firstProcessListItem = NULL;                          // No entries yet
+  process_table_size = INITIAL_PROCESS_TABLE_SIZE;      // Starter value
+
   err = hcreate_r(process_table_size, &process_table);
   if (err == 0) {
-    fprintf(stderr, "%s: Fatal error: %s\n", id, strerror(errno));
+    fprintf(stderr, "%s: hcreate_r fatal error: %s\n", id, strerror(errno));
     exit (-1);
   }
   n_processes = 0;
@@ -117,28 +118,30 @@ void isProcessListInit() {
  */
 void isStartProcess(isProcessListType *p) {
   static const char *id = FILEID "isStartProcess";
-  int child;
-  struct passwd *pwds;
-  struct passwd *esaf_pwds;
-  int uid;
-  int gid;
-  const char *userName;
-  const char *homeDirectory;
-  int err;
-  char esafUser[16];
+  int child;                            // Our child's process id returned by fork
+  struct passwd *pwds;                  // Calling user's passwd entry
+  struct passwd *esaf_pwds;             // ESAF user's passwd entry
+  int uid;                              // Calling user's uid
+  int gid;                              // ESAF user's uid (which will be our gid)
+  const char *userName;                 // Our user's name
+  const char *homeDirectory;            // ESAF user's home directory
+  int err;                              // misc error return code
+  char esafUser[16];                    // Generated ESAF user name
 
   userName = json_string_value(json_object_get(p->isAuth, "uid"));
 
   errno = 0;
   pwds = getpwnam(userName);
   if (pwds == NULL) {
-    fprintf(stderr, "%s: Could not start process for user %s: %s\n", id, userName, strerror(errno));
+    fprintf(stderr, "%s: getpwnam failed for user %s: %s\n", id, userName, strerror(errno));
     return;
   }
 
   uid = pwds->pw_uid;
 
   if (p->esaf > 40000) {
+    // We want to run with the UID of the calling user and the GID of the referenced ESAF
+    //
     snprintf(esafUser, sizeof(esafUser)-1, "e%d", p->esaf);
     esafUser[sizeof(esafUser)-1] = 0;
 
@@ -203,7 +206,8 @@ void isStartProcess(isProcessListType *p) {
 /** Generate a new entry in the process linked list as well as the
  ** process hash table.
  **
- ** @param zctx The ZMQ context we'll use to communicate with the process
+ ** @param zctx The ZMQ context we'll use to set up communications
+ **             with the process
  **
  ** @param isAuth Our permissions
  **   @li @c pid   Process identifier for this user instance
@@ -280,16 +284,26 @@ isProcessListType *isCreateProcessListItem(void *zctx, json_t *isAuth, int esaf)
   return rtn;
 }
 
-//
-// Recreate (or initially create) the zmq pollitems we need in the main
-// loop to service the zmq sockets on which we rely
-//
-// Call with parent_router to insert as the first item.  Set to null
-// when remaking and it will not be touched.
-//
-// If we need to add other file descriptors to the event loop we'll
-// need to add a mechanism to deal them.
-//
+
+/** Recreate (or initially create) the zmq pollitems we need in the main
+ ** loop to service the zmq sockets on which we rely
+ **
+ ** @param parent_router ZMQ socket to handle communication with
+ **                      is_proxy.  Set to NULL to leave parent_router
+ **                      unchanged.
+ **
+ ** @param err_rep       ZMQ socket to handle the error response.  Set to
+ **                      NULL to leave untouched.
+ **
+ ** @param err_dealer    ZMQ socket to receive error messages from the
+ **                      supervisors.  Set to NULL to leave untouched.
+ **
+ ** @returns List of pollites suitable for zmq_poll.
+ **
+ ** @todo We should really return a structure that also includes the
+ ** number of items in the poll list.  We currently do this in an
+ ** adhoc way that was somewhat error prone.
+ */
 zmq_pollitem_t *isRemakeZMQPollItems(void *parent_router, void *err_rep, void *err_dealer) {
   static const char *id = FILEID "isRemakeZMQPollItems";
   isProcessListType *plp;
@@ -346,14 +360,27 @@ zmq_pollitem_t *isRemakeZMQPollItems(void *parent_router, void *err_rep, void *e
   return isZMQPollItems;
 }
 
+/** get the zmq poll items list
+ **
+ ** @returns Current list of poll items.
+ */
 zmq_pollitem_t *isGetZMQPollItems() {
   return isZMQPollItems;
 }
 
+/** number of processes
+ **
+ ** @returns Number of running processes
+ */
 int isNProcesses() {
   return n_processes;
 }
 
+/** Remove a process list item and recover its resources.
+ **
+ ** @param p Process list item to remove
+ **
+ */
 void isDestroyProcessListItem(isProcessListType *p) {
   static const char *id = "isDestroyProcessListItem";
   isProcessListType *plp, *last;
@@ -388,6 +415,15 @@ void isDestroyProcessListItem(isProcessListType *p) {
   isRemakeZMQPollItems(NULL, NULL, NULL);
 }
 
+/**  Recreate the hash table from the process linked list.  We check
+ **  to be sure the process still exists and prune the list if need
+ **  be.  This is called when we can no longer add anything more to
+ **  the list.
+ **
+ **  @param rc Context of the redis instance we'll use to verify the
+ **  existance of a process.
+ **
+ */
 void remakeProcessList(redisContext *rc) {
   static const char *id = FILEID "remakeProcessList";
   ENTRY item;
@@ -473,6 +509,9 @@ void remakeProcessList(redisContext *rc) {
 }
 
 
+/** Spew our process list to stdout for debugging.
+ **
+ */
 void listProcesses() {
   isProcessListType *pp;
   int i;
@@ -482,6 +521,16 @@ void listProcesses() {
   }
 }
 
+
+/** Find a process by its pid and esaf number.
+ **
+ ** @param pid  PID of the user instance.
+ **
+ ** @param esaf ESAF number the user wishes to access.
+ **
+ ** @returns Process list item that matches or NULL if no match was
+ ** found.
+ */
 isProcessListType *isFindProcess(const char *pid, int esaf) {
   char ourKey[128];
   isProcessListType *p;
@@ -509,6 +558,20 @@ isProcessListType *isFindProcess(const char *pid, int esaf) {
   return p;
 }
 
+/** Ensure the specified process is running assuming such a process is
+ ** allowed.
+ **
+ ** @param zctx  ZMQ context for the sockets we be creating
+ **
+ ** @param rc Redis context for the local redis server
+ **
+ ** @param isAuth JSON object with our permissions
+ **   @li @c isAuth.pid  Process ID associated with this user instance.
+ **
+ ** @param esaf ESAF number we want to use.
+ **
+ ** @returns Process list item for this, perhaps new, process.
+ */
 isProcessListType *isRun(void *zctx, redisContext *rc, json_t *isAuth, int esaf) {
   char ourKey[128];
   char *pid;
