@@ -318,7 +318,6 @@ json_t *isRayonixGetMeta( const char *fn) {
     return NULL;
   }
 
-
   fseek( f, 1024, SEEK_SET);
 
   fread( &fh, sizeof(frame_header), 1, f);
