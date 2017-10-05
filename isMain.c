@@ -1,7 +1,7 @@
 /** @file isMain.c
  *  @brief Runs the image server main loop
  *  @date 2017
- *  @copyright 2017 by Northwestern University
+ *  @copyright 2017 by Northwestern University. All rights reserved
  *  @author Keith Brister
  *
  *	gcc -Wall isEiger.c -o isEiger -lhdf5 -lhiredis -llz4 -ljansson -lpthread
@@ -32,44 +32,56 @@
  */
 #include "is.h"
 
+/** Length of the zmq poll items
+ **
+ ** @todo As the name implies this should be the amount we increase
+ ** the list.  Currently this list is a fixed size and this approach
+ ** is probably a bad idea and should be reevaluated.
+ */
 #define N_ZPOLLITEMS_INC 128
 
+/** Our entry point into this lovely world of zero mq and diffraction
+ ** images.
+ **
+ ** @param argc Number of arguments on the command line
+ **
+ ** @param argv List of argument strings.  Currently we do not support
+ **             any arguments.
+ **
+ */
 int main(int argc, char **argv) {
   static const char *id = FILEID "main";
 
-  zmq_pollitem_t *zpollitems;
-  int n_zpollitems;
+  zmq_pollitem_t *zpollitems;   // list of sockets we need to service
+  int n_zpollitems;             // number of said sockets
 
-  void *zctx;
-  void *router;
-  void *err_dealer;
-  void *err_rep;
-  zmq_msg_t zmsg;
-  int nreceived;
+  void *zctx;                   // Our ZMQ context.
+  void *router;                 // Router socket we recieve our commands on
+  void *err_dealer;             // Socket to read errors generated when a user process cannot be forked
+  void *err_rep;                // Socket to handle the above errors (We need the err sockets to keep all the code ZMQ protocol complaint)
+  zmq_msg_t zmsg;               // Move messages between various socket when we service them
+  int nreceived;                // Bytes received in a ZMQ messages (or -1 on error)
 
-  json_t  *isRequest;
-  redisContext *rc;
-  redisContext *rcLocal;
-  json_t *isAuth;
-  char *isAuth_str;
-  char *isAuthSig;
-  json_error_t jerr;
-  redisReply *reply;
-  redisReply *subreply;
-  char *pid;
-  int esaf;
-  isProcessListType *pli;
-  int err;
-  int more;
-  int i;
-  zmq_msg_t envelope_msgs[16];  // routing messages: likely there are no more than 2
-  int n_envelope_msgs;
-  int socket_option;
+  json_t  *isRequest;           // Request sent by the user.  Called "job" in other places in the code.
+  redisContext *rc;             // connection to redis on the web server (for permission verifications)
+  redisContext *rcLocal;        // connection to our local redis (for storage)
+  json_t *isAuth;               // JSON object with our user's permission
+  char *isAuth_str;             // string version of isAuth as received from redis
+  char *isAuthSig;              // signature used to authenticate isAuth
+  json_error_t jerr;            // error returned from most json_ routines
+  redisReply *reply;            // reply received from redis
+  redisReply *subreply;         // sub reply returned from redis
+  char *pid;                    // Process ID for our user's instance
+  int esaf;                     // esaf the user wants to access
+  isProcessListType *pli;       // process descriptor for our user's session
+  int err;                      // error code for routines that return ints
+  int more;                     // indicates there are more message parts to read
+  int i;                        // loop variable
+  zmq_msg_t envelope_msgs[16];  // routing messages: likely there are no more than 2, 16 is way overkill but we'll break if there are more proxies than this between us and the user.
+  int n_envelope_msgs;          // number of "envelope messages"
+  int socket_option;            // used to set ZMQ socket options
 
   fprintf(stdout, "Welcome to the LS-CAT Image Server by Keith Brister ©2017 by Northwestern University.  All rights reserved.\n");
-
-
-  //mtrace();
 
   // Make sure we are the only "is" process running on this node.
   // Needed since we need to bind to a particular ipc socket AND if
@@ -90,32 +102,38 @@ int main(int argc, char **argv) {
   //
   // setup redis
   //
-  rc = redisConnect("10.1.253.10", 6379);
+  // Connection to web server to access permissions and login status
+  //
+  rc = redisConnect(REMOTE_SERVER_REDIS_ADDRESS, REMOTE_SERVER_REDIS_PORT);
   if (rc == NULL || rc->err) {
     if (rc) {
-      fprintf(stderr, "%s: Failed to connect to redis: %s\n", id, rc->errstr);
+      fprintf(stderr, "%s: Failed to connect to remote redis at %s: %s\n", id, REMOTE_SERVER_REDIS_ADDRESS, rc->errstr);
     } else {
-      fprintf(stderr, "%s: Failed to get redis context\n", id);
+      fprintf(stderr, "%s: Failed to get redis remote context\n", id);
     }
     exit (-1);
   }
 
+  //
+  // Connection to our local data store
+  //
   rcLocal = redisConnect("127.0.0.1", 6379);
   if (rcLocal == NULL || rcLocal->err) {
     if (rcLocal) {
-      fprintf(stderr, "%s: Failed to connect to redis: %s\n", id, rcLocal->errstr);
+      fprintf(stderr, "%s: Failed to connect to local redis: %s\n", id, rcLocal->errstr);
     } else {
-      fprintf(stderr, "%s: Failed to get redis context\n", id);
+      fprintf(stderr, "%s: Failed to get local redis context\n", id);
     }
     exit (-1);
   }
 
   // openssl initialization
   OpenSSL_add_all_digests();
-  /* Load the human readable error strings for libcrypto */
+
+  // Load the human readable error strings for libcrypto
   ERR_load_crypto_strings();
 
-  /* Load all digest and cipher algorithms */
+  // Load all digest and cipher algorithms
   OpenSSL_add_all_algorithms();
 
   //
@@ -123,7 +141,8 @@ int main(int argc, char **argv) {
   //
   zctx   = zmq_ctx_new();
 
-  // Connection to the web server that handles user requests
+  // Connection to the web server's is_proxy service that forwards user requests
+  //
   router = zmq_socket(zctx, ZMQ_ROUTER);
   err = zmq_connect(router, PUBLIC_DEALER);
   if (err == -1) {
@@ -131,6 +150,9 @@ int main(int argc, char **argv) {
     exit (-1);
   }
 
+  //
+  // Disable the ZMQ receiver high water mark for the router
+  //
   socket_option = 0;
   err = zmq_setsockopt(router, ZMQ_RCVHWM, &socket_option, sizeof(socket_option));
   if (err == -1) {
@@ -138,6 +160,9 @@ int main(int argc, char **argv) {
     exit (-1);
   }
 
+  //
+  // Disable the ZMQ sender high water mark for the router
+  //
   socket_option = 0;
   err = zmq_setsockopt(router, ZMQ_SNDHWM, &socket_option, sizeof(socket_option));
   if (err == -1) {
@@ -159,6 +184,9 @@ int main(int argc, char **argv) {
     exit (-1);
   }
 
+  //
+  // Disable the error dealer receiver high water mark
+  //
   socket_option = 0;
   err = zmq_setsockopt(err_dealer, ZMQ_RCVHWM, &socket_option, sizeof(socket_option));
   if (err == -1) {
@@ -166,6 +194,9 @@ int main(int argc, char **argv) {
     exit (-1);
   }
 
+  //
+  // Disable the error dealer sender high water mark
+  //
   socket_option = 0;
   err = zmq_setsockopt(err_dealer, ZMQ_SNDHWM, &socket_option, sizeof(socket_option));
   if (err == -1) {
@@ -173,18 +204,24 @@ int main(int argc, char **argv) {
     exit (-1);
   }
 
+  // Bind the err_dealer to its inproc socket
+  //
   err        = zmq_bind(err_dealer, ERR_REP);
   if (err == -1) {
     fprintf(stderr, "%s: Could not bind err_dealer to socket %s: %s\n", id, ERR_REP, zmq_strerror(errno));
     exit (-1);
   }
 
+  // Create the error responder socket (that will interact with the err_dealer socket)
+  //
   err_rep = zmq_socket(zctx, ZMQ_REP);
   if (err_rep == NULL) {
     fprintf(stderr, "%s: Could not create err_rep socket: %s\n", id, zmq_strerror(errno));
     exit (-1);
   }
 
+  // Disable receiver high water mark for the error responder
+  //
   socket_option = 0;
   err = zmq_setsockopt(err_rep, ZMQ_RCVHWM, &socket_option, sizeof(socket_option));
   if (err == -1) {
@@ -192,6 +229,8 @@ int main(int argc, char **argv) {
     exit (-1);
   }
 
+  // Disable sender high water mark for the error responder
+  //
   socket_option = 0;
   err = zmq_setsockopt(err_rep, ZMQ_SNDHWM, &socket_option, sizeof(socket_option));
   if (err == -1) {
@@ -199,6 +238,8 @@ int main(int argc, char **argv) {
     exit (-1);
   }
 
+  // Connect the error responder to the bound error dealer
+  //
   err     = zmq_connect(err_rep, ERR_REP);
   if (err == -1) {
     fprintf(stderr, "%s: Could not connect err_rep to socket %s: %s\n", id, ERR_REP, zmq_strerror(errno));
@@ -209,10 +250,23 @@ int main(int argc, char **argv) {
   // Here is our main loop
   //
   while (1) {
-    zpollitems = isRemakeZMQPollItems(router, err_dealer, err_rep);
+    //
+    // We are really just about servicing ZMQ sockets.  Similar to the
+    // poll function for unix file descriptors we have a zmq poll
+    // funciton for zmq sockets.  Cool.
+    //
+    // We'll just sit until one or more of our sockets has something
+    // to say. Then we'll pass its message on to another socket.
+    //
+
+    // List of sockets to listen to
+    zpollitems = isRemakeZMQPollItems(router, err_rep, err_dealer);
     n_zpollitems = isNProcesses() + 3;
     n_zpollitems = isNProcesses() + 3;
 
+    //
+    // Wait for messages to appear
+    //
     err = zmq_poll(zpollitems, n_zpollitems, -1);
     if (err == -1) {
       fprintf(stderr, "%s: zmq_poll returned error (%d poll items): %s\n", id, n_zpollitems, zmq_strerror(errno));
@@ -220,10 +274,19 @@ int main(int argc, char **argv) {
     }
     
     //
-    // This is the error responder (err_rep).  Copy messages to the
-    // err_dealer.
+    // zpollitems[0] is the router listening to is_proxy
+    //
+    // zpollitems[1] is the err_dealer sending packets to the error responder
+    //
+    // zpollitems[2[ is the error responder passing messages back to the error dealer
+    //
+    // zpollitems[n] with n > 2 is the response from one of our processes destined for is_proxy
     //
 
+    //
+    // Error responder (err_rep).  We'll just copy messages to
+    // err_dealer.
+    //
     if (zpollitems[1].revents & ZMQ_POLLIN) {
       //
       // Echo messages sent to our error responder.
@@ -236,7 +299,6 @@ int main(int argc, char **argv) {
         zmq_close(&zmsg);
       } while(more);
     }
-
 
     //
     // Transfer all the child process chatter (as well as our error
@@ -266,6 +328,18 @@ int main(int argc, char **argv) {
       continue;
     }
 
+    //
+    // @warning This is kind of a kludge.  We need to inspect the
+    // request from the user to route the message to the correct
+    // process but this requires us to use our knowledge of the ZMQ
+    // message passing protocol.  Hence, we are vulnerable to changes
+    // in then protocol in future releases.
+    //
+    // The "enevelope" referred to here consists of one message part
+    // per proxy hop followed by a message of zero length.  After this
+    // comes the payload destined for the worker but which we need to
+    // look at here.
+    //
     for (i=0; i<sizeof(envelope_msgs)/sizeof(envelope_msgs[0]); i++) {
       zmq_msg_init(&envelope_msgs[i]);
       nreceived = zmq_msg_recv(&envelope_msgs[i], router, 0);
@@ -286,6 +360,9 @@ int main(int argc, char **argv) {
 
     n_envelope_msgs = i+1;
 
+    //
+    // Now we'll just take a peek at the message intended for the worker.
+    //
     zmq_msg_init(&zmsg);
     nreceived = zmq_msg_recv(&zmsg, router, 0);
     if (nreceived == -1) {
@@ -301,7 +378,6 @@ int main(int argc, char **argv) {
     //
     // Retrieve instructions from our client
     //
-
     isRequest = json_loadb(zmq_msg_data(&zmsg), zmq_msg_size(&zmsg), 0, &jerr);
 
     if (isRequest == NULL) {
