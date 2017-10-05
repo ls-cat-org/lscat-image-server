@@ -366,6 +366,17 @@ void isJpegBlank(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job)
   return;
 }
 
+/** Create a jpeg rendering of a diffraction image
+ **
+ ** @param wctx Worker context
+ **  @li @c wctx->ctxMutex  Keeps the worker theads in line
+ **
+ ** @param tcp Thread data
+ **   @li @c tcp->rep  ZMQ Response socket into which the throw our response.
+ **
+ ** @param job  What the user asked us to do
+ ** 
+ */
 void isJpeg(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
   static const char *id = FILEID "isJpeg";
   const char *fn;                       // file name from job.
