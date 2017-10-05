@@ -3,8 +3,11 @@
  *  @copyright 2017 Northwestern University All Rights Resesrved
  *  @author Keith Brister
  */
+
+/** Enable reentrant version of hsearch that is more sensible in a
+ ** multi-threaded world.
+ */
 #define _GNU_SOURCE
-#define __USE_GNU
 
 #include <errno.h>
 #include <fcntl.h>
@@ -35,8 +38,16 @@
 
 #include "isBitmapFont.h"
 
+/** make use of assert function to try an catch programming errors
+ **/
 #define NDEBUG
 #include <assert.h>
+
+//! Address of the redis server employed by the LS-CAT Remote Server for session management
+#define REMOTE_SERVER_REDIS_ADDRESS "10.1.253.10"
+
+//! TCP Port of the aforementioned redis server
+#define REMOTE_SERVER_REDIS_PORT 6379
 
 //! The redis store needs some debugging:  Ignore it for now.
 #define IS_IGNORE_REDIS_STORE
@@ -66,8 +77,14 @@
 //! route the request to the appropriate process.
 #define ERR_REP        "inproc://#err_rep"
 
+/** The access we've determined by fstat as the uid/gid that will be
+ ** trying to read the file.
+ */
 typedef enum {NOACCESS, READABLE, WRITABLE} image_access_type;
 
+/** The type of image we'll be trying to read.  Based on the file
+ ** contents, not by the file extension.
+ */
 typedef enum {UNKNOWN, BLANK, HDF5, RAYONIX, RAYONIX_BS} image_file_type;
 
 /** Filled by isWorker via isData (etc) routines.                                                */
@@ -122,10 +139,8 @@ extern json_t *isH5GetMeta(const char *fn);
 extern json_t *isRayonixGetMeta(const char *fn);
 extern void isH5GetData(const char *fn, isImageBufType *imb);
 extern void isRayonixGetData(const char *fn, isImageBufType *imb);
-extern void isBlankJpeg(json_t *job);
 extern isProcessListType *isFindProcess(const char *pid, int esaf);
 extern void isSupervisor(const char *key);
-extern void isProcessDoNotCall( const char *pid, int esaf);
 extern isProcessListType *isRun(void *zctx, redisContext *rc, json_t *isAuth, int esaf);
 extern void isProcessListInit();
 extern image_file_type isFileType(const char *fn);
