@@ -36,6 +36,8 @@ typedef struct h5_to_json_struct {
   char type;                            //!< i=int, f=float, s=string, F=float array
 } h5_to_json_t;
 
+/** Our mapping between hdf5 file properties and our metadata object properties
+ */
 h5_to_json_t json_convert_array[] = {
   { "/entry/instrument/detector/detectorSpecific/auto_summation",                  "auto_summation",                                  'i'},
   { "/entry/instrument/detector/beam_center_x",                                    "beam_center_x",                                   'f'},
@@ -787,15 +789,26 @@ void isH5GetData(const char *fn, isImageBufType *imb) {
     } while(0);
   }
 
-  if (failed) {
+  if (!failed) {
     //
-    // Don't read the frame itself if we've run into problems
+    // Palm off the actual work to this routine
     //
-    return;
+    get_one_frame(imb);
+  }
+  
+  // These close routines return < 0 on error but we do not have
+  // anything we are going to do about it so we will not even check.
+  //
+
+  if (data_space >= 0) {
+    H5Sclose(data_space);
   }
 
-  //
-  // Palm off the actual work to this routine
-  //
-  get_one_frame(imb);
+  if (data_set >= 0) {
+    H5Dclose(data_set);
+  }
+
+  if (master_file >= 0) {
+    H5Fclose(master_file);
+  }
 }
