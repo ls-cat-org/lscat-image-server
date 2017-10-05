@@ -204,7 +204,7 @@ int main(int argc, char **argv) {
     exit (-1);
   }
 
-  // Bind the err_dealer to its inproc socket
+  // Bind the err_dealer to its (and err_rep's) inproc socket
   //
   err        = zmq_bind(err_dealer, ERR_REP);
   if (err == -1) {
@@ -246,6 +246,11 @@ int main(int argc, char **argv) {
     exit (-1);
   }
 
+
+  // No envelope messages to close yet
+  //
+  n_envelope_msgs = 0;
+
   //
   // Here is our main loop
   //
@@ -256,7 +261,8 @@ int main(int argc, char **argv) {
     // funciton for zmq sockets.  Cool.
     //
     // We'll just sit until one or more of our sockets has something
-    // to say. Then we'll pass its message on to another socket.
+    // to say. Then we'll pass its message on to another socket (that
+    // we may have to create a process to service).
     //
 
     // List of sockets to listen to
@@ -276,16 +282,15 @@ int main(int argc, char **argv) {
     //
     // zpollitems[0] is the router listening to is_proxy
     //
-    // zpollitems[1] is the err_dealer sending packets to the error responder
+    // zpollitems[1] is the error responder passing messages back to the error dealer
     //
-    // zpollitems[2[ is the error responder passing messages back to the error dealer
+    // zpollitems[2] is the err_dealer sending packets to the error responder
     //
     // zpollitems[n] with n > 2 is the response from one of our processes destined for is_proxy
     //
 
     //
-    // Error responder (err_rep).  We'll just copy messages to
-    // err_dealer.
+    // Error responder (err_rep).  We'll just echo the messages.
     //
     if (zpollitems[1].revents & ZMQ_POLLIN) {
       //
@@ -302,7 +307,7 @@ int main(int argc, char **argv) {
 
     //
     // Transfer all the child process chatter (as well as our error
-    // messages) back to the is.js
+    // messages) back to the is.js process.
     //
     //
     for (i=2; i<n_zpollitems; i++) {
@@ -323,7 +328,7 @@ int main(int argc, char **argv) {
     //
     if (!(zpollitems[0].revents & ZMQ_POLLIN)) {
       //
-      // Nothing incoming from is.js.  Just keep on truckin.
+      // Nothing incoming from is.js.  Just keep on truckin'.
       //
       continue;
     }
@@ -339,6 +344,10 @@ int main(int argc, char **argv) {
     // per proxy hop followed by a message of zero length.  After this
     // comes the payload destined for the worker but which we need to
     // look at here.
+    //
+
+    //
+    // Find (and save) our envelope messages
     //
     for (i=0; i<sizeof(envelope_msgs)/sizeof(envelope_msgs[0]); i++) {
       zmq_msg_init(&envelope_msgs[i]);
@@ -382,7 +391,7 @@ int main(int argc, char **argv) {
 
     if (isRequest == NULL) {
       fprintf(stderr, "%s: Failed to parse '%s': %s\n", id, (char *)zmq_msg_data(&zmsg), jerr.text);
-      is_zmq_error_reply(envelope_msgs, n_envelope_msgs, router, "%s: Failed to parse request: %s", id, jerr.text);
+      is_zmq_error_reply(envelope_msgs, n_envelope_msgs, err_dealer, "%s: Failed to parse request: %s", id, jerr.text);
       continue;
     }
 
@@ -391,7 +400,7 @@ int main(int argc, char **argv) {
       char *tmpstr;
       tmpstr = json_dumps(isRequest, JSON_SORT_KEYS | JSON_COMPACT | JSON_INDENT(0));
       fprintf(stderr, "%s: isRequest without pid: %s\n", id, tmpstr);
-      is_zmq_error_reply(envelope_msgs, n_envelope_msgs, router, "%s: request does not contain pid", id);
+      is_zmq_error_reply(envelope_msgs, n_envelope_msgs, err_dealer, "%s: request does not contain pid", id);
       free(tmpstr);
 
       json_decref(isRequest);
@@ -421,10 +430,10 @@ int main(int argc, char **argv) {
       if (reply->type != REDIS_REPLY_ARRAY) {
         if (subreply->type == REDIS_REPLY_NIL) {
           fprintf(stderr, "%s: Process %s is not active\n", id, pid);
-          is_zmq_error_reply(envelope_msgs, n_envelope_msgs, router, "%s: Process %s is not active", id, pid);
+          is_zmq_error_reply(envelope_msgs, n_envelope_msgs, err_dealer, "%s: Process %s is not active", id, pid);
         } else {
           fprintf(stderr, "%s: Redis hmget isAuth isAuthSig did not return an array, got type %d\n", id, reply->type);
-          is_zmq_error_reply(envelope_msgs, n_envelope_msgs, router, "%s: Process %s is not authorized (1)", id, pid);
+          is_zmq_error_reply(envelope_msgs, n_envelope_msgs, err_dealer, "%s: Process %s is not authorized (1)", id, pid);
         }
 
         json_decref(isRequest);
@@ -435,7 +444,7 @@ int main(int argc, char **argv) {
       subreply = reply->element[0];
       if (subreply->type != REDIS_REPLY_STRING) {
         fprintf(stderr, "%s: isAuth reply is not a string, got type %d\n", id, subreply->type);
-        is_zmq_error_reply(envelope_msgs, n_envelope_msgs, router, "%s: Process %s is not authorized (2)", id, pid);
+        is_zmq_error_reply(envelope_msgs, n_envelope_msgs, err_dealer, "%s: Process %s is not authorized (2)", id, pid);
         
         json_decref(isRequest);
         freeReplyObject(reply);
@@ -446,7 +455,7 @@ int main(int argc, char **argv) {
       subreply = reply->element[1];
       if (subreply->type != REDIS_REPLY_STRING) {
         fprintf(stderr, "%s: isAuthSig reply is not a string, got type %d\n", id, subreply->type);
-        is_zmq_error_reply(envelope_msgs, n_envelope_msgs, router, "%s: Process %s is not authorized (3)", id, pid);
+        is_zmq_error_reply(envelope_msgs, n_envelope_msgs, err_dealer, "%s: Process %s is not authorized (3)", id, pid);
         
         json_decref(isRequest);
         freeReplyObject(reply);
@@ -456,7 +465,7 @@ int main(int argc, char **argv) {
         
       if (!verifyIsAuth( isAuth_str, isAuthSig)) {
         fprintf(stderr, "%s: Bad isAuth signature for pid %s: isAuth_str: '%s'\n", id, pid, isAuth_str);
-        is_zmq_error_reply(envelope_msgs, n_envelope_msgs, router, "%s: Process %s is not authorized (4)", id, pid);
+        is_zmq_error_reply(envelope_msgs, n_envelope_msgs, err_dealer, "%s: Process %s is not authorized (4)", id, pid);
 
         json_decref(isRequest);
         freeReplyObject(reply);
@@ -466,7 +475,7 @@ int main(int argc, char **argv) {
       isAuth = json_loads(isAuth_str, 0, &jerr);
       if (isRequest == NULL) {
         fprintf(stderr, "%s: Failed to parse '%s': %s\n", id, subreply->str, jerr.text);
-        is_zmq_error_reply(envelope_msgs, n_envelope_msgs, router, "%s: Process %s is not authorized (5)", id, pid);
+        is_zmq_error_reply(envelope_msgs, n_envelope_msgs, err_dealer, "%s: Process %s is not authorized (5)", id, pid);
 
         json_decref(isRequest);
         freeReplyObject(reply);
@@ -488,7 +497,7 @@ int main(int argc, char **argv) {
       }
       if (!isEsafAllowed(isAuth, esaf)) {
         fprintf(stderr, "%s: user %s is not permitted to access esaf %d\n", id, json_string_value(json_object_get(isAuth, "uid")), esaf);
-        is_zmq_error_reply(envelope_msgs, n_envelope_msgs, router, "%s: Process %s is not authorized for esaf %d", id, pid, esaf);
+        is_zmq_error_reply(envelope_msgs, n_envelope_msgs, err_dealer, "%s: Process %s is not authorized for esaf %d", id, pid, esaf);
         
         json_decref(isRequest);
         json_decref(isAuth);
@@ -519,7 +528,7 @@ int main(int argc, char **argv) {
 
       if (reply->integer != 1) {
         fprintf(stderr, "%s: Process %s is no longer active\n", id, pid);
-        is_zmq_error_reply(envelope_msgs, n_envelope_msgs, router, "%s: Process %s is not authorized (7)", id, pid);
+        is_zmq_error_reply(envelope_msgs, n_envelope_msgs, err_dealer, "%s: Process %s is not authorized (7)", id, pid);
 
         //
         // TODO: We need to periodically purge our process list of inactive processes
@@ -538,6 +547,7 @@ int main(int argc, char **argv) {
       zmq_msg_send(&envelope_msgs[i], pli->parent_dealer, ZMQ_SNDMORE);
       zmq_msg_close(&envelope_msgs[i]);
     }
+
     zmq_msg_send(&zmsg, pli->parent_dealer, more ? ZMQ_SNDMORE : 0);
     zmq_msg_close(&zmsg);
 
