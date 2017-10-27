@@ -626,7 +626,7 @@ int get_one_frame(isImageBufType **imbp) {
     return -1;
   }
 
-  start[0] = imb->frame - 1;
+  start[0] = imb->frame - fp->first_frame;
   start[1] = 0;
   start[2] = 0;
 
