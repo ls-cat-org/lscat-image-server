@@ -541,8 +541,10 @@ int discovery_cb(hid_t lid, const char *name, const H5L_info_t *info, void *op_d
  **
  ** @param[in,out] imb frame buffer to place our info in
  **
+ ** @returns 0 on success, non-zero otherwise
+ **
  */
-void get_one_frame(isImageBufType *imb) {
+int get_one_frame(isImageBufType **imbp) {
   static const char *id = FILEID "get_one_frame";
   isH5extra_t *extra;           // where we stored our frame discovery results
   frame_discovery_t *fp;        // Speaking of the devil
@@ -558,7 +560,9 @@ void get_one_frame(isImageBufType *imb) {
   hsize_t stride[3];            // a single step toward our frame
   hsize_t count[3];             // number of frames to select (yeah, it's one)
   hsize_t block[3];             // size of block to select (Spoiler alert: it's one frame)
+  isImageBufType *imb;
 
+  imb   = *imbp;
   extra = imb->extra;
 
   for (fp = extra->frame_discovery_base; fp != NULL; fp = fp->next) {
@@ -568,18 +572,18 @@ void get_one_frame(isImageBufType *imb) {
   }
   if (fp == NULL) {
     fprintf(stderr, "%s: Could not find frame %d in file %s\n", id, imb->frame, imb->key);
-    return;
+    return -1;
   }
 
   rank = H5Sget_simple_extent_ndims(fp->file_space);
   if (rank < 0) {
     fprintf(stderr, "%s: Failed to get rank of dataset for file %s\n", id, imb->key);
-    return;
+    return -1;
   }
 
   if (rank != 3) {
     fprintf(stderr, "%s: Unexpected value of data_set rank.  Got %d but should gotten 3\n", id, rank);
-    return;
+    return -1;
   }
 
   herr = H5Sget_simple_extent_dims( fp->file_space, file_dims, NULL);
@@ -591,7 +595,7 @@ void get_one_frame(isImageBufType *imb) {
   data_element_size = H5Tget_size( fp->file_type);
   if (data_element_size == 0) {
     fprintf(stderr, "%s: Could not get data_element_size\n", id);
-    return;
+    return -1;
   }
 
   switch(data_element_size) {
@@ -604,7 +608,7 @@ void get_one_frame(isImageBufType *imb) {
 
   default:
     fprintf(stderr, "%s: Bad data element size, received %d instead of 2 or 4\n", id, data_element_size);
-    return;
+    return -1;
   }
 
   data_buffer = calloc(data_buffer_size, 1);
@@ -618,7 +622,8 @@ void get_one_frame(isImageBufType *imb) {
   mem_space = H5Screate_simple(2, mem_dims, mem_dims);
   if (mem_space < 0) {
     fprintf(stderr, "%s: Could not create mem_space\n", id);
-    return;
+    free(data_buffer);
+    return -1;
   }
 
   start[0] = imb->frame - 1;
@@ -640,13 +645,13 @@ void get_one_frame(isImageBufType *imb) {
   herr = H5Sselect_hyperslab(fp->file_space, H5S_SELECT_SET, start, stride, count, block);
   if (herr < 0) {
     fprintf(stderr, "%s: Could not set hyperslab for frame %d\n", id, imb->frame);
-    return;
+    return -1;
   }
     
   herr = H5Dread(fp->data_set, fp->file_type, mem_space, fp->file_space, H5P_DEFAULT, data_buffer);
   if (herr < 0) {
     fprintf(stderr, "%s: Could not read frame %d\n", id, imb->frame);
-    return;
+    return -1;
   }
 
   imb->buf = data_buffer;
@@ -655,7 +660,7 @@ void get_one_frame(isImageBufType *imb) {
   imb->buf_width  = file_dims[2];
   imb->buf_depth  = data_element_size;
 
-  return;
+  return 0;
 }
 
 /** Return a single frame from the named file.
@@ -664,8 +669,9 @@ void get_one_frame(isImageBufType *imb) {
  **
  ** @param[out] imb frame buffer to place our info in
  **
+ ** @returns 0 on success
  */
-void isH5GetData(const char *fn, isImageBufType *imb) {
+int isH5GetData(const char *fn, isImageBufType **imbp) {
   static const char *id = FILEID "isH5GetData";
   isH5extra_t *extra;           // pointer to frame discovery list
   hid_t master_file;            // the master file, of course
@@ -680,7 +686,10 @@ void isH5GetData(const char *fn, isImageBufType *imb) {
   uint32_t last_frame;          // last frame referenced by master file
   frame_discovery_t *fp;        // used to loop through discovery list
   int failed;                   // set to 1 before breaking out of the our box
+  isImageBufType *imb;
   
+  imb = *imbp;
+
   failed = 0;
   extra = imb->extra;
 
@@ -692,7 +701,7 @@ void isH5GetData(const char *fn, isImageBufType *imb) {
   master_file = H5Fopen(fn, H5F_ACC_RDONLY, H5P_DEFAULT);
   if (master_file < 0) {
     fprintf(stderr, "%s: Could not open master file %s\n", id, fn);
-    return;
+    return -1;
   }
 
   if (extra == NULL) {
@@ -710,7 +719,7 @@ void isH5GetData(const char *fn, isImageBufType *imb) {
     herr = H5Lvisit_by_name(master_file, "/entry/data", H5_INDEX_NAME, H5_ITER_INC, discovery_cb, extra, H5P_DEFAULT);
     if (herr < 0) {
       fprintf(stderr, "%s: Could not discover which frame is where for file %s\n", id, fn);
-      return;
+      return -1;
     }
     
     first_frame = 0xffffffff;
@@ -790,10 +799,7 @@ void isH5GetData(const char *fn, isImageBufType *imb) {
   }
 
   if (!failed) {
-    //
-    // Palm off the actual work to this routine
-    //
-    get_one_frame(imb);
+    get_one_frame(imbp);
   }
   
   // These close routines return < 0 on error but we do not have
@@ -811,4 +817,6 @@ void isH5GetData(const char *fn, isImageBufType *imb) {
   if (master_file >= 0) {
     H5Fclose(master_file);
   }
+
+  return 0;
 }

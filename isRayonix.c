@@ -403,8 +403,10 @@ json_t *isRayonixGetMeta( const char *fn) {
  ** @param[in]  fn   Filename we'd like to process
  **
  ** @param[out] imb  Image buffer we'd like to fill 
+ **
+ ** @returns 0 on success
  */
-void isRayonixGetData( const char *fn, isImageBufType *imb) {
+int isRayonixGetData( const char *fn, isImageBufType **imbp) {
   static const char *id = "marTiffGetData";
 
   //
@@ -421,10 +423,13 @@ void isRayonixGetData( const char *fn, isImageBufType *imb) {
   unsigned int inWidth;
   unsigned short *buf;
   int buf_size;
+  isImageBufType *imb;
 
   void sigbusHandler( int sig) {
     longjmp( jmpenv, 1);
   }
+
+  imb = *imbp;
 
   if( setjmp( jmpenv)) {
     fprintf( stderr, "%s: Caught bus error, trying to recover\n", id);
@@ -445,7 +450,7 @@ void isRayonixGetData( const char *fn, isImageBufType *imb) {
     fprintf( stderr, "%s: marTiffRead failed to open file '%s'\n", id, fn);
     signew.sa_handler = SIG_DFL;
     sigaction( SIGBUS, &signew, NULL);
-    return;
+    return -1;
   }
   TIFFGetField( tf, TIFFTAG_IMAGELENGTH,   &inHeight);
   TIFFGetField( tf, TIFFTAG_IMAGEWIDTH,    &inWidth);
@@ -479,5 +484,5 @@ void isRayonixGetData( const char *fn, isImageBufType *imb) {
   imb->buf_height = inHeight;
   imb->buf_depth  = 2;
   imb->buf = buf;
-  return;
+  return 0;
 }

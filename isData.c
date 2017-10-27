@@ -495,7 +495,6 @@ isImageBufType *isGetImageBufFromKey(isWorkerContext_t *wctx, redisContext *rc, 
     rtn->in_use++;                              // flag to keep our buffer in scope while we need it
     pthread_mutex_unlock(&wctx->ctxMutex);
     pthread_rwlock_rdlock(&rtn->buflock);
-
     return rtn;
   }
   
@@ -813,6 +812,7 @@ isImageBufType *isGetRawImageBuf(isWorkerContext_t *wctx, redisContext *rc, json
   char *key;
   int key_strlen;
   image_file_type ft;
+  int err;
 
   fn = json_string_value(json_object_get(job, "fn"));
   if (fn == NULL || strlen(fn) == 0) {
@@ -856,34 +856,41 @@ isImageBufType *isGetRawImageBuf(isWorkerContext_t *wctx, redisContext *rc, json
     free(key);
     return rtn;
   }
-  
+  free(key);
+
   // I guess we didn't find our buffer in redis
   //
   // META does not exist or was never entered.  Re-read both meta and data.
+  err = -1;
   ft = isFileType(fn);
   switch (ft) {
   case HDF5:
     rtn->meta = isH5GetMeta(fn);
-    isH5GetData(fn, rtn);
+    err = isH5GetData(fn, &rtn);
     break;
       
   case RAYONIX:
   case RAYONIX_BS:
     rtn->meta = isRayonixGetMeta(fn);
-    isRayonixGetData(fn, rtn);
+    err = isRayonixGetData(fn, &rtn);
     break;
       
   case UNKNOWN:
   default:
     fprintf(stderr, "%s: unknown file type '%d' for file %s\n", id, ft, fn);
-    pthread_rwlock_unlock(&rtn->buflock);
-    free(key);
-    return NULL;
+    err = -1;
   }
 
   #ifndef IS_IGNORE_REDIS_STORE
-  isWriteImageBufToRedis(rtn, rc);
+  if (err == 0) {
+    isWriteImageBufToRedis(rtn, rc);
+  }
   #endif
+
+  if (err != 0) {
+    pthread_rwlock_unlock(&rtn->buflock);
+    return NULL;
+  }
 
   pthread_rwlock_unlock(&rtn->buflock);
   pthread_rwlock_rdlock(&rtn->buflock);

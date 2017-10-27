@@ -135,10 +135,11 @@ typedef struct isProcessListStruct {
   void *parent_dealer;                  //!< parent side of parent/child proxy (ipc)
 } isProcessListType;
 
+extern void destroyImageBuffer(isImageBufType *p);
 extern json_t *isH5GetMeta(const char *fn);
 extern json_t *isRayonixGetMeta(const char *fn);
-extern void isH5GetData(const char *fn, isImageBufType *imb);
-extern void isRayonixGetData(const char *fn, isImageBufType *imb);
+extern int isH5GetData(const char *fn, isImageBufType **imbp);
+extern int isRayonixGetData(const char *fn, isImageBufType **imbp);
 extern isProcessListType *isFindProcess(const char *pid, int esaf);
 extern void isSupervisor(const char *key);
 extern isProcessListType *isRun(void *zctx, redisContext *rc, json_t *isAuth, int esaf);
