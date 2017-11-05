@@ -348,19 +348,20 @@ json_t *isRayonixGetMeta( const char *fn) {
   }
   set_json_object_string(id, rtn, "beamline", tmps);
 
-  set_json_object_real(id, rtn, "dist",            fh.xtal_to_detector/1000.0);
-  set_json_object_real(id, rtn, "rotationRange",   fh.rotation_range/1000.0);
-  set_json_object_real(id, rtn, "startPhi",        fh.start_phi/1000.0);
-  set_json_object_real(id, rtn, "wavelength",      fh.source_wavelength/100000.0);
-  set_json_object_real(id, rtn, "beam_center_x",   fh.beam_x/1000.0);
-  set_json_object_real(id, rtn, "beam_center_y",   fh.beam_y/1000.0);
-  set_json_object_real(id, rtn, "x_pixel_size",    fh.pixelsize_x/1e9);
-  set_json_object_real(id, rtn, "y_pixel_size",    fh.pixelsize_y/1e9);
-  set_json_object_real(id, rtn, "integrationTime", fh.integration_time/1000.0);
-  set_json_object_real(id, rtn, "exposureTime",    fh.exposure_time/1000.0);
-  set_json_object_real(id, rtn, "readoutTime",     fh.readout_time/1000.0);
-  set_json_object_real(id, rtn, "meanValue",       fh.mean/1000.0);
-  set_json_object_real(id, rtn, "rmsValue",        fh.rms/1000.0);
+  set_json_object_real(id, rtn, "detector_distance", fh.xtal_to_detector/1000000.0);
+  set_json_object_real(id, rtn, "rotationRange",     fh.rotation_range/1000.0);
+  set_json_object_real(id, rtn, "startPhi",          fh.start_phi/1000.0);
+  set_json_object_real(id, rtn, "photon_energy",     12398.4193 / fh.source_wavelength * 100000.0);
+  set_json_object_real(id, rtn, "wavelength",        fh.source_wavelength/100000.0);
+  set_json_object_real(id, rtn, "beam_center_x",     fh.beam_x/1000.0);
+  set_json_object_real(id, rtn, "beam_center_y",     fh.beam_y/1000.0);
+  set_json_object_real(id, rtn, "x_pixel_size",      fh.pixelsize_x/1e9);
+  set_json_object_real(id, rtn, "y_pixel_size",      fh.pixelsize_y/1e9);
+  set_json_object_real(id, rtn, "integrationTime",   fh.integration_time/1000.0);
+  set_json_object_real(id, rtn, "exposureTime",      fh.exposure_time/1000.0);
+  set_json_object_real(id, rtn, "readoutTime",       fh.readout_time/1000.0);
+  set_json_object_real(id, rtn, "meanValue",         fh.mean/1000.0);
+  set_json_object_real(id, rtn, "rmsValue",          fh.rms/1000.0);
 
   set_json_object_integer(id, rtn, "nSaturated",   fh.n_saturated);
   set_json_object_integer(id, rtn, "x_pixels_in_detector", fh.nfast);
