@@ -29,7 +29,7 @@
  **
  ** @returns Maximum value found in the box.  Bad pixels are ignored.
  */
-uint32_t maxBox16( uint32_t *badPixels, void *buf, int bufWidth, int bufHeight, double k, double l, int yal, int yau, int xal, int xau) {
+uint32_t maxBox16( uint32_t *badPixels, uint32_t *minp, int *nsatp, void *buf, int bufWidth, int bufHeight, double k, double l, int yal, int yau, int xal, int xau) {
   static const char *id = FILEID "maxBox16";
   int m, n;
   uint32_t d, d1;
@@ -39,8 +39,7 @@ uint32_t maxBox16( uint32_t *badPixels, void *buf, int bufWidth, int bufHeight, 
 
   //fprintf(stdout, "%s: bufWidth=%d bufHeight=%d  k=%f l=%f yal=%d  yau=%d  xal=%d  xau=%d\n", id, bufWidth, bufHeight, k, l, yal, yau, xal, xau);
 
-  d = 0;
-
+  d      = 0;
   for (m=k-yal; m < k+yau; m++) {
     //
     // Don't roll off the top or bottom of the original image
@@ -62,13 +61,18 @@ uint32_t maxBox16( uint32_t *badPixels, void *buf, int bufWidth, int bufHeight, 
 
       //
       // see if we have a saturated pixel
-      if (d1 == 0xffff)
-        return 0xffffffff;
+      if (d1 == 0xffff) {
+        (*nsatp)++;
+      }
 
       d = (d>d1 ? d : d1);
+
+      if (*minp > d) {
+        *minp = d;
+      }
     }
   }
-  return d;
+  return d == 0xffff ? 0xffffffff : d;
 }
 
 
@@ -96,7 +100,7 @@ uint32_t maxBox16( uint32_t *badPixels, void *buf, int bufWidth, int bufHeight, 
  **
  ** @returns Maximum value found in the box.  Bad pixels are ignored.
  */
-uint32_t maxBox32( uint32_t *badPixels, void *buf, int bufWidth, int bufHeight, double k, double l, int yal, int yau, int xal, int xau) {
+uint32_t maxBox32( uint32_t *badPixels, uint32_t *minp, int *nsatp, void *buf, int bufWidth, int bufHeight, double k, double l, int yal, int yau, int xal, int xau) {
   static const char *id = FILEID "maxBox32";
   int m, n;
   uint32_t d, d1;
@@ -105,7 +109,6 @@ uint32_t maxBox32( uint32_t *badPixels, void *buf, int bufWidth, int bufHeight, 
   (void)id;
   
   d = 0;
-  
   for (m=k-yal; m < k+yau; m++) {
     //
     // Don't roll off the top or bottom of the original image
@@ -130,10 +133,15 @@ uint32_t maxBox32( uint32_t *badPixels, void *buf, int bufWidth, int bufHeight, 
       // Check for a saturated pixel
       // Can't get a higher count than this, might as well return
       //
-      if (d1 == 0xffffffff)
-        return d1;
+      if (d1 == 0xffffffff) {
+        (*nsatp)++;
+      }
 
       d = d>d1 ? d : d1;
+
+      if (*minp > d) {
+        *minp = d;
+      }
     }
   }
   return d;
@@ -163,7 +171,7 @@ uint32_t maxBox32( uint32_t *badPixels, void *buf, int bufWidth, int bufHeight, 
  **
  ** @returns nearest value.  Bad pixels return 0
  */
-uint32_t nearest16( uint32_t *badPixels, void *buf, int bufWidth, int bufHeight, double k, double l, int yal, int yau, int xal, int xau) {
+uint32_t nearest16( uint32_t *badPixels, uint32_t *minp, int *nsatp, void *buf, int bufWidth, int bufHeight, double k, double l, int yal, int yau, int xal, int xau) {
   static const char *id = FILEID "nearest16";
   uint16_t *bp = (uint16_t *)buf;
   uint32_t rtn;
@@ -176,8 +184,14 @@ uint32_t nearest16( uint32_t *badPixels, void *buf, int bufWidth, int bufHeight,
     rtn = 0;
   } else {
     rtn = *(bp + index);
+    if (rtn == 0xffff) {
+      (*nsatp)++;
+    }
   }
 
+  if (*minp > rtn) {
+    *minp = rtn;
+  }
   return rtn;
 }
 
@@ -205,7 +219,7 @@ uint32_t nearest16( uint32_t *badPixels, void *buf, int bufWidth, int bufHeight,
  **
  ** @returns nearest value.  Bad pixels return 0
  */
-uint32_t nearest32( uint32_t *badPixels, void *buf, int bufWidth, int bufHeight, double k, double l, int yal, int yau, int xal, int xau) {
+uint32_t nearest32( uint32_t *badPixels, uint32_t *minp, int *nsatp, void *buf, int bufWidth, int bufHeight, double k, double l, int yal, int yau, int xal, int xau) {
   static const char *id = FILEID "nearest32";
   int index;
   uint32_t *bp = (uint32_t *)buf;
@@ -218,6 +232,13 @@ uint32_t nearest32( uint32_t *badPixels, void *buf, int bufWidth, int bufHeight,
     rtn = 0;
   } else {
     rtn = *(bp + index);
+    if (rtn == 0xffffffff) {
+      (*nsatp)++;
+    }
+  }
+
+  if (*minp > rtn) {
+    *minp = rtn;
   }
 
   return rtn;
@@ -240,7 +261,7 @@ uint32_t nearest32( uint32_t *badPixels, void *buf, int bufWidth, int bufHeight,
 void reduceImage16( isImageBufType *src, isImageBufType *dst, int x, int y, int winWidth, int winHeight) {
   static const char *id = FILEID "reduceImage16";
 
-  uint32_t (*cvtFunc)(uint32_t *, void *, int, int, double, double, int, int, int, int);
+  uint32_t (*cvtFunc)(uint32_t *, uint32_t *, int *, void *, int, int, double, double, int, int, int, int);
 
   int row=0, col=0;
   int xa, ya;
@@ -259,6 +280,9 @@ void reduceImage16( isImageBufType *src, isImageBufType *dst, int x, int y, int 
   double mean;
   double rms;
   double sd;
+  int nsat;
+  uint32_t min;
+  uint32_t max;
 
   (void)id;
 
@@ -293,9 +317,13 @@ void reduceImage16( isImageBufType *src, isImageBufType *dst, int x, int y, int 
     cvtFunc = maxBox16;
   }
 
-  n   = 0;
-  sum = 0.0;
-  ss  = 0.0;
+  n    = 0;
+  sum  = 0.0;
+  ss   = 0.0;
+  nsat = 0;
+  min  = 0xffffffff;
+  max  = 0;
+
   for (row=0; row<dstHeight; row++) {
     // "index" of vertical position on original image
     d_row = row * winHeight/(double)(dstHeight) + y;
@@ -307,13 +335,16 @@ void reduceImage16( isImageBufType *src, isImageBufType *dst, int x, int y, int 
       if (d_row < 0 || d_row >= src->buf_height || d_col < 0 || d_col >= src->buf_width) {
         pxl = 0;
       } else {
-        pxl = cvtFunc( src->bad_pixel_map, srcBuf, srcWidth, srcHeight, d_row, d_col, yal, yau, xal, xau);
+        pxl = cvtFunc( src->bad_pixel_map, &min, &nsat, srcBuf, srcWidth, srcHeight, d_row, d_col, yal, yau, xal, xau);
       }
 
       if (pxl != 0xffffffff) {
         sum += pxl;
         ss  += pxl * pxl;
         n++;
+        if (max < pxl) {
+          max = pxl;
+        }
       }
       *(dstBuf + row*dstWidth + col) = pxl;
     }
@@ -328,9 +359,12 @@ void reduceImage16( isImageBufType *src, isImageBufType *dst, int x, int y, int 
 
   if (json_integer_value(json_object_get(src->meta,"n")) < n) {
     set_json_object_integer(id, dst->meta, "n", n);
-    set_json_object_real(id, src->meta, "mean", mean);
-    set_json_object_real(id, src->meta, "rms", rms);
-    set_json_object_real(id, src->meta, "stddev", sd);
+    set_json_object_real(id, src->meta,    "mean", mean);
+    set_json_object_integer(id, src->meta, "min", min);
+    set_json_object_integer(id, src->meta, "max", max);
+    set_json_object_real(id, src->meta,    "rms", rms);
+    set_json_object_real(id, src->meta,    "stddev", sd);
+    set_json_object_integer(id, src->meta, "nSaturated", nsat);
   }
 
   //fprintf(stdout, "%s: n=%d mean=%f  rms=%f   stddev=%f  key=%s\n", id, n, mean, rms, sd, src->key);
@@ -352,7 +386,7 @@ void reduceImage16( isImageBufType *src, isImageBufType *dst, int x, int y, int 
  */
 void reduceImage32( isImageBufType *src, isImageBufType *dst, int x, int y, int winWidth, int winHeight) {
   static const char *id = FILEID "reduceImage32";
-  uint32_t (*cvtFunc)(uint32_t *, void *, int, int, double, double, int, int, int, int);
+  uint32_t (*cvtFunc)(uint32_t *, uint32_t *, int *, void *, int, int, double, double, int, int, int, int);
 
   int row=0, col=0;
   int xa, ya;
@@ -370,7 +404,10 @@ void reduceImage32( isImageBufType *src, isImageBufType *dst, int x, int y, int 
   double sum;
   double mean;
   double rms;
+  int nsat;
   double sd;
+  uint32_t min;
+  uint32_t max;
 
   //fprintf(stdout, "%s: x=%d y=%d winWidth=%d winHeight=%d\n", id, x, y, winWidth, winHeight);
 
@@ -405,9 +442,12 @@ void reduceImage32( isImageBufType *src, isImageBufType *dst, int x, int y, int 
     cvtFunc = maxBox32;
   }
 
-  n   = 0;
-  sum = 0.0;
-  ss  = 0.0;
+  n    = 0;
+  sum  = 0.0;
+  ss   = 0.0;
+  nsat = 0;
+  min  = 0xffffffff;
+  max  = 0;
   for (row=0; row<dstHeight; row++) {
     // "index" of vertical position on original image
     d_row = row * (double)winHeight/(double)(dstHeight) + y;
@@ -416,12 +456,15 @@ void reduceImage32( isImageBufType *src, isImageBufType *dst, int x, int y, int 
       // "index" of the horizontal position on the original image
       d_col = col * (double)winWidth/(double)(dstWidth) + x;
 
-      pxl = cvtFunc( src->bad_pixel_map, srcBuf, srcWidth, srcHeight, d_row, d_col, yal, yau, xal, xau);
+      pxl = cvtFunc( src->bad_pixel_map, &min, &nsat, srcBuf, srcWidth, srcHeight, d_row, d_col, yal, yau, xal, xau);
 
       if (pxl != 0xffffffff) {
         sum += pxl;
         ss  += pxl * pxl;
         n++;
+        if (max < pxl) {
+          max = pxl;
+        }
       }
 
       *(dstBuf + row*dstWidth + col) = pxl;
@@ -440,7 +483,10 @@ void reduceImage32( isImageBufType *src, isImageBufType *dst, int x, int y, int 
     set_json_object_integer(id, dst->meta, "n", n);
     set_json_object_real(id, src->meta, "mean", mean);
     set_json_object_real(id, src->meta, "rms", rms);
+    set_json_object_integer(id, src->meta, "min", min);
+    set_json_object_integer(id, src->meta, "max", max);
     set_json_object_real(id, src->meta, "stddev", sd);
+    set_json_object_integer(id, src->meta, "nSaturated", nsat);
   }
 
   //fprintf(stdout, "%s: n=%d mean=%f  rms=%f   stddev=%f  key=%s\n", id, n, mean, rms, sd, src->key);
@@ -449,12 +495,12 @@ void reduceImage32( isImageBufType *src, isImageBufType *dst, int x, int y, int 
             
 /** Image reduction is defined by a "zoom" and a "sector".
  **
- **  The width and heigh of the original image are divided by "zoom"
+ **  The width and height of the original image are divided by "zoom"
  **  and the resulting segments addressed by column and row indices
  **  starting with the upper left hand corner.  For example:
  **
  **  Zoom: 4 gives 16 segments from [0,0] to [3,3].  Zoom: 1.5 gives 4
- **  segments from [0,] to [1,1] where the right half of [0,1] is
+ **  segments from [0,0] to [1,1] where the right half of [0,1] is
  **  blank, the bottom half of [0,1] is blank, and only the upper left
  **  hand quadrant of [1,1] is potentially non-blank.
  **
