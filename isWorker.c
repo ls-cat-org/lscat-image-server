@@ -105,7 +105,11 @@ void *isWorker(void *voidp) {
       }
     }
 
+    pthread_mutex_lock(&wctx->metaMutex);
     job = json_loadb(zmq_msg_data(&zmsg), zmq_msg_size(&zmsg), 0, &jerr);
+    pthread_mutex_unlock(&wctx->metaMutex);
+
+
     zmq_msg_close(&zmsg);
 
     if (job == NULL) {
@@ -114,9 +118,11 @@ void *isWorker(void *voidp) {
       continue;
     }
 
+    pthread_mutex_lock(&wctx->metaMutex);
     jobstr = json_dumps(job, JSON_INDENT(0) | JSON_COMPACT | JSON_SORT_KEYS);
-
     job_type = json_string_value(json_object_get(job, "type"));
+    pthread_mutex_unlock(&wctx->metaMutex);
+
     if (job_type == NULL) {
       fprintf(stderr, "%s: No type parameter in job %s\n", id, jobstr);
       is_zmq_error_reply(NULL, 0, tc.rep, "%s: No type parameter in job %s", id, jobstr);
@@ -131,7 +137,9 @@ void *isWorker(void *voidp) {
       }
     }
     free(jobstr);
+    pthread_mutex_lock(&wctx->metaMutex);
     json_decref(job);
+    pthread_mutex_unlock(&wctx->metaMutex);
   }
   return NULL;
 }

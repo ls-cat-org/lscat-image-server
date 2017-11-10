@@ -135,7 +135,7 @@ void isJpegLabel(const char *label, int width, int height, struct jpeg_compress_
  ** @param[in] jpeg_len The length of out_buffer
  **
 */
-void isJpegSend(isThreadContextType *tcp, json_t *job, json_t *meta, unsigned char *out_buffer, int jpeg_len) {
+void isJpegSend(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job, json_t *meta, unsigned char *out_buffer, int jpeg_len) {
   static const char *id = FILEID "isJpegSend";
 
   char *job_str;                // stringified version of job
@@ -156,7 +156,9 @@ void isJpegSend(isThreadContextType *tcp, json_t *job, json_t *meta, unsigned ch
   // Job
   job_str = NULL;
   if (job != NULL) {
+    pthread_mutex_lock(&wctx->metaMutex);
     job_str = json_dumps(job, JSON_SORT_KEYS | JSON_INDENT(0) | JSON_COMPACT);
+    pthread_mutex_unlock(&wctx->metaMutex);
   }
   if (job_str == NULL) {
     job_str = strdup("");
@@ -172,7 +174,9 @@ void isJpegSend(isThreadContextType *tcp, json_t *job, json_t *meta, unsigned ch
   // Meta
   meta_str = NULL;
   if (meta != NULL) {
+    pthread_mutex_lock(&wctx->metaMutex);
     meta_str = json_dumps(meta, JSON_SORT_KEYS | JSON_INDENT(0) | JSON_COMPACT);
+    pthread_mutex_unlock(&wctx->metaMutex);
   }
   if (meta_str == NULL) {
     meta_str = strdup("");
@@ -254,14 +258,23 @@ void isJpegBlank(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job)
   size_t row_buffer_size;                       // the size of row_buffer
   size_t out_buffer_size;                       // the size of out_buffer
 
+  pthread_mutex_lock(&wctx->metaMutex);
   width = json_integer_value(json_object_get(job, "xsize"));
+  pthread_mutex_unlock(&wctx->metaMutex);
+
   width = width < 8 ? 8 : width;
   height = width;
 
   labelHeight = 0;
+  pthread_mutex_lock(&wctx->metaMutex);
   label = json_string_value(json_object_get(job, "label"));
+  pthread_mutex_unlock(&wctx->metaMutex);
+
   if (label != NULL && *label) {
+    pthread_mutex_lock(&wctx->metaMutex);
     labelHeight = json_integer_value(json_object_get(job, "labelHeight"));
+    pthread_mutex_unlock(&wctx->metaMutex);
+
     labelHeight = labelHeight < 0  ?  0 : labelHeight;    // labels can't have negative height
     labelHeight = labelHeight > 64 ?  0 : labelHeight;    // ignore requests for really big labels
   }
@@ -357,7 +370,7 @@ void isJpegBlank(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job)
   }
   jpeg_finish_compress(&cinfo);
 
-  isJpegSend(tcp, job, NULL, out_buffer, (int)(cinfo.dest->next_output_byte - out_buffer));
+  isJpegSend(wctx, tcp, job, NULL, out_buffer, (int)(cinfo.dest->next_output_byte - out_buffer));
   free(row_buffer);
   //
   //  out_buffer is freed by zmq whenever it is done with it
@@ -399,7 +412,10 @@ void isJpeg(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
   unsigned char *out_buffer;
 
 
+  pthread_mutex_lock(&wctx->metaMutex);
   fn = json_string_value(json_object_get(job, "fn"));
+  pthread_mutex_unlock(&wctx->metaMutex);
+
   if (fn == NULL || strlen(fn) == 0) {
     isJpegBlank(wctx, tcp, job);
     return;
@@ -410,15 +426,24 @@ void isJpeg(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
   if (imb == NULL) {
     char *tmps;
 
+    pthread_mutex_lock(&wctx->metaMutex);
     tmps = json_dumps(job, JSON_SORT_KEYS | JSON_COMPACT | JSON_INDENT(0));
+    pthread_mutex_unlock(&wctx->metaMutex);
+
     fprintf(stderr, "%s: missing data for job %s\n", id, tmps);
-    is_zmq_error_reply(NULL, 0, tcp->rep, "%s: missing data for job %s", id, tmps);
+    // is_zmq_error_reply(NULL, 0, tcp->rep, "%s: missing data for job %s", id, tmps);
 
     free(tmps);
+
+    isJpegBlank(wctx, tcp, job);
+
     return;
   }
 
+  pthread_mutex_lock(&wctx->metaMutex);
   labelHeight = json_integer_value(json_object_get(job, "labelHeight"));
+  pthread_mutex_unlock(&wctx->metaMutex);
+
   labelHeight = labelHeight < 0  ?  0 : labelHeight;    // labels can't have negative height
   labelHeight = labelHeight > 64 ?  0 : labelHeight;    // ignore requests for really big labels
 
@@ -514,17 +539,26 @@ void isJpeg(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
   // to the label.
   //
 
-  if (labelHeight && json_string_value(json_object_get(job,"label"))) {
-    if (json_integer_value(json_object_get(imb->meta, "first_frame")) == json_integer_value(json_object_get(imb->meta, "last_frame"))) {
-      snprintf(label, sizeof(label)-1, "%s", json_string_value(json_object_get(job,"label")));
-    } else {
-      snprintf(label, sizeof(label)-1, "%s %d", json_string_value(json_object_get(job,"label")), (int)json_integer_value(json_object_get(job,"frame")));
-    }
+  if (labelHeight) {
+    pthread_mutex_lock(&wctx->metaMutex);
 
+    if (json_string_value(json_object_get(job,"label"))) {
+      if (json_integer_value(json_object_get(imb->meta, "first_frame")) == json_integer_value(json_object_get(imb->meta, "last_frame"))) {
+        snprintf(label, sizeof(label)-1, "%s", json_string_value(json_object_get(job,"label")));
+      } else {
+        snprintf(label, sizeof(label)-1, "%s %d", json_string_value(json_object_get(job,"label")), (int)json_integer_value(json_object_get(job,"frame")));
+      }
+    } else {
+      snprintf(label, sizeof(label)-1, "%s", "");
+    }
     label[sizeof(label)-1] = 0;
+
+    pthread_mutex_unlock(&wctx->metaMutex);
 
     isJpegLabel(label, imb->buf_width, labelHeight, &cinfo);
   }
+
+  pthread_mutex_lock(&wctx->metaMutex);
 
   wval = json_integer_value(json_object_get(job,"wval"));
   bval = json_integer_value(json_object_get(job, "contrast"));
@@ -548,6 +582,8 @@ void isJpeg(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
 
   set_json_object_integer(id, job, "wval_used", wval);
   set_json_object_integer(id, job, "bval_used", bval);
+
+  pthread_mutex_unlock(&wctx->metaMutex);
 
   if (imb->buf_depth == 2) {
     bp16 = imb->buf;
@@ -611,7 +647,7 @@ void isJpeg(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
 
   jpeg_finish_compress(&cinfo);
 
-  isJpegSend(tcp, job, imb->meta, out_buffer, (int)(cinfo.dest->next_output_byte - out_buffer));
+  isJpegSend(wctx, tcp, job, imb->meta, out_buffer, (int)(cinfo.dest->next_output_byte - out_buffer));
 
   free(row_buffer);
   //

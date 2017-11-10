@@ -10,7 +10,7 @@
  * 
  * Call with the context in which this buffer was defined locked.
  */
-void destroyImageBuffer(isImageBufType *p) {
+void destroyImageBuffer(isWorkerContext_t *wctx, isImageBufType *p) {
   static const char *id = FILEID "destroyImageBuffer";
   (void)id;
 
@@ -40,7 +40,9 @@ void destroyImageBuffer(isImageBufType *p) {
   free((char *)p->key);
   pthread_rwlock_destroy(&p->buflock);
   if (p->meta) {
+    pthread_mutex_lock(&wctx->metaMutex);
     json_decref(p->meta);
+    pthread_mutex_unlock(&wctx->metaMutex);
     p->meta = NULL;
   }
   free(p);
@@ -138,6 +140,8 @@ isWorkerContext_t  *isDataInit(const char *key) {
   pthread_mutex_init(&rtn->ctxMutex, &matt);
   pthread_mutexattr_destroy(&matt);
 
+  pthread_mutex_init(&rtn->metaMutex, NULL);
+
   err = hcreate_r( 2*N_IMAGE_BUFFERS, &rtn->bufTable);
   if (err == 0) {
     fprintf(stderr, "%s: Failed to initialize hash table: %s\n", id, strerror(errno));
@@ -166,11 +170,12 @@ void isDataDestroy(isWorkerContext_t *c) {
   next = NULL;
   for (p=c->first; p!=NULL; p=next) {
     next = p->next;     // need to save next since p is going away.
-    destroyImageBuffer(p);
+    destroyImageBuffer(c, p);
   }
   c->n_buffers = 0;
   c->first = NULL;
   pthread_mutex_destroy(&c->ctxMutex);
+  pthread_mutex_destroy(&c->metaMutex);
   free((char *)c->key);
   free(c);
   fprintf(stdout, "%s: Done\n", id);
@@ -421,7 +426,7 @@ isImageBufType *createNewImageBuf(isWorkerContext_t *wctx, const char *key) {
     assert(p->in_use >= 0);
 
     if (i++ > wctx->max_buffers/4 && p->in_use <= 0) {
-      destroyImageBuffer(p);
+      destroyImageBuffer(wctx, p);
       continue;
     }
 
@@ -589,7 +594,9 @@ isImageBufType *isGetImageBufFromKey(isWorkerContext_t *wctx, redisContext *rc, 
 
   rtn->meta = NULL;
   if (meta_rr->type == REDIS_REPLY_STRING) {
+    pthread_mutex_lock(&wctx->metaMutex);
     rtn->meta = json_loads(meta_rr->str, 0, &jerr);
+    pthread_mutex_unlock(&wctx->metaMutex);
   }
 
   if (image_rr->type == REDIS_REPLY_STRING) {
@@ -685,7 +692,9 @@ isImageBufType *isGetImageBufFromKey(isWorkerContext_t *wctx, redisContext *rc, 
 
   rtn->meta = NULL;
   if (meta_rr->type == REDIS_REPLY_STRING) {
+    pthread_mutex_lock(&wctx->metaMutex);
     rtn->meta = json_loads(meta_rr->str, 0, &jerr);
+    pthread_mutex_unlock(&wctx->metaMutex);
   }
 
 
@@ -729,7 +738,7 @@ isImageBufType *isGetImageBufFromKey(isWorkerContext_t *wctx, redisContext *rc, 
  *   processes can access it without having to read the original file
  *   and/or re-reduce it.
  */
-void isWriteImageBufToRedis(isImageBufType *imb, redisContext *rc) {
+void isWriteImageBufToRedis(isWorkerContext_t *wctx, isImageBufType *imb, redisContext *rc) {
   static const char *id = FILEID "isWriteImageBufToRedis";
   redisReply *rr;
   char *meta_str;
@@ -737,7 +746,9 @@ void isWriteImageBufToRedis(isImageBufType *imb, redisContext *rc) {
   int i;
   int n;
 
+  pthread_mutex_lock(&wctx->metaMutex);
   meta_str = json_dumps(imb->meta, JSON_COMPACT | JSON_INDENT(0) | JSON_SORT_KEYS);
+  pthread_mutex_unlock(&wctx->metaMutex);
 
   redisAppendCommand(rc, "HMSET %s META %s WIDTH %d HEIGHT %d DEPTH %d", imb->key, meta_str, imb->buf_width, imb->buf_height, imb->buf_depth);
   redisAppendCommand(rc, "HSET %s DATA %b", imb->key, imb->buf, imb->buf_size);
@@ -814,7 +825,9 @@ isImageBufType *isGetRawImageBuf(isWorkerContext_t *wctx, redisContext *rc, json
   image_file_type ft;
   int err;
 
+  pthread_mutex_lock(&wctx->metaMutex);
   fn = json_string_value(json_object_get(job, "fn"));
+  pthread_mutex_unlock(&wctx->metaMutex);
   if (fn == NULL || strlen(fn) == 0) {
     return NULL;
   }
@@ -826,7 +839,9 @@ isImageBufType *isGetRawImageBuf(isWorkerContext_t *wctx, redisContext *rc, json
   }
   gid_strlen = ((int)log10(gid)) + 1;
 
+  pthread_mutex_lock(&wctx->metaMutex);
   frame = json_integer_value(json_object_get(job,"frame"));
+  pthread_mutex_unlock(&wctx->metaMutex);
   if (frame <= 0) {
     frame = 1;
   }
@@ -865,14 +880,14 @@ isImageBufType *isGetRawImageBuf(isWorkerContext_t *wctx, redisContext *rc, json
   ft = isFileType(fn);
   switch (ft) {
   case HDF5:
-    rtn->meta = isH5GetMeta(fn);
-    err = isH5GetData(fn, &rtn);
+    rtn->meta = isH5GetMeta(wctx, fn);
+    err = isH5GetData(wctx, fn, &rtn);
     break;
       
   case RAYONIX:
   case RAYONIX_BS:
-    rtn->meta = isRayonixGetMeta(fn);
-    err = isRayonixGetData(fn, &rtn);
+    rtn->meta = isRayonixGetMeta(wctx, fn);
+    err = isRayonixGetData(wctx, fn, &rtn);
     break;
       
   case UNKNOWN:
@@ -883,7 +898,7 @@ isImageBufType *isGetRawImageBuf(isWorkerContext_t *wctx, redisContext *rc, json
 
   #ifndef IS_IGNORE_REDIS_STORE
   if (err == 0) {
-    isWriteImageBufToRedis(rtn, rc);
+    isWriteImageBufToRedis(wctx, rtn, rc);
   }
   #endif
 

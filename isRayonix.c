@@ -292,7 +292,7 @@ char *parseComment( char const *cp, char const *needle) {
  **
  ** @returns JSON object chock full of  our metadata.
  */
-json_t *isRayonixGetMeta( const char *fn) {
+json_t *isRayonixGetMeta( isWorkerContext_t *wctx, const char *fn) {
   static const char *id = "marTiffGetHeader";
   //
   // is is the image structure we are getting all our info from
@@ -323,6 +323,7 @@ json_t *isRayonixGetMeta( const char *fn) {
   fread( &fh, sizeof(frame_header), 1, f);
   fclose( f);
 
+  pthread_mutex_lock(&wctx->metaMutex);
   set_json_object_string(id, rtn, "filename", fh.filename);
   set_json_object_string(id, rtn, "filepath", fh.filepath);
   set_json_object_string(id, rtn, "comment",  fh.file_comment);
@@ -396,6 +397,8 @@ json_t *isRayonixGetMeta( const char *fn) {
   set_json_object_string(id, rtn, "fn", fn);
   set_json_object_integer(id, rtn, "frame", 1);
   
+  pthread_mutex_unlock(&wctx->metaMutex);
+
   return rtn;
 }
 
@@ -407,7 +410,7 @@ json_t *isRayonixGetMeta( const char *fn) {
  **
  ** @returns 0 on success
  */
-int isRayonixGetData( const char *fn, isImageBufType **imbp) {
+int isRayonixGetData( isWorkerContext_t *wctx, const char *fn, isImageBufType **imbp) {
   static const char *id = "marTiffGetData";
 
   //

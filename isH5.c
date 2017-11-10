@@ -319,7 +319,7 @@ json_t *get_json( hid_t master_file, h5_to_json_t *htj) {
  **
  ** @remark Programming errors are fatal.
  */
-json_t *isH5GetMeta(const char *fn) {
+json_t *isH5GetMeta(isWorkerContext_t *wctx, const char *fn) {
   static const char *id = FILEID "isH5Jpeg";
   hid_t master_file;            // master file object
   herr_t herr;                  // error from an h5 call
@@ -351,11 +351,16 @@ json_t *isH5GetMeta(const char *fn) {
     return NULL;
   }
 
+  pthread_mutex_lock(&wctx->metaMutex);
   for (i=0; i < sizeof(json_convert_array)/sizeof(json_convert_array[0]); i++) {
     tmp_obj = get_json(master_file, &json_convert_array[i]);
+
     if (!tmp_obj) {
+      json_decref(meta);
+      pthread_mutex_unlock(&wctx->metaMutex);
       return NULL;
     }
+
     err = json_object_update(meta, tmp_obj);
     if (err != 0) {
       fprintf(stderr, "%s: Could not update meta_obj\n", id);
@@ -364,6 +369,9 @@ json_t *isH5GetMeta(const char *fn) {
       if (herr < 0) {
         fprintf(stderr, "%s: failed to close master file\n", id);
       }
+      json_decref(meta);
+      json_decref(tmp_obj);
+      pthread_mutex_unlock(&wctx->metaMutex);
       return NULL;
     }
     json_decref(tmp_obj);
@@ -378,6 +386,7 @@ json_t *isH5GetMeta(const char *fn) {
 
   set_json_object_string(id, meta, "fn", fn);
 
+  pthread_mutex_unlock(&wctx->metaMutex);
   //fprintf(stdout, "%s: returning with metadata\n", id);
   return meta;
 }
@@ -671,7 +680,7 @@ int get_one_frame(isImageBufType **imbp) {
  **
  ** @returns 0 on success
  */
-int isH5GetData(const char *fn, isImageBufType **imbp) {
+int isH5GetData(isWorkerContext_t *wctx, const char *fn, isImageBufType **imbp) {
   static const char *id = FILEID "isH5GetData";
   isH5extra_t *extra;           // pointer to frame discovery list
   hid_t master_file;            // the master file, of course
@@ -693,7 +702,9 @@ int isH5GetData(const char *fn, isImageBufType **imbp) {
   failed = 0;
   extra = imb->extra;
 
+  pthread_mutex_lock(&wctx->metaMutex);
   set_json_object_integer(id, imb->meta, "frame", imb->frame);
+  pthread_mutex_unlock(&wctx->metaMutex);
 
   //
   // Open up the master file
@@ -729,8 +740,10 @@ int isH5GetData(const char *fn, isImageBufType **imbp) {
       last_frame  = last_frame  > fp->last_frame  ? last_frame  : fp->last_frame;
     }
 
+    pthread_mutex_lock(&wctx->metaMutex);
     set_json_object_integer(id, imb->meta, "first_frame", first_frame);
     set_json_object_integer(id, imb->meta, "last_frame",  last_frame);
+    pthread_mutex_unlock(&wctx->metaMutex);
   
     //
     // Our error breakout box

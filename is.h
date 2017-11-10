@@ -113,6 +113,7 @@ typedef struct isWorkerContextStruct {
   int n_buffers;                        //!< The number of buffers in the list (so we know when to remake the hash table
   int max_buffers;                      //!< Maximum number of buffers allowed in the hash table
   pthread_mutex_t ctxMutex;             //!< Lock access to the image buffers
+  pthread_mutex_t metaMutex;             //!< control access to json functions, particularly dumps
   struct hsearch_data bufTable;         //!< Hash table to find the correct buffer quickly
   void *zctx;                           //!< zmq context to transmit data hither and yon
   void *router;                         //!< zmq socket to talk to our parent process
@@ -135,11 +136,11 @@ typedef struct isProcessListStruct {
   void *parent_dealer;                  //!< parent side of parent/child proxy (ipc)
 } isProcessListType;
 
-extern void destroyImageBuffer(isImageBufType *p);
-extern json_t *isH5GetMeta(const char *fn);
-extern json_t *isRayonixGetMeta(const char *fn);
-extern int isH5GetData(const char *fn, isImageBufType **imbp);
-extern int isRayonixGetData(const char *fn, isImageBufType **imbp);
+extern void destroyImageBuffer(isWorkerContext_t *wctx, isImageBufType *p);
+extern json_t *isH5GetMeta(isWorkerContext_t *wctx, const char *fn);
+extern json_t *isRayonixGetMeta(isWorkerContext_t *wctx, const char *fn);
+extern int isH5GetData(isWorkerContext_t *wctx, const char *fn, isImageBufType **imbp);
+extern int isRayonixGetData(isWorkerContext_t *wctx, const char *fn, isImageBufType **imbp);
 extern isProcessListType *isFindProcess(const char *pid, int esaf);
 extern void isSupervisor(const char *key);
 extern isProcessListType *isRun(void *zctx, redisContext *rc, json_t *isAuth, int esaf);
@@ -156,7 +157,7 @@ extern isImageBufType *isGetRawImageBuf(isWorkerContext_t *ibctx, redisContext *
 extern isWorkerContext_t  *isDataInit(const char *key);
 extern int verifyIsAuth( char *isAuth, char *isAuthSig_str);
 extern void isDataDestroy(isWorkerContext_t *c);
-extern void isWriteImageBufToRedis(isImageBufType *imb, redisContext *rc);
+extern void isWriteImageBufToRedis(isWorkerContext_t *wctx, isImageBufType *imb, redisContext *rc);
 extern isImageBufType *isReduceImage(isWorkerContext_t *ibctx, redisContext *rc, json_t *job);
 extern isImageBufType *isGetImageBufFromKey(isWorkerContext_t *ibctx, redisContext *rc, char *key);
 extern void isJpeg( isWorkerContext_t *ibctx, isThreadContextType *tcp, json_t *job);
