@@ -357,7 +357,7 @@ void reduceImage16( isImageBufType *src, isImageBufType *dst, int x, int y, int 
   rms  = sqrt(ss / n);
   sd   = sqrt(ss /n - mean * mean);
 
-  if (json_integer_value(json_object_get(src->meta,"n")) < n) {
+  if (json_integer_value(json_object_get(src->meta,"n")) <= n) {
     set_json_object_integer(id, dst->meta, "n", n);
     set_json_object_real(id, src->meta,    "mean", mean);
     set_json_object_integer(id, src->meta, "min", min);
@@ -479,7 +479,7 @@ void reduceImage32( isImageBufType *src, isImageBufType *dst, int x, int y, int 
   rms  = sqrt(ss / n);
   sd   = sqrt(ss /n - mean * mean);
 
-  if (json_integer_value(json_object_get(src->meta,"n")) < n) {
+  if (json_integer_value(json_object_get(src->meta,"n")) <= n) {
     set_json_object_integer(id, dst->meta, "n", n);
     set_json_object_real(id, src->meta, "mean", mean);
     set_json_object_real(id, src->meta, "rms", rms);
