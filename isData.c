@@ -308,12 +308,13 @@ image_file_type isFileType(const char *fn) {
     fprintf(stderr, "%s: Could not turn off HDF5 error reporting\n", id);
   }
 
+  ish5 = H5Fis_hdf5(fn);
+
   herr = H5Eset_auto2(H5E_DEFAULT, (H5E_auto2_t) H5Eprint2, stderr);
   if (herr < 0) {
     fprintf(stderr, "%s: Could not turn back on HDF5 error reporting\n", id);
   }
-
-  ish5 = H5Fis_hdf5(fn);
+  
   if (ish5 > 0) {
     return HDF5;
   }
