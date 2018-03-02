@@ -7,23 +7,23 @@ LS-CAT Image Server
 Overview
 --------
 
-This project, affectionately known as @c "is" for Image Server, takes
+This project, affectionately known as `is` for Image Server, takes
 requests regarding diffraction images from the user and returns the
 result.  The simplest request is for a jpeg version of a diffraction
 image so that the user may view it on their browser.
 
 Here are the main parts:
 
--# Javascript components running on the user's browser as well as on a
+1. Javascript components running on the user's browser as well as on a
    [node server](https://nodejs.org).  Code for these components are
    found at here https://wwwsvn.ls-cat.org/svn/ls-cat/node.  And while
-   we're on this side of things, the program @c is_proxy (found in the
+   we're on this side of things, the program `is_proxy` (found in the
    previously linked subversion directory) passes along the user
    requests to the image server.
 
--# Directing requests to processes running under the correct UID/GID.
+1. Directing requests to processes running under the correct UID/GID.
 
--# Performing the action and returning the result back up the chain.
+1. Performing the action and returning the result back up the chain.
 
 
 We'll go through each of these parts in greater deatil in the
@@ -69,7 +69,7 @@ Communicating the request and its response
 ------------------------------------------
 
 We use [ZeroMQ](http://zeromq.org) to handle the messaging.  In
-particular, the client (@c is.js) uses a zmq REQ socket and the server
+particular, the client (`is.js`) uses a zmq REQ socket and the server
 uses a zmq REP socket.  In between these two are zmq Router sockets
 which agregate client requests and zmq Dealer sockets which
 distribute client requests among the avaiable servers.
@@ -79,18 +79,18 @@ server response: a client must wait for a response before making
 another request and a server must respond to a request before
 receiving a new one.  For us this means that
 
-1. User generates a request that is handeled by the @c is.js component
+1. User generates a request that is handeled by the `is.js` component
    of the LS-CAT Remote Access Server
 
-@image html isOverview.png "Image Server Data Flow"
-@image latex isOverview.eps "Image Server Data Flow"
+![Image Server Data Flow](isOverview.png)
+<!--@image latex isOverview.eps "Image Server Data Flow"-->
 
-1. Request is aggregated by @c is_proxy.  This allows for multiple
-   instances of @c is.js (which we have) on possibly multiple web
-   servers (which we do not have *yet*).  Note that the location of @c
-   is_proxy is well know so that @c is.js and the Image Server Process
-   Manager can connect to it.  This obviates the need for a more
-   complex discovery mechanism.
+2. Request is aggregated by `is_proxy`.  This allows for multiple
+   instances of `is.js (which we have) on possibly multiple web
+   servers (which we do not have *yet*).  Note that the location of
+   `is_proxy` is well know so that `is.js` and the Image Server
+   Process Manager can connect to it.  This obviates the need for a
+   more complex discovery mechanism.
 
 1. The Image Server Process Manager receives the request and passes it
    on to a process running as the UID of the user and the GID of the
@@ -172,8 +172,8 @@ A Note About Error Handling
 ---------------------------
 
 In this project all programming and initialization errors are
-considered fatal.  Either @c assert is called or a mesage is printed
-to stderr and @c exit(-1) is called.
+considered fatal.  Either `assert` is called or a mesage is printed
+to stderr and `exit(-1)` is called.
 
 Non-programming errors always result in a error being sent back to the
 user via ZMQ and perhaps a message being printed to stderr.
