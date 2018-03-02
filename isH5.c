@@ -811,8 +811,9 @@ int isH5GetData(isWorkerContext_t *wctx, const char *fn, isImageBufType **imbp) 
     } while(0);
   }
 
+  err = -1;
   if (!failed) {
-    get_one_frame(imbp);
+    err = get_one_frame(imbp);
   }
   
   // These close routines return < 0 on error but we do not have
@@ -831,5 +832,5 @@ int isH5GetData(isWorkerContext_t *wctx, const char *fn, isImageBufType **imbp) 
     H5Fclose(master_file);
   }
 
-  return 0;
+  return err;
 }
