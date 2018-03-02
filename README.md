@@ -79,20 +79,20 @@ server response: a client must wait for a response before making
 another request and a server must respond to a request before
 receiving a new one.  For us this means that
 
--1 User generates a request that is handeled by the @c is.js component
+1. User generates a request that is handeled by the @c is.js component
    of the LS-CAT Remote Access Server
 
 @image html isOverview.png "Image Server Data Flow"
 @image latex isOverview.eps "Image Server Data Flow"
 
--1 Request is aggregated by @c is_proxy.  This allows for multiple
+1. Request is aggregated by @c is_proxy.  This allows for multiple
    instances of @c is.js (which we have) on possibly multiple web
    servers (which we do not have *yet*).  Note that the location of @c
    is_proxy is well know so that @c is.js and the Image Server Process
    Manager can connect to it.  This obviates the need for a more
    complex discovery mechanism.
 
--1 The Image Server Process Manager receives the request and passes it
+1. The Image Server Process Manager receives the request and passes it
    on to a process running as the UID of the user and the GID of the
    ESAF that collected the data.  Note that an error can occur at this
    stage if, say, the user is no longer logged in or requests access
@@ -100,10 +100,10 @@ receiving a new one.  For us this means that
    message must be returned the request is passed to a special error
    reponsder.
 
--1 The process supervisor receives the request and passes it on to a
+1. The process supervisor receives the request and passes it on to a
    worker thread.
 
--1 The worker thread performs the work and passes the result back
+1. The worker thread performs the work and passes the result back
    through the ZMQ pipes.
 
 At any step an error message will be passed back instead of the result
