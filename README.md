@@ -79,20 +79,20 @@ server response: a client must wait for a response before making
 another request and a server must respond to a request before
 receiving a new one.  For us this means that
 
--# User generates a request that is handeled by the @c is.js component
+-1 User generates a request that is handeled by the @c is.js component
    of the LS-CAT Remote Access Server
 
 @image html isOverview.png "Image Server Data Flow"
 @image latex isOverview.eps "Image Server Data Flow"
 
--# Request is aggregated by @c is_proxy.  This allows for multiple
+-1 Request is aggregated by @c is_proxy.  This allows for multiple
    instances of @c is.js (which we have) on possibly multiple web
    servers (which we do not have *yet*).  Note that the location of @c
    is_proxy is well know so that @c is.js and the Image Server Process
    Manager can connect to it.  This obviates the need for a more
    complex discovery mechanism.
 
--# The Image Server Process Manager receives the request and passes it
+-1 The Image Server Process Manager receives the request and passes it
    on to a process running as the UID of the user and the GID of the
    ESAF that collected the data.  Note that an error can occur at this
    stage if, say, the user is no longer logged in or requests access
@@ -100,10 +100,10 @@ receiving a new one.  For us this means that
    message must be returned the request is passed to a special error
    reponsder.
 
--# The process supervisor receives the request and passes it on to a
+-1 The process supervisor receives the request and passes it on to a
    worker thread.
 
--# The worker thread performs the work and passes the result back
+-1 The worker thread performs the work and passes the result back
    through the ZMQ pipes.
 
 At any step an error message will be passed back instead of the result
@@ -140,12 +140,12 @@ up including the following:
 
 We create JPEGS in two steps:
 
- -# Reduce image to the size of the requested JPEG but at the full
+ 1. Reduce image to the size of the requested JPEG but at the full
     image depth of the source image.  This reduced image is saved for
     future requests and since this step is the most time consuming
     future requests are handled much faster.
 
- -# Scale the reduced image to 8 bit depth of the JPEG images we'll be
+ 1. Scale the reduced image to 8 bit depth of the JPEG images we'll be
     generating.
 
 There are often multiple users attempting to the same images as jpegs
@@ -155,11 +155,11 @@ the?  We generate a key based on the ESAF, the filename relative to
 the ESAF directory, and the size of the jpeg we are requesting.  There
 are two ways to save the data:
 
- -# In a process owned linked list coupled with a hash table.  This is
+ 1. In a process owned linked list coupled with a hash table.  This is
     very fast but only a single user can access it as the processes
     are run as the UID/GID of the calling user.
 
- -# In a Redis database.  This is also pretty fast but unlike the
+ 1. In a Redis database.  This is also pretty fast but unlike the
     above linked list the data can be share among all the users of a
     given ESAF.  Since redis saves things in-memory whenever possible
     things are pretty good.
