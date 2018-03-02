@@ -347,7 +347,7 @@ int main(int argc, char **argv) {
     // request from the user to route the message to the correct
     // process but this requires us to use our knowledge of the ZMQ
     // message passing protocol.  Hence, we are vulnerable to changes
-    // in then protocol in future releases.
+    // in the protocol in future releases.
     //
     // The "enevelope" referred to here consists of one message part
     // per proxy hop followed by a message of zero length.  After this
