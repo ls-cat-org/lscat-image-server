@@ -131,7 +131,10 @@ void *isWorker(void *voidp) {
       // the small number of commands we'll likely have to service.
       if (strcasecmp("jpeg", job_type) == 0) {
         isJpeg(wctx, &tc, job);
+      } else if (strcasecmp("index", job_type) == 0) {
+        isIndex(wctx, &tc, job);
       } else {
+
         fprintf(stderr, "%s: Unknown job type '%s' in job '%s'\n", id, job_type, jobstr);
         is_zmq_error_reply(NULL, 0, tc.rep, "%s: Unknown job type '%s' in job '%s'", id, job_type, jobstr);
       }
