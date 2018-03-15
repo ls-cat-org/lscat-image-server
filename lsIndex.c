@@ -5,6 +5,12 @@
  */
 #include "is.h"
 
+void isIndexCreateEnvironment(json_t *job, const char *f1, const char *f2, const int frame1, const int frame2) {
+  
+  
+
+}
+
 /** Index diffraction pattern(s)
  **
  ** @param wctx Worker context
@@ -43,10 +49,10 @@ void isIndex(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
   frame2 = json_integer_value(json_object_get(job, "frame2"));
   pthread_mutex_unlock(&wctx->metaMutex);
 
-  // Err
+  // Err message part
   zmq_msg_init(&err_msg);
 
-  // Job
+  // Job message part
   job_str = NULL;
   if (job != NULL) {
     pthread_mutex_lock(&wctx->metaMutex);
@@ -56,6 +62,7 @@ void isIndex(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
     job_str = strdup("");
   }
 
+  // Hey! we already have the job, so lets add it now
   err = zmq_msg_init_data(&job_msg, job_str, strlen(job_str), is_zmq_free_fn, NULL);
   if (err != 0) {
     fprintf(stderr, "%s: zmq_msg_init failed (job_str): %s\n", id, zmq_strerror(errno));
@@ -63,7 +70,7 @@ void isIndex(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
     pthread_exit (NULL);
   }
 
-  // Indexing result
+  // Indexing result message part
   index_str = NULL;
   if (index != NULL) {
     pthread_mutex_lock(&wctx->metaMutex);
