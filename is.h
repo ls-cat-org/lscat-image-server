@@ -161,6 +161,7 @@ extern void isWriteImageBufToRedis(isWorkerContext_t *wctx, isImageBufType *imb,
 extern isImageBufType *isReduceImage(isWorkerContext_t *ibctx, redisContext *rc, json_t *job);
 extern isImageBufType *isGetImageBufFromKey(isWorkerContext_t *ibctx, redisContext *rc, char *key);
 extern void isJpeg( isWorkerContext_t *ibctx, isThreadContextType *tcp, json_t *job);
+extern void isIndex( isWorkerContext_t *ibctx, isThreadContextType *tcp, json_t *job);
 extern void is_zmq_free_fn(void *data, void *hint);
 extern void is_zmq_error_reply(zmq_msg_t *msgs, int n_msgs, void *err_dealer, char *fmt, ...);
 extern zmq_pollitem_t *isRemakeZMQPollItems(void *parent_router, void *err_rep, void *err_dealer);

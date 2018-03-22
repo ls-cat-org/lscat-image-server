@@ -5,10 +5,11 @@
  */
 #include "is.h"
 
-void isIndexCreateEnvironment(json_t *job, const char *f1, const char *f2, const int frame1, const int frame2) {
-  
-  
+json_t *isIndexImages(json_t *job, const char *f1, const char *f2, const int frame1, const int frame2) {
+  json_t *rtn;
 
+  rtn = NULL;
+  return rtn;
 }
 
 /** Index diffraction pattern(s)
@@ -33,11 +34,12 @@ void isIndex(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
   static const char *id = FILEID "isIndex";
   const char *fn1;
   const char *fn2;
-  const int  frame1;
-  const int  frame2;
+  int  frame1;
+  int  frame2;
   char *job_str;                // stringified version of job
   char *index_str;               // stringified version of meta
   int err;                      // error code from routies that return integers
+  json_t *index;                // result object
   zmq_msg_t err_msg;            // error message to send via zmq
   zmq_msg_t job_msg;            // the job message
   zmq_msg_t index_msg;          // the indexing result message to send via zmq
@@ -69,6 +71,9 @@ void isIndex(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
     is_zmq_error_reply(NULL, 0, tcp->rep, "%s: Could not initialize reply message (job_str)", id);
     pthread_exit (NULL);
   }
+
+  // The actual work is done here
+  index = isIndexImages(job, fn1, fn2, frame1, frame2);
 
   // Indexing result message part
   index_str = NULL;
