@@ -77,6 +77,12 @@
 //! route the request to the appropriate process.
 #define ERR_REP        "inproc://#err_rep"
 
+//! Spot sensor sensitivity
+//!
+//! Pixel value above a std dev to delcare a spot found
+#define IS_SPOT_SENSITIVITY 2
+
+
 /** The access we've determined by fstat as the uid/gid that will be
  ** trying to read the file.
  */

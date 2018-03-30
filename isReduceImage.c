@@ -283,6 +283,7 @@ void reduceImage16( isImageBufType *src, isImageBufType *dst, int x, int y, int 
   int nsat;
   uint32_t min;
   uint32_t max;
+  int spots;
 
   (void)id;
 
@@ -365,6 +366,18 @@ void reduceImage16( isImageBufType *src, isImageBufType *dst, int x, int y, int 
     set_json_object_real(id, src->meta,    "rms", rms);
     set_json_object_real(id, src->meta,    "stddev", sd);
     set_json_object_integer(id, src->meta, "nSaturated", nsat);
+
+    spots = 0;
+    for (row=0; row < dstHeight; row++) {
+      for (col=0; col<dstWidth; col++) {
+        pxl = *(dstBuf + row*dstWidth + col);
+      
+        if ((pxl - mean) > (IS_SPOT_SENSITIVITY * rms)) {
+          spots++;
+        }
+      }
+    }
+    set_json_object_integer(id, src->meta, "spots", spots);
   }
 
   //fprintf(stdout, "%s: n=%d mean=%f  rms=%f   stddev=%f  key=%s\n", id, n, mean, rms, sd, src->key);
@@ -487,9 +500,18 @@ void reduceImage32( isImageBufType *src, isImageBufType *dst, int x, int y, int 
     set_json_object_integer(id, src->meta, "max", max);
     set_json_object_real(id, src->meta, "stddev", sd);
     set_json_object_integer(id, src->meta, "nSaturated", nsat);
+    spots = 0;
+    for (row=0; row < dstHeight; row++) {
+      for (col=0; col<dstWidth; col++) {
+        pxl = *(dstBuf + row*dstWidth + col);
+      
+        if ((pxl - mean) > (IS_SPOT_SENSITIVITY * rms)) {
+          spots++;
+        }
+      }
+    }
   }
-
-  //fprintf(stdout, "%s: n=%d mean=%f  rms=%f   stddev=%f  key=%s\n", id, n, mean, rms, sd, src->key);
+  set_json_object_integer(id, src->meta, "spots", spots);
 }
 
             
