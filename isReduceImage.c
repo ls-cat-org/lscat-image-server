@@ -421,6 +421,7 @@ void reduceImage32( isImageBufType *src, isImageBufType *dst, int x, int y, int 
   double sd;
   uint32_t min;
   uint32_t max;
+  int spots;
 
   //fprintf(stdout, "%s: x=%d y=%d winWidth=%d winHeight=%d\n", id, x, y, winWidth, winHeight);
 
