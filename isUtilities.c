@@ -525,6 +525,36 @@ int get_integer_from_json_object(const char *cid, json_t *j, char *key) {
   return (int)json_integer_value(tmp_obj);
 }
 
+/** Extract a double value from a json object
+ *
+ *  @param[in]  j    Json object from which the double value should be extracted
+ *
+ *  @param[in]  key  Name of the attribute to extract
+ *
+ *  @returns Value of the named attribute.
+ *
+ *  @remark  All errors fatal.
+ */
+double get_double_from_json_object(const char *cid,  const json_t *j, const char *key) {
+  static const char *id = "get_double_from_json_object";
+  json_t *tmp_obj;
+  
+  tmp_obj = json_object_get(j, key);
+  if (tmp_obj == NULL) {
+    fprintf(stderr, "%s->%s: Failed to get number '%s' from json object\n", cid, id, key);
+    exit (-1);
+  }
+
+  if (json_typeof(tmp_obj) != JSON_REAL && json_typeof(tmp_obj) != JSON_INTEGER) {
+    fprintf(stderr, "%s->%s: json key '%s' did not hold an integer or a real.  Got type %d\n", cid, id, key, json_typeof(tmp_obj));
+    exit (-1);
+  }
+
+  return json_number_value(tmp_obj);
+}
+
+
+
 /** ZMQ needs us to pass a free routine to free data whenever it is done with it.
  **
  ** @param data   data to free

@@ -5,6 +5,148 @@
  */
 #include "is.h"
 
+/**
+ **
+ **
+ */
+void set_up_bins(isImageBufType *src, isImageBufType *dst, int x, int y) {
+  static const char *id = FILEID "set_up_bins";
+  
+  double bin_width;
+  bin_t *bp;
+  int i;
+  double beam_center_x, beam_center_y;
+  int x_pixels_in_detector, y_pixels_in_detector;
+  double box_w, box_h;
+  double dst_center_x;
+  double dst_center_y;
+  double min_dest_dist2;
+  double max_dest_dist2;
+  double tmp_dest_dist2;
+  double dstWidth;
+  double dstHeight;
+
+  x_pixels_in_detector = get_integer_from_json_object(id, src->meta, "x_pixels_in_detector");
+  y_pixels_in_detector = get_integer_from_json_object(id, src->meta, "y_pixels_in_detector");
+  beam_center_x        = get_double_from_json_object( id, src->meta, "beam_center_x");
+  beam_center_y        = get_double_from_json_object( id, src->meta, "beam_center_y");
+
+  dstWidth  = dst->buf_width;
+  dstHeight = dst->buf_height;
+
+  //
+  // Calculate ratio of width and height to the original image so we
+  // can scale the beam center to the new image.
+  //
+  box_w = (double)dst->buf_width  / (double)x_pixels_in_detector;
+  box_h = (double)dst->buf_height / (double)y_pixels_in_detector;
+
+  //
+  // Find the beam center in the destination image space
+  //
+  // This point is not necessarily on the image itself as the detector
+  // may be offset.
+  //
+  dst_center_x = (beam_center_x - x) / box_w;
+  dst_center_y = (beam_center_y - y) / box_h;
+
+  dst->beam_center_x = dst_center_x;
+  dst->beam_center_y = dst_center_y;
+
+  //
+  // Find the range of distances on the destination images.  First
+  // assume the beam center is not on the image.
+  //
+
+  min_dest_dist2 = dst_center_x * dst_center_x + dst_center_y * dst_center_y;
+  max_dest_dist2 = min_dest_dist2;
+
+  tmp_dest_dist2 = (dstWidth - dst_center_x) * (dstWidth - dst_center_x) + dst_center_y * dst_center_y; // URH
+  if (tmp_dest_dist2 < min_dest_dist2)
+    min_dest_dist2 = tmp_dest_dist2;
+  if (tmp_dest_dist2 > max_dest_dist2)
+    max_dest_dist2 = tmp_dest_dist2;
+
+  tmp_dest_dist2 = dst_center_x * dst_center_x + (dstHeight - dst_center_y) * (dstHeight - dst_center_y);  // LLH
+  if (tmp_dest_dist2 < min_dest_dist2)
+    min_dest_dist2 = tmp_dest_dist2;
+  if (tmp_dest_dist2 > max_dest_dist2)
+    max_dest_dist2 = tmp_dest_dist2;
+    
+  tmp_dest_dist2 = (dstWidth - dst_center_x) * (dstWidth - dst_center_x) +  (dstHeight - dst_center_y) * (dstHeight - dst_center_y);  // LLH
+  if (tmp_dest_dist2 < min_dest_dist2)
+    min_dest_dist2 = tmp_dest_dist2;
+  if (tmp_dest_dist2 > max_dest_dist2)
+    max_dest_dist2 = tmp_dest_dist2;
+
+  if (dst_center_x >= 0 && dst_center_x < dstWidth &&
+      dst_center_y >= 0 && dst_center_y < dstHeight) {
+
+    // our beam is on the destination image (this should be normally
+    // the case)
+    min_dest_dist2 = 0.0;
+  }
+
+  dst->min_dist2 = min_dest_dist2;
+  dst->max_dist2 = max_dest_dist2;
+
+  //
+  bin_width = (max_dest_dist2 - min_dest_dist2) / IS_OUTPUT_IMAGE_BINS;
+
+  //
+  // the size of the bins array is OUTPUT_IMAGE_BINS + 1 with
+  // bins[OUTPUT_IMAGE_BINS] reserved for ice ring statistics.  This
+  // may be a bit of kludge but it keeps all this ice calculation
+  // stuff in get_bin_number.
+  //
+
+  for (i=0; i<=IS_OUTPUT_IMAGE_BINS; i++) {
+    bp = &(dst->bins[i]);
+    bp->dist2_low   = i * bin_width + min_dest_dist2;
+    bp->dist2_high  = bp->dist2_low + bin_width;
+    bp->ice_ring_list = NULL;
+
+    bp->rms     = 0.0;
+    bp->mean    = 0.0;
+    bp->rmsd    = 0.0;
+    bp->min     = 0xffffffff;
+    bp->min_row = 0;
+    bp->min_col = 0;
+    bp->max     = 0;
+    bp->max_row = 0;
+    bp->max_col = 0;
+    bp->n       = 0;
+    bp->sum     = 0.0;
+    bp->sum2    = 0.0;
+  }
+}
+
+int get_bin_number( isImageBufType *dst, int i, int j) {
+  ice_ring_list_t *irp;
+
+  double dist2 = ( i - dst->beam_center_x) * (i - dst->beam_center_x) + (j - dst->beam_center_y) * (j - dst->beam_center_y);
+  
+  int rtn = (double)(dst->n_bins) / (dst->max_dist2 - dst->min_dist2) * (dist2 - dst->min_dist2);
+  
+  if (rtn < 0) {
+    rtn = 0;
+  }
+
+  if (rtn >= dst->n_bins) {
+    rtn = dst->n_bins - 1;
+  }
+  
+  for (irp=dst->bins[rtn].ice_ring_list; irp != NULL; irp = irp->next) {
+    if (dist2 >= irp->dist2_low && dist2 <= irp->dist2_high) {
+      rtn = dst->n_bins;  // special bin reserved for ice rings
+      break;
+    }
+  }
+
+  return rtn;
+}
+
+
 /** For 16 bit images, this returns the maximum value of ha xa by ya box centered on (k,l).
  ** 
  ** @param badPixels     Our bad pixel map
@@ -372,7 +514,7 @@ void reduceImage16( isImageBufType *src, isImageBufType *dst, int x, int y, int 
       for (col=0; col<dstWidth; col++) {
         pxl = *(dstBuf + row*dstWidth + col);
       
-        if ((pxl - mean) > (IS_SPOT_SENSITIVITY * rms)) {
+        if ((pxl - mean) > (IS_SPOT_SENSITIVITY * sd)) {
           spots++;
         }
       }
@@ -506,7 +648,7 @@ void reduceImage32( isImageBufType *src, isImageBufType *dst, int x, int y, int 
       for (col=0; col<dstWidth; col++) {
         pxl = *(dstBuf + row*dstWidth + col);
       
-        if ((pxl - mean) > (IS_SPOT_SENSITIVITY * rms)) {
+        if ((pxl - mean) > (IS_SPOT_SENSITIVITY * sd)) {
           spots++;
         }
       }
@@ -724,6 +866,8 @@ isImageBufType *isReduceImage(isWorkerContext_t *wctx, redisContext *rc, json_t 
   x = winWidth  * segcol;
   y = winHeight * segrow;
   
+
+
   switch (image_depth) {
   case 2:
     reduceImage16(raw, rtn, x, y, winWidth, winHeight);
