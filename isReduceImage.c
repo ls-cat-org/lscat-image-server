@@ -108,7 +108,7 @@ void set_up_bins(isImageBufType *src, isImageBufType *dst, int x, int y) {
 
     bp->rms     = 0.0;
     bp->mean    = 0.0;
-    bp->rmsd    = 0.0;
+    bp->sd      = 0.0;
     bp->min     = 0xffffffff;
     bp->min_row = 0;
     bp->min_col = 0;
@@ -146,6 +146,90 @@ int get_bin_number( isImageBufType *dst, int i, int j) {
   return rtn;
 }
 
+
+void add_to_stats(isImageBufType *dst, int row, int col, uint32_t pix) {
+  int bin;
+  bin = get_bin_number(dst, row, col);
+
+  dst->bins[bin].n++;
+  dst->bins[bin].sum += pix;
+  dst->bins[bin].sum2 += pix*pix;
+
+  if (pix < dst->bins[bin].min) {
+    dst->bins[bin].min = pix;
+    dst->bins[bin].min_row = row;
+    dst->bins[bin].min_col = col;
+  }
+
+  if (pix > dst->bins[bin].max) {
+    dst->bins[bin].max = pix;
+    dst->bins[bin].max_row = row;
+    dst->bins[bin].max_col = col;
+  }
+}
+
+void calc_stats(isImageBufType *dst) {
+  static const char *id = FILEID "calc_stats";
+  int i;
+  int n;
+  double mean;
+  double rms;
+  double sd;
+  double sum;
+  double sum2;
+  uint32_t min;
+  uint32_t max;
+
+  n    = 0;
+  mean = 0.0;
+  rms  = 0.0;
+  sd   = 0.0;
+  sum  = 0.0;
+  sum2 = 0.0;
+  max  = 0;
+  min  = 0xffffffff;
+
+  for (i=0; i <= dst->n_bins; i++) {
+    if (dst->bins[i].n == 0) {
+      dst->bins[i].mean = 0;
+      dst->bins[i].rms  = 0;
+      dst->bins[i].sd   = 0;
+      continue;
+    }
+
+    n    += dst->bins[i].n;
+    sum  += dst->bins[i].sum;
+    sum2 += dst->bins[i].sum2;
+
+    dst->bins[i].mean = dst->bins[i].sum / dst->bins[i].n;
+    dst->bins[i].rms  = sqrt(dst->bins[i].sum2 / dst->bins[i].n);
+    dst->bins[i].sd   = sqrt(dst->bins[i].sum2 / dst->bins[i].n - dst->bins[i].mean * dst->bins[i].mean);
+
+    if (min > dst->bins[i].min) {
+      min = dst->bins[i].min;
+    }
+
+    if (max < dst->bins[i].max) {
+      max = dst->bins[i].max;
+    }
+
+    if (n > 0) {
+      mean = sum / n;
+      rms  = sqrt(sum2 / n);
+      sd   = sqrt(sum2 * sum2 - mean * mean);
+    } else {
+      mean = 0;
+      rms = 0;
+      sd  = 0;
+    }
+  } 
+  set_json_object_integer(id, dst->meta, "n",      n);
+  set_json_object_real(id, dst->meta,    "mean",   mean);
+  set_json_object_integer(id, dst->meta, "min",    min);
+  set_json_object_integer(id, dst->meta, "max",    max);
+  set_json_object_real(id, dst->meta,    "rms",    rms);
+  set_json_object_real(id, dst->meta,    "stddev", sd);
+}
 
 /** For 16 bit images, this returns the maximum value of ha xa by ya box centered on (k,l).
  ** 
@@ -416,16 +500,11 @@ void reduceImage16( isImageBufType *src, isImageBufType *dst, int x, int y, int 
   int dstHeight;
   int srcWidth;
   int srcHeight;
-  int n;
-  double ss;
-  double sum;
-  double mean;
-  double rms;
-  double sd;
   int nsat;
   uint32_t min;
-  uint32_t max;
   int spots;
+  int bin;
+  int ice_spots;
 
   (void)id;
 
@@ -460,12 +539,7 @@ void reduceImage16( isImageBufType *src, isImageBufType *dst, int x, int y, int 
     cvtFunc = maxBox16;
   }
 
-  n    = 0;
-  sum  = 0.0;
-  ss   = 0.0;
   nsat = 0;
-  min  = 0xffffffff;
-  max  = 0;
 
   for (row=0; row<dstHeight; row++) {
     // "index" of vertical position on original image
@@ -482,47 +556,41 @@ void reduceImage16( isImageBufType *src, isImageBufType *dst, int x, int y, int 
       }
 
       if (pxl != 0xffffffff) {
-        sum += pxl;
-        ss  += pxl * pxl;
-        n++;
-        if (max < pxl) {
-          max = pxl;
-        }
+        add_to_stats(dst, row, col, pxl);
       }
       *(dstBuf + row*dstWidth + col) = pxl;
     }
   }
-  if (n == 0) {
-    fprintf(stderr, "%s: no pixels counted.  dstHeight=%d  dstWidth=%d  key=%s\n", id, dstHeight, dstWidth, src->key);
-    return;
-  }
-  mean = sum / n;
-  rms  = sqrt(ss / n);
-  sd   = sqrt(ss /n - mean * mean);
 
-  if (json_integer_value(json_object_get(src->meta,"n")) <= n) {
-    set_json_object_integer(id, dst->meta, "n", n);
-    set_json_object_real(id, src->meta,    "mean", mean);
-    set_json_object_integer(id, src->meta, "min", min);
-    set_json_object_integer(id, src->meta, "max", max);
-    set_json_object_real(id, src->meta,    "rms", rms);
-    set_json_object_real(id, src->meta,    "stddev", sd);
+  if (json_integer_value(json_object_get(src->meta,"n")) <= json_integer_value(json_object_get(dst->meta, "n"))) {
+    set_json_object_integer(id, dst->meta, "n",   json_integer_value(json_object_get(dst->meta, "n")));
+    set_json_object_real(id, src->meta, "mean",   json_real_value(json_object_get(dst->meta, "mean")));
+    set_json_object_real(id, src->meta, "rms",    json_real_value(json_object_get(dst->meta, "rms")));
+    set_json_object_real(id, src->meta, "stddev", json_real_value(json_object_get(dst->meta, "stddev")));
+    set_json_object_integer(id, src->meta, "min", json_integer_value(json_object_get(dst->meta, "min")));
+    set_json_object_integer(id, src->meta, "max", json_integer_value(json_object_get(dst->meta, "max")));
+    set_json_object_real(id, src->meta, "stddev", json_integer_value(json_object_get(dst->meta, "stddev")));
     set_json_object_integer(id, src->meta, "nSaturated", nsat);
+  }
 
-    spots = 0;
-    for (row=0; row < dstHeight; row++) {
-      for (col=0; col<dstWidth; col++) {
-        pxl = *(dstBuf + row*dstWidth + col);
+  // Count the spots
+  spots = 0;
+  for (row=0; row < dstHeight; row++) {
+    for (col=0; col<dstWidth; col++) {
+      pxl = *(dstBuf + row*dstWidth + col);
       
-        if ((pxl - mean) > (IS_SPOT_SENSITIVITY * sd)) {
+      bin = get_bin_number(dst, row, col);
+      
+      if ((pxl - dst->bins[bin].mean) > (IS_SPOT_SENSITIVITY * dst->bins[bin].rms)) {
+        if (bin < dst->n_bins) {
           spots++;
+        } else {
+          ice_spots++;
         }
       }
     }
     set_json_object_integer(id, src->meta, "spots", spots);
   }
-
-  //fprintf(stdout, "%s: n=%d mean=%f  rms=%f   stddev=%f  key=%s\n", id, n, mean, rms, sd, src->key);
 }
 
 /** Reduce the given 32 bit image
@@ -554,16 +622,11 @@ void reduceImage32( isImageBufType *src, isImageBufType *dst, int x, int y, int 
   int dstHeight;
   int srcWidth;
   int srcHeight;
-  int n;
-  double ss;
-  double sum;
-  double mean;
-  double rms;
   int nsat;
-  double sd;
   uint32_t min;
-  uint32_t max;
   int spots;
+  int bin;
+  int ice_spots;
 
   //fprintf(stdout, "%s: x=%d y=%d winWidth=%d winHeight=%d\n", id, x, y, winWidth, winHeight);
 
@@ -598,12 +661,8 @@ void reduceImage32( isImageBufType *src, isImageBufType *dst, int x, int y, int 
     cvtFunc = maxBox32;
   }
 
-  n    = 0;
-  sum  = 0.0;
-  ss   = 0.0;
   nsat = 0;
   min  = 0xffffffff;
-  max  = 0;
   for (row=0; row<dstHeight; row++) {
     // "index" of vertical position on original image
     d_row = row * (double)winHeight/(double)(dstHeight) + y;
@@ -615,41 +674,37 @@ void reduceImage32( isImageBufType *src, isImageBufType *dst, int x, int y, int 
       pxl = cvtFunc( src->bad_pixel_map, &min, &nsat, srcBuf, srcWidth, srcHeight, d_row, d_col, yal, yau, xal, xau);
 
       if (pxl != 0xffffffff) {
-        sum += pxl;
-        ss  += pxl * pxl;
-        n++;
-        if (max < pxl) {
-          max = pxl;
-        }
+        add_to_stats(dst, row, col, pxl);
       }
 
       *(dstBuf + row*dstWidth + col) = pxl;
     }
   }
   
-  if (n == 0) {
-    fprintf(stderr, "%s: No pixels counted for key %s\n", id, src->key);
-    return;
-  }
-  mean = sum / n;
-  rms  = sqrt(ss / n);
-  sd   = sqrt(ss /n - mean * mean);
-
-  if (json_integer_value(json_object_get(src->meta,"n")) <= n) {
-    set_json_object_integer(id, dst->meta, "n", n);
-    set_json_object_real(id, src->meta, "mean", mean);
-    set_json_object_real(id, src->meta, "rms", rms);
-    set_json_object_integer(id, src->meta, "min", min);
-    set_json_object_integer(id, src->meta, "max", max);
-    set_json_object_real(id, src->meta, "stddev", sd);
+  if (json_integer_value(json_object_get(src->meta,"n")) <= json_integer_value(json_object_get(dst->meta, "n"))) {
+    set_json_object_integer(id, dst->meta, "n",   json_integer_value(json_object_get(dst->meta, "n")));
+    set_json_object_real(id, src->meta, "mean",   json_real_value(json_object_get(dst->meta, "mean")));
+    set_json_object_real(id, src->meta, "rms",    json_real_value(json_object_get(dst->meta, "rms")));
+    set_json_object_real(id, src->meta, "stddev", json_real_value(json_object_get(dst->meta, "stddev")));
+    set_json_object_integer(id, src->meta, "min", json_integer_value(json_object_get(dst->meta, "min")));
+    set_json_object_integer(id, src->meta, "max", json_integer_value(json_object_get(dst->meta, "max")));
+    set_json_object_real(id, src->meta, "stddev", json_integer_value(json_object_get(dst->meta, "stddev")));
     set_json_object_integer(id, src->meta, "nSaturated", nsat);
-    spots = 0;
-    for (row=0; row < dstHeight; row++) {
-      for (col=0; col<dstWidth; col++) {
-        pxl = *(dstBuf + row*dstWidth + col);
+  }
+
+  // Now for the spot counter
+  spots = 0;
+  for (row=0; row < dstHeight; row++) {
+    for (col=0; col<dstWidth; col++) {
+      pxl = *(dstBuf + row*dstWidth + col);
       
-        if ((pxl - mean) > (IS_SPOT_SENSITIVITY * sd)) {
+      bin = get_bin_number(dst, row, col);
+      
+      if ((pxl - dst->bins[bin].mean) > (IS_SPOT_SENSITIVITY * dst->bins[bin].rms)) {
+        if (bin < dst->n_bins) {
           spots++;
+        } else {
+          ice_spots++;
         }
       }
     }
@@ -865,8 +920,8 @@ isImageBufType *isReduceImage(isWorkerContext_t *wctx, redisContext *rc, json_t 
 
   x = winWidth  * segcol;
   y = winHeight * segrow;
-  
 
+  set_up_bins(raw, rtn, x, y);
 
   switch (image_depth) {
   case 2:
@@ -902,5 +957,3 @@ isImageBufType *isReduceImage(isWorkerContext_t *wctx, redisContext *rc, json_t 
   free(reducedKey);
   return rtn;
 }  
-
-

@@ -116,7 +116,7 @@ typedef struct bin_struct {
   ice_ring_list_t *ice_ring_list;       //!< list of ice rings
   double rms;                           //!< rms value for pixels in this bin
   double mean;                          //!< mean value for pixels in this bin
-  double rmsd;                          //!< rms deviation for pixels in this bin
+  double sd;                            //!< std deviation for pixels in this bin
   double min;                           //!< minimum pixel value in this bin
   double min_row;                       //!< row number of the minimum pixels in this bin
   double min_col;                       //!< column number of the minimum value in this bin
