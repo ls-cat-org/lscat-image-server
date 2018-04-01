@@ -146,7 +146,6 @@ typedef struct isImageBufStruct {
   void (*destroy_extra)(void *);        //!< Function to destroy the extra stuff
   void *buf;                            //!< Our buffer
   bin_t bins[IS_OUTPUT_IMAGE_BINS+1];   //!< stats for our spot finder
-  int n_bins;                           //!< Number of output bins (isn't this always IS_OUTPUT_BINS+1?)
   double beam_center_x;                 //!< beam_center_x scaled to current image
   double beam_center_y;                 //!< beam_center_x scaled to current image
   double min_dist2;                     //!< square of the minimum possible distance from a pixel to the beam center

@@ -9,7 +9,7 @@
  **
  **
  */
-void set_up_bins(isImageBufType *src, isImageBufType *dst, int x, int y) {
+void set_up_bins(isImageBufType *src, isImageBufType *dst, double winWidth, double winHeight, int x, int y) {
   static const char *id = FILEID "set_up_bins";
   
   double bin_width;
@@ -38,8 +38,8 @@ void set_up_bins(isImageBufType *src, isImageBufType *dst, int x, int y) {
   // Calculate ratio of width and height to the original image so we
   // can scale the beam center to the new image.
   //
-  box_w = (double)dst->buf_width  / (double)x_pixels_in_detector;
-  box_h = (double)dst->buf_height / (double)y_pixels_in_detector;
+  box_w = winWidth / (double)dst->buf_width;
+  box_h = winHeight / (double)dst->buf_height;
 
   //
   // Find the beam center in the destination image space
@@ -123,33 +123,38 @@ void set_up_bins(isImageBufType *src, isImageBufType *dst, int x, int y) {
 
 int get_bin_number( isImageBufType *dst, int i, int j) {
   ice_ring_list_t *irp;
+  int rtn;
+  double dist2;
 
-  double dist2 = ( i - dst->beam_center_x) * (i - dst->beam_center_x) + (j - dst->beam_center_y) * (j - dst->beam_center_y);
+  dist2 = ( i - dst->beam_center_x) * (i - dst->beam_center_x) + (j - dst->beam_center_y) * (j - dst->beam_center_y);
   
-  int rtn = (double)(dst->n_bins) / (dst->max_dist2 - dst->min_dist2) * (dist2 - dst->min_dist2);
+  rtn = (double)(IS_OUTPUT_IMAGE_BINS) / (dst->max_dist2 - dst->min_dist2) * (dist2 - dst->min_dist2);
   
   if (rtn < 0) {
     rtn = 0;
   }
 
-  if (rtn >= dst->n_bins) {
-    rtn = dst->n_bins - 1;
+  if (rtn >= IS_OUTPUT_IMAGE_BINS) {
+    rtn = IS_OUTPUT_IMAGE_BINS - 1;
   }
   
+  /*
   for (irp=dst->bins[rtn].ice_ring_list; irp != NULL; irp = irp->next) {
     if (dist2 >= irp->dist2_low && dist2 <= irp->dist2_high) {
-      rtn = dst->n_bins;  // special bin reserved for ice rings
+      rtn = IS_OUTPUT_IMAGE_BINS;  // special bin reserved for ice rings
       break;
     }
   }
-
+  */
   return rtn;
 }
 
 
 void add_to_stats(isImageBufType *dst, int row, int col, uint32_t pix) {
+  static const char *id = FILEID "add_to_stats";
   int bin;
-  bin = get_bin_number(dst, row, col);
+
+  bin = get_bin_number(dst, col, row);
 
   dst->bins[bin].n++;
   dst->bins[bin].sum += pix;
@@ -189,7 +194,7 @@ void calc_stats(isImageBufType *dst) {
   max  = 0;
   min  = 0xffffffff;
 
-  for (i=0; i <= dst->n_bins; i++) {
+  for (i=0; i <= IS_OUTPUT_IMAGE_BINS; i++) {
     if (dst->bins[i].n == 0) {
       dst->bins[i].mean = 0;
       dst->bins[i].rms  = 0;
@@ -262,8 +267,6 @@ uint32_t maxBox16( uint32_t *badPixels, uint32_t *minp, int *nsatp, void *buf, i
   uint16_t *bp = (uint16_t *) buf;
 
   (void)id;
-
-  //fprintf(stdout, "%s: bufWidth=%d bufHeight=%d  k=%f l=%f yal=%d  yau=%d  xal=%d  xau=%d\n", id, bufWidth, bufHeight, k, l, yal, yau, xal, xau);
 
   d      = 0;
   for (m=k-yal; m < k+yau; m++) {
@@ -562,6 +565,8 @@ void reduceImage16( isImageBufType *src, isImageBufType *dst, int x, int y, int 
     }
   }
 
+  calc_stats(dst);
+
   if (json_integer_value(json_object_get(src->meta,"n")) <= json_integer_value(json_object_get(dst->meta, "n"))) {
     set_json_object_integer(id, dst->meta, "n",   json_integer_value(json_object_get(dst->meta, "n")));
     set_json_object_real(id, src->meta, "mean",   json_real_value(json_object_get(dst->meta, "mean")));
@@ -575,22 +580,24 @@ void reduceImage16( isImageBufType *src, isImageBufType *dst, int x, int y, int 
 
   // Count the spots
   spots = 0;
+
   for (row=0; row < dstHeight; row++) {
     for (col=0; col<dstWidth; col++) {
       pxl = *(dstBuf + row*dstWidth + col);
       
-      bin = get_bin_number(dst, row, col);
+      bin = get_bin_number(dst, col, row);
       
       if ((pxl - dst->bins[bin].mean) > (IS_SPOT_SENSITIVITY * dst->bins[bin].rms)) {
-        if (bin < dst->n_bins) {
+        if (bin < IS_OUTPUT_IMAGE_BINS) {
           spots++;
         } else {
           ice_spots++;
         }
       }
     }
-    set_json_object_integer(id, src->meta, "spots", spots);
   }
+  fprintf(stdout, "%s: spots: %d\n", id, spots);
+  set_json_object_integer(id, src->meta, "spots", spots);
 }
 
 /** Reduce the given 32 bit image
@@ -627,8 +634,6 @@ void reduceImage32( isImageBufType *src, isImageBufType *dst, int x, int y, int 
   int spots;
   int bin;
   int ice_spots;
-
-  //fprintf(stdout, "%s: x=%d y=%d winWidth=%d winHeight=%d\n", id, x, y, winWidth, winHeight);
 
   srcBuf = src->buf;
   dstBuf = dst->buf;
@@ -681,6 +686,8 @@ void reduceImage32( isImageBufType *src, isImageBufType *dst, int x, int y, int 
     }
   }
   
+  calc_stats(dst);
+
   if (json_integer_value(json_object_get(src->meta,"n")) <= json_integer_value(json_object_get(dst->meta, "n"))) {
     set_json_object_integer(id, dst->meta, "n",   json_integer_value(json_object_get(dst->meta, "n")));
     set_json_object_real(id, src->meta, "mean",   json_real_value(json_object_get(dst->meta, "mean")));
@@ -694,14 +701,15 @@ void reduceImage32( isImageBufType *src, isImageBufType *dst, int x, int y, int 
 
   // Now for the spot counter
   spots = 0;
+
   for (row=0; row < dstHeight; row++) {
     for (col=0; col<dstWidth; col++) {
       pxl = *(dstBuf + row*dstWidth + col);
       
-      bin = get_bin_number(dst, row, col);
+      bin = get_bin_number(dst, col, row);
       
       if ((pxl - dst->bins[bin].mean) > (IS_SPOT_SENSITIVITY * dst->bins[bin].rms)) {
-        if (bin < dst->n_bins) {
+        if (bin < IS_OUTPUT_IMAGE_BINS) {
           spots++;
         } else {
           ice_spots++;
@@ -709,6 +717,8 @@ void reduceImage32( isImageBufType *src, isImageBufType *dst, int x, int y, int 
       }
     }
   }
+
+  fprintf(stdout, "%s: spots: %d\n", id, spots);
   set_json_object_integer(id, src->meta, "spots", spots);
 }
 
@@ -842,8 +852,6 @@ isImageBufType *isReduceImage(isWorkerContext_t *wctx, redisContext *rc, json_t 
            getegid(), fn, frame, zoom, segcol, segrow, dstWidth);
   reducedKey[reducedKeyStrlen] = 0;
  
-  //  fprintf(stdout, "%s: about to get image buf from key %s\n", id, reducedKey);
-
   rtn = isGetImageBufFromKey(wctx, rc, reducedKey);
 
   if (rtn == NULL || rtn->buf != NULL) {
@@ -852,8 +860,6 @@ isImageBufType *isReduceImage(isWorkerContext_t *wctx, redisContext *rc, json_t 
     // Either way we are done here.  When rtn is not null the buffer
     // is read locked and in_use incremented.  Don't forget to release it.
     //
-    //fprintf(stdout, "%s: returned %s\n", id, rtn == NULL ? "Failed to get data, giving up." : rtn->key);
-  
     free(reducedKey);
     return rtn;
   }
@@ -863,7 +869,6 @@ isImageBufType *isReduceImage(isWorkerContext_t *wctx, redisContext *rc, json_t 
   //
   
   // Get the unreduced file
-  //fprintf(stdout, "%s: Getting raw data for %s\n", id, rtn->key);
   raw = isGetRawImageBuf(wctx, rc, job);
   if (raw == NULL) {
     fprintf(stderr, "%s: Failed to get raw data for %s\n", id, rtn->key);
@@ -882,7 +887,6 @@ isImageBufType *isReduceImage(isWorkerContext_t *wctx, redisContext *rc, json_t 
     return NULL;
   }
   
-  //fprintf(stdout, "%s: Got raw data for %s\n", id, rtn->key);
   // raw is the the raw data we'll be reducing.  rtn is the reduced
   // buffer we'll be filling.
   // 
@@ -909,8 +913,6 @@ isImageBufType *isReduceImage(isWorkerContext_t *wctx, redisContext *rc, json_t 
     exit (-1);
   }
 
-  //fprintf(stdout, "%s: srcWidth %d  srcHeight %d  image_depth %d  winWidth %d  winHeight %d  dstWidth %d  dstHeight %d\n", id, srcWidth, srcHeight, image_depth, winWidth, winHeight, dstWidth, dstHeight);
-
   rtn->buf_width  = dstWidth;
   rtn->buf_height = dstHeight;
   rtn->buf_depth  = image_depth;
@@ -921,7 +923,7 @@ isImageBufType *isReduceImage(isWorkerContext_t *wctx, redisContext *rc, json_t 
   x = winWidth  * segcol;
   y = winHeight * segrow;
 
-  set_up_bins(raw, rtn, x, y);
+  set_up_bins(raw, rtn, winWidth, winHeight, x, y);
 
   switch (image_depth) {
   case 2:
