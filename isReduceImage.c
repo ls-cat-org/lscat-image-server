@@ -16,7 +16,6 @@ void set_up_bins(isImageBufType *src, isImageBufType *dst, double winWidth, doub
   bin_t *bp;
   int i;
   double beam_center_x, beam_center_y;
-  int x_pixels_in_detector, y_pixels_in_detector;
   double box_w, box_h;
   double dst_center_x;
   double dst_center_y;
@@ -26,8 +25,6 @@ void set_up_bins(isImageBufType *src, isImageBufType *dst, double winWidth, doub
   double dstWidth;
   double dstHeight;
 
-  x_pixels_in_detector = get_integer_from_json_object(id, src->meta, "x_pixels_in_detector");
-  y_pixels_in_detector = get_integer_from_json_object(id, src->meta, "y_pixels_in_detector");
   beam_center_x        = get_double_from_json_object( id, src->meta, "beam_center_x");
   beam_center_y        = get_double_from_json_object( id, src->meta, "beam_center_y");
 
@@ -121,12 +118,12 @@ void set_up_bins(isImageBufType *src, isImageBufType *dst, double winWidth, doub
   }
 }
 
-int get_bin_number( isImageBufType *dst, int i, int j) {
+int get_bin_number( isImageBufType *dst, int col, int row) {
   ice_ring_list_t *irp;
   int rtn;
   double dist2;
 
-  dist2 = ( i - dst->beam_center_x) * (i - dst->beam_center_x) + (j - dst->beam_center_y) * (j - dst->beam_center_y);
+  dist2 = ( col - dst->beam_center_x) * (col - dst->beam_center_x) + (row - dst->beam_center_y) * (row - dst->beam_center_y);
   
   rtn = (double)(IS_OUTPUT_IMAGE_BINS) / (dst->max_dist2 - dst->min_dist2) * (dist2 - dst->min_dist2);
   
@@ -137,15 +134,14 @@ int get_bin_number( isImageBufType *dst, int i, int j) {
   if (rtn >= IS_OUTPUT_IMAGE_BINS) {
     rtn = IS_OUTPUT_IMAGE_BINS - 1;
   }
-  
-  /*
+
   for (irp=dst->bins[rtn].ice_ring_list; irp != NULL; irp = irp->next) {
     if (dist2 >= irp->dist2_low && dist2 <= irp->dist2_high) {
       rtn = IS_OUTPUT_IMAGE_BINS;  // special bin reserved for ice rings
       break;
     }
   }
-  */
+
   return rtn;
 }
 
@@ -153,6 +149,8 @@ int get_bin_number( isImageBufType *dst, int i, int j) {
 void add_to_stats(isImageBufType *dst, int row, int col, uint32_t pix) {
   static const char *id = FILEID "add_to_stats";
   int bin;
+
+  (void) id;
 
   bin = get_bin_number(dst, col, row);
 
@@ -217,17 +215,22 @@ void calc_stats(isImageBufType *dst) {
     if (max < dst->bins[i].max) {
       max = dst->bins[i].max;
     }
+  }
 
-    if (n > 0) {
-      mean = sum / n;
-      rms  = sqrt(sum2 / n);
-      sd   = sqrt(sum2 * sum2 - mean * mean);
-    } else {
-      mean = 0;
-      rms = 0;
-      sd  = 0;
-    }
+  if (n > 0) {
+    mean = sum / n;
+    rms  = sqrt(sum2 / n);
+    sd   = sqrt(sum2 / n - mean * mean);
+  } else {
+    mean = 0;
+    rms = 0;
+    sd  = 0;
   } 
+
+  fprintf(stdout, "%s: n: %d  mean: %f, min: %d, max: %d, rms: %f  stddev: %f\n",
+          id, n, mean, min, max, rms, sd);
+
+
   set_json_object_integer(id, dst->meta, "n",      n);
   set_json_object_real(id, dst->meta,    "mean",   mean);
   set_json_object_integer(id, dst->meta, "min",    min);
@@ -504,7 +507,7 @@ void reduceImage16( isImageBufType *src, isImageBufType *dst, int x, int y, int 
   int srcWidth;
   int srcHeight;
   int nsat;
-  uint32_t min;
+  uint32_t min; 
   int spots;
   int bin;
   int ice_spots;
@@ -568,18 +571,18 @@ void reduceImage16( isImageBufType *src, isImageBufType *dst, int x, int y, int 
   calc_stats(dst);
 
   if (json_integer_value(json_object_get(src->meta,"n")) <= json_integer_value(json_object_get(dst->meta, "n"))) {
-    set_json_object_integer(id, dst->meta, "n",   json_integer_value(json_object_get(dst->meta, "n")));
-    set_json_object_real(id, src->meta, "mean",   json_real_value(json_object_get(dst->meta, "mean")));
-    set_json_object_real(id, src->meta, "rms",    json_real_value(json_object_get(dst->meta, "rms")));
-    set_json_object_real(id, src->meta, "stddev", json_real_value(json_object_get(dst->meta, "stddev")));
-    set_json_object_integer(id, src->meta, "min", json_integer_value(json_object_get(dst->meta, "min")));
-    set_json_object_integer(id, src->meta, "max", json_integer_value(json_object_get(dst->meta, "max")));
-    set_json_object_real(id, src->meta, "stddev", json_integer_value(json_object_get(dst->meta, "stddev")));
+    set_json_object_integer(id, src->meta, "n",          json_integer_value(json_object_get(dst->meta, "n")));
+    set_json_object_real(id,    src->meta, "mean",       json_real_value(json_object_get(dst->meta, "mean")));
+    set_json_object_real(id,    src->meta, "rms",        json_real_value(json_object_get(dst->meta, "rms")));
+    set_json_object_real(id,    src->meta, "stddev",     json_real_value(json_object_get(dst->meta, "stddev")));
+    set_json_object_integer(id, src->meta, "min",        json_integer_value(json_object_get(dst->meta, "min")));
+    set_json_object_integer(id, src->meta, "max",        json_integer_value(json_object_get(dst->meta, "max")));
     set_json_object_integer(id, src->meta, "nSaturated", nsat);
   }
 
   // Count the spots
   spots = 0;
+  ice_spots = 0;
 
   for (row=0; row < dstHeight; row++) {
     for (col=0; col<dstWidth; col++) {
@@ -596,7 +599,15 @@ void reduceImage16( isImageBufType *src, isImageBufType *dst, int x, int y, int 
       }
     }
   }
-  fprintf(stdout, "%s: spots: %d\n", id, spots);
+  if (dstHeight > 128) {
+    fprintf(stdout, "%s: spots: %d   n: %d  mean: %f  rms: %f  stddev: %f\n",
+            id, spots,
+            (int)json_integer_value(json_object_get(dst->meta, "n")),
+            (double)json_real_value(json_object_get(dst->meta, "mean")),
+            (double)json_real_value(json_object_get(dst->meta, "rms")),
+            (double)json_real_value(json_object_get(dst->meta, "stddev")));
+  }
+
   set_json_object_integer(id, src->meta, "spots", spots);
 }
 
@@ -689,18 +700,19 @@ void reduceImage32( isImageBufType *src, isImageBufType *dst, int x, int y, int 
   calc_stats(dst);
 
   if (json_integer_value(json_object_get(src->meta,"n")) <= json_integer_value(json_object_get(dst->meta, "n"))) {
-    set_json_object_integer(id, dst->meta, "n",   json_integer_value(json_object_get(dst->meta, "n")));
-    set_json_object_real(id, src->meta, "mean",   json_real_value(json_object_get(dst->meta, "mean")));
-    set_json_object_real(id, src->meta, "rms",    json_real_value(json_object_get(dst->meta, "rms")));
-    set_json_object_real(id, src->meta, "stddev", json_real_value(json_object_get(dst->meta, "stddev")));
-    set_json_object_integer(id, src->meta, "min", json_integer_value(json_object_get(dst->meta, "min")));
-    set_json_object_integer(id, src->meta, "max", json_integer_value(json_object_get(dst->meta, "max")));
-    set_json_object_real(id, src->meta, "stddev", json_integer_value(json_object_get(dst->meta, "stddev")));
+    set_json_object_integer(id, src->meta, "n",          json_integer_value(json_object_get(dst->meta, "n")));
+    set_json_object_real(id,    src->meta, "mean",       json_real_value(json_object_get(dst->meta, "mean")));
+    set_json_object_real(id,    src->meta, "rms",        json_real_value(json_object_get(dst->meta, "rms")));
+    set_json_object_real(id,    src->meta, "stddev",     json_real_value(json_object_get(dst->meta, "stddev")));
+    set_json_object_integer(id, src->meta, "min",        json_integer_value(json_object_get(dst->meta, "min")));
+    set_json_object_integer(id, src->meta, "max",        json_integer_value(json_object_get(dst->meta, "max")));
+    set_json_object_real(id,    src->meta, "stddev",     json_integer_value(json_object_get(dst->meta, "stddev")));
     set_json_object_integer(id, src->meta, "nSaturated", nsat);
   }
 
   // Now for the spot counter
   spots = 0;
+  ice_spots = 0;
 
   for (row=0; row < dstHeight; row++) {
     for (col=0; col<dstWidth; col++) {
@@ -718,7 +730,15 @@ void reduceImage32( isImageBufType *src, isImageBufType *dst, int x, int y, int 
     }
   }
 
-  fprintf(stdout, "%s: spots: %d\n", id, spots);
+  if (dstHeight > 128) {
+    fprintf(stdout, "%s: spots: %d   n: %d  mean: %f  rms: %f  stddev: %f\n",
+            id, spots,
+            (int)json_integer_value(json_object_get(dst->meta, "n")),
+            (double)json_real_value(json_object_get(dst->meta, "mean")),
+            (double)json_real_value(json_object_get(dst->meta, "rms")),
+            (double)json_real_value(json_object_get(dst->meta, "stddev")));
+  }
+
   set_json_object_integer(id, src->meta, "spots", spots);
 }
 
