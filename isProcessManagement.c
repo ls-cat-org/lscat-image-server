@@ -36,8 +36,15 @@ void isInit() {
   pid_t old_pid;                // old pid: kill on sight
   int nconv;                    // 1 if successfully read pid from file, <1 otherwise
   int err;                      // kill function return value
+  herr_t herr;                  // trap errors setting h5 error redirection
 
   isLogging_init();
+
+  herr = H5Eset_auto2(H5E_DEFAULT, (H5E_auto2_t) is_h5_error_handler, stderr);
+  if (herr < 0) {
+    isLogging_crit("%s: Could not set HDF5 error reporting\n", id);
+  }
+
 
   // Error recovery block
   //
@@ -160,7 +167,7 @@ void isStartProcess(isProcessListType *p) {
     homeDirectory = strdup(pwds->pw_dir);
   }
 
-  fprintf(stdout, "%s: Starting sub process: uid=%d, gid=%d, dir: %s,  User: %s  ESAF: %d\n", id, uid, gid, homeDirectory, userName, p->esaf);
+  isLogging_info("%s: Starting sub process: uid=%d, gid=%d, dir: %s,  User: %s  ESAF: %d\n", id, uid, gid, homeDirectory, userName, p->esaf);
 
   errno = 0;
   child = fork();
@@ -437,7 +444,7 @@ void remakeProcessList(redisContext *rc) {
   redisReply *reply;
   int process_still_exists;
   
-  //fprintf(stdout, "%s: starting remake\n", id);
+  //isLogging_info("%s: starting remake\n", id);
 
   hdestroy_r(&process_table);
   for (n_entries = 0, plp = firstProcessListItem; plp != NULL; plp = plp->next) {
@@ -486,7 +493,7 @@ void remakeProcessList(redisContext *rc) {
     isDestroyProcessListItem(plp);
   }
   
-  //fprintf(stdout, "%s: found %d entries\n", id, n_entries);
+  //isLogging_info("%s: found %d entries\n", id, n_entries);
 
   errno = 0;
   process_table_size = n_entries + INITIAL_PROCESS_TABLE_SIZE;
@@ -511,7 +518,7 @@ void remakeProcessList(redisContext *rc) {
 }
 
 
-/** Spew our process list to stdout for debugging.
+/** Spew our process list for debugging.
  **
  */
 void listProcesses() {
@@ -519,7 +526,7 @@ void listProcesses() {
   int i;
 
   for (i=1, pp=firstProcessListItem; pp!=NULL; i++, pp=pp->next) {
-    fprintf(stdout, "listProcesses: %d: %s\n", i, pp->key);
+    isLogging_debug("listProcesses: %d: %s\n", i, pp->key);
   }
 }
 

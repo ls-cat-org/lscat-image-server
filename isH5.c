@@ -387,7 +387,7 @@ json_t *isH5GetMeta(isWorkerContext_t *wctx, const char *fn) {
   set_json_object_string(id, meta, "fn", fn);
 
   pthread_mutex_unlock(&wctx->metaMutex);
-  //fprintf(stdout, "%s: returning with metadata\n", id);
+
   return meta;
 }
 

@@ -227,7 +227,7 @@ void calc_stats(isImageBufType *dst) {
     sd  = 0;
   } 
 
-  fprintf(stdout, "%s: n: %d  mean: %f, min: %d, max: %d, rms: %f  stddev: %f\n",
+  isLogging_info("%s: n: %d  mean: %f, min: %d, max: %d, rms: %f  stddev: %f\n",
           id, n, mean, min, max, rms, sd);
 
 
@@ -600,7 +600,7 @@ void reduceImage16( isImageBufType *src, isImageBufType *dst, int x, int y, int 
     }
   }
   if (dstHeight > 128) {
-    fprintf(stdout, "%s: spots: %d   n: %d  mean: %f  rms: %f  stddev: %f\n",
+    isLogging_info("%s: spots: %d   n: %d  mean: %f  rms: %f  stddev: %f\n",
             id, spots,
             (int)json_integer_value(json_object_get(dst->meta, "n")),
             (double)json_real_value(json_object_get(dst->meta, "mean")),
@@ -730,7 +730,7 @@ void reduceImage32( isImageBufType *src, isImageBufType *dst, int x, int y, int 
   }
 
   if (dstHeight > 128) {
-    fprintf(stdout, "%s: spots: %d   n: %d  mean: %f  rms: %f  stddev: %f\n",
+    isLogging_info("%s: spots: %d   n: %d  mean: %f  rms: %f  stddev: %f\n",
             id, spots,
             (int)json_integer_value(json_object_get(dst->meta, "n")),
             (double)json_real_value(json_object_get(dst->meta, "mean")),

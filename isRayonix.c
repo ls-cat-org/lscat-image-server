@@ -402,6 +402,24 @@ json_t *isRayonixGetMeta( isWorkerContext_t *wctx, const char *fn) {
   return rtn;
 }
 
+void is_tiff_error_handler(const char *module, const char *fmt, va_list arg_ptr) {
+  //  va_list arg_ptr;
+
+  if (module) {
+    syslog(LOG_ERR, "%s", module);
+  }
+  vsyslog(LOG_ERR, fmt, arg_ptr);
+}
+
+void is_tiff_warning_handler(const char *module, const char *fmt, va_list arg_ptr) {
+  //  va_list arg_ptr;
+
+  if (module) {
+    syslog(LOG_WARNING, "%s", module);
+  }
+  vsyslog(LOG_WARNING, fmt, arg_ptr);
+}
+
 /** Retreive a buffer full of image
  **
  ** @param[in]  fn   Filename we'd like to process
@@ -446,9 +464,9 @@ int isRayonixGetData( isWorkerContext_t *wctx, const char *fn, isImageBufType **
     isLogging_err("%s: Error setting sigaction\n", id);
   }
 
-  //  TIFFSetErrorHandler( NULL);   // surpress annoying error messages 
-  TIFFSetWarningHandler( NULL);   // surpress annoying warning messages 
-  tf = TIFFOpen( fn, "r");   // open the file
+  TIFFSetErrorHandler(is_tiff_error_handler);
+  TIFFSetWarningHandler(NULL);   // surpress annoying warning messages 
+  tf = TIFFOpen( fn, "r");       // open the file
   if( tf == NULL) {
     isLogging_err("%s: marTiffRead failed to open file '%s'\n", id, fn);
     signew.sa_handler = SIG_DFL;

@@ -621,3 +621,20 @@ void is_zmq_error_reply(zmq_msg_t *msgs, int n_msgs, void *err_dealer, char *fmt
     isLogging_err("%s: could not send reply (zrply 1): %s\n", id, zmq_strerror(errno));
   }
 }
+
+
+herr_t is_h5_walker(unsigned n, const H5E_error2_t *err_desc, void *dummy) {
+  isLogging_err("file %s function %s line %s: %s", err_desc->file_name, err_desc->func_name, err_desc->desc);
+  return 0;
+}
+
+int is_h5_error_handler(hid_t estack_id) {
+  static const char *id = FILEID "is_h5_error_handler";
+  herr_t herr;
+
+  herr = H5Ewalk2(estack_id, H5E_WALK_DOWNWARD, is_h5_walker, NULL);
+  if (herr < 0) {
+    isLogging_err("%s: Failed to walk the h5 errors\n", id);
+  }
+  return 0;
+}

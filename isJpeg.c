@@ -146,7 +146,7 @@ void isJpegSend(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job, 
   zmq_msg_t meta_msg;           // the metadata to send via zmq
   zmq_msg_t jpeg_msg;           // the jpeg as a zmq message
 
-  fprintf(stdout, "%s: jpeg_len: %d\n", id, jpeg_len);
+  isLogging_info("%s: jpeg_len: %d\n", id, jpeg_len);
 
   // Compose messages
 

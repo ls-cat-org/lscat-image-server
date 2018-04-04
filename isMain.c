@@ -90,14 +90,14 @@ int main(int argc, char **argv) {
   int n_envelope_msgs;          // number of "envelope messages"
   int socket_option;            // used to set ZMQ socket options
 
-  fprintf(stdout, "Welcome to the LS-CAT Image Server by Keith Brister ©2017 by Northwestern University.  All rights reserved.\n");
-
   // Make sure we are the only "is" process running on this node.
   // Needed since we need to bind to a particular ipc socket AND if
   // our predecessor has died but left its ZMQ threads running we
   // don't want it to steal our messages (and do nothing with them)
   //
   isInit();
+
+  isLogging_info("Welcome to the LS-CAT Image Server by Keith Brister ©2017-2018 by Northwestern University.  All rights reserved.\n");
 
   n_zpollitems = N_ZPOLLITEMS_INC;
   zpollitems = calloc(n_zpollitems, sizeof(*zpollitems));
@@ -418,7 +418,7 @@ int main(int argc, char **argv) {
     esaf = json_integer_value(json_object_get(isRequest, "esaf"));
 
     isAuth = NULL;
-    fprintf(stdout, "%s: got pid %s  esaf %d\n", id, pid, esaf);
+    isLogging_info("%s: got pid %s  esaf %d\n", id, pid, esaf);
     pli = isFindProcess(pid, esaf);
     if (pli == NULL) {
       //
@@ -490,9 +490,14 @@ int main(int argc, char **argv) {
         continue;
       }
     
-      fprintf(stdout, "%s: isAuth:\n", id);
-      json_dumpf(isAuth, stdout, JSON_INDENT(0)|JSON_COMPACT|JSON_SORT_KEYS);
-      fprintf(stdout, "\n");
+      {
+        char *tmpsp;
+
+        tmpsp=json_dumps(isAuth, JSON_INDENT(0)|JSON_COMPACT|JSON_SORT_KEYS);        
+        isLogging_info("%s: isAuth: %s\n", id, tmpsp);
+        free(tmpsp);
+      }
+
       freeReplyObject(reply);
 
       if (strcmp(pid, json_string_value(json_object_get(isAuth, "pid"))) != 0) {
