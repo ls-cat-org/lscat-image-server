@@ -78,6 +78,15 @@
 //! route the request to the appropriate process.
 #define ERR_REP        "inproc://#err_rep"
 
+//! Spot sensor sensitivity
+//!
+//! Pixel value above a std dev to delcare a spot found
+#define IS_SPOT_SENSITIVITY 1.5
+
+//! Output image bins for spot finder and, eventually, ice detection
+//!
+#define IS_OUTPUT_IMAGE_BINS 16
+
 /** The access we've determined by fstat as the uid/gid that will be
  ** trying to read the file.
  */
@@ -87,6 +96,38 @@ typedef enum {NOACCESS, READABLE, WRITABLE} image_access_type;
  ** contents, not by the file extension.
  */
 typedef enum {UNKNOWN, BLANK, HDF5, RAYONIX, RAYONIX_BS} image_file_type;
+
+/** Definition of an ice ring                                                                           */
+typedef struct ice_ring_struct {
+  double high;  //!< Inner part of ice ring in Å
+  double low;   //!< Outer part of ice ring in Å
+} ice_ring_t;
+
+/** List of ice rings converted into distance from direct beam in mm                                    */
+typedef struct ice_ring_list_struct {
+  struct ice_ring_list_struct *next;    //!< Next item in our list
+  double dist2_low;                     //!< minimum distance in mm to beam center
+  double dist2_high;                    //!< maximum distance in mm to beam center
+} ice_ring_list_t;
+
+/** Statistics accumulated for an ring of image data                                                    */
+typedef struct bin_struct {
+  double dist2_low;                     //!< smallest distance^2, in pixels, to beam center
+  double dist2_high;                    //!< largest  distance^2, in pixels, to beam center
+  ice_ring_list_t *ice_ring_list;       //!< list of ice rings
+  double rms;                           //!< rms value for pixels in this bin
+  double mean;                          //!< mean value for pixels in this bin
+  double sd;                            //!< std deviation for pixels in this bin
+  double min;                           //!< minimum pixel value in this bin
+  double min_row;                       //!< row number of the minimum pixels in this bin
+  double min_col;                       //!< column number of the minimum value in this bin
+  double max;                           //!< maximum value in this bin
+  double max_row;                       //!< row number of the maximum value in this bin
+  double max_col;                       //!< column number of the maximum value in this bin
+  double n;                             //!< number of pixels in this bin
+  double sum;                           //!< sum of pixel values
+  double sum2;                          //!< sum squared of pixel values
+} bin_t;
 
 /** Filled by isWorker via isData (etc) routines.                                                */
 typedef struct isImageBufStruct {
@@ -105,6 +146,11 @@ typedef struct isImageBufStruct {
   void *bad_pixel_map;                  //!< If defined assumed uint32_t of same size and shape as buf
   void (*destroy_extra)(void *);        //!< Function to destroy the extra stuff
   void *buf;                            //!< Our buffer
+  bin_t bins[IS_OUTPUT_IMAGE_BINS+1];   //!< stats for our spot finder
+  double beam_center_x;                 //!< beam_center_x scaled to current image
+  double beam_center_y;                 //!< beam_center_x scaled to current image
+  double min_dist2;                     //!< square of the minimum possible distance from a pixel to the beam center
+  double max_dist2;                     //!< square of the maximum possible distance from a pixel to the beam center
 } isImageBufType;
 
 /** Managed by isSupervisor (in isWorker.c)                                                             */
@@ -137,6 +183,7 @@ typedef struct isProcessListStruct {
   void *parent_dealer;                  //!< parent side of parent/child proxy (ipc)
 } isProcessListType;
 
+
 extern void destroyImageBuffer(isWorkerContext_t *wctx, isImageBufType *p);
 extern json_t *isH5GetMeta(isWorkerContext_t *wctx, const char *fn);
 extern json_t *isRayonixGetMeta(isWorkerContext_t *wctx, const char *fn);
@@ -154,6 +201,8 @@ extern void set_json_object_integer(const char *cid, json_t *j, const char *key,
 extern void set_json_object_real(const char *cid, json_t *j, const char *key, double value);
 extern void set_json_object_float_array_2d(const char *cid, json_t *j, const char *k, float *v, int rows, int cols);
 extern void set_json_object_float_array( const char *cid, json_t *j, const char *key, float *values, int n);
+extern int get_integer_from_json_object(const char *cid, json_t *j, char *key);
+extern double get_double_from_json_object(const char *cid,  const json_t *j, const char *key);
 extern isImageBufType *isGetRawImageBuf(isWorkerContext_t *ibctx, redisContext *rc, json_t *job);
 extern isWorkerContext_t  *isDataInit(const char *key);
 extern int verifyIsAuth( char *isAuth, char *isAuthSig_str);
@@ -162,6 +211,7 @@ extern void isWriteImageBufToRedis(isWorkerContext_t *wctx, isImageBufType *imb,
 extern isImageBufType *isReduceImage(isWorkerContext_t *ibctx, redisContext *rc, json_t *job);
 extern isImageBufType *isGetImageBufFromKey(isWorkerContext_t *ibctx, redisContext *rc, char *key);
 extern void isJpeg( isWorkerContext_t *ibctx, isThreadContextType *tcp, json_t *job);
+extern void isIndex( isWorkerContext_t *ibctx, isThreadContextType *tcp, json_t *job);
 extern void is_zmq_free_fn(void *data, void *hint);
 extern void is_zmq_error_reply(zmq_msg_t *msgs, int n_msgs, void *err_dealer, char *fmt, ...);
 extern zmq_pollitem_t *isRemakeZMQPollItems(void *parent_router, void *err_rep, void *err_dealer);

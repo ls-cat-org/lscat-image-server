@@ -388,7 +388,22 @@ void isJpegBlank(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job)
  **   @li @c tcp->rep  ZMQ Response socket into which the throw our response.
  **
  ** @param job  What the user asked us to do
- ** 
+ ** @param pid                 {String}     - Token representing a valid user
+ ** @param rqstObj             {Object}     - Description of what is requested
+ ** @param rqstObj.contrast    {Integer}    - Image data >= this are black
+ ** @param rqstObj.esaf        {Inteter}    - experiment id to which this image belongs
+ ** @param rqstObj.fn          {String}     - file name
+ ** @param rqstObj.frame       {Integer}    - Frame number to return
+ ** @param rqstObj.label       {String}     - Text to add to the image perhaps identifying the image
+ ** @param rqstObj.labelHeight {Integer}    - Height of the label in pixels
+ ** @param rqstObj.segcol      {Float}      - Segment of image to return: x = segcol * image width / zoom
+ ** @param rqstObj.segrow      {Float}      - Segment of image to return: y = segrow * image width / zoom
+ ** @param rqstObj.tag         {String}     - ID for us to know what to do with the result
+ ** @param rqstObj.type        {String}     - "JPEG"
+ ** @param rqstObj.wval        {Integer}    - Image data <= this are white
+ ** @param rqstObj.xsize       {Integer}    - Requested width of resulting jpeg (pixels)
+ ** @param rqstObj.zoom        {Float}      - full image / zoom = size of original image to map to our jpeg
+ ** @param rsltCB              {isResultCB} - Callback function when request has been processed
  */
 void isJpeg(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
   static const char *id = FILEID "isJpeg";
@@ -410,7 +425,7 @@ void isJpeg(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
   size_t row_buffer_size;
   size_t out_buffer_size;
   unsigned char *out_buffer;
-
+  double stddev;
 
   pthread_mutex_lock(&wctx->metaMutex);
   fn = json_string_value(json_object_get(job, "fn"));
@@ -566,6 +581,13 @@ void isJpeg(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
   //
   // Perhaps autoscale black values
   //
+  stddev = json_number_value(json_object_get(imb->meta, "stddev"));
+  if (stddev <= 0.0) {
+    //
+    // For some reason 32 bit images give 0 stddev
+    //
+    stddev = json_number_value(json_object_get(imb->meta, "rms"));
+  }
   if (bval <= 0) {
     bval = json_number_value(json_object_get(imb->meta, "mean")) + json_number_value(json_object_get(imb->meta, "stddev"));
   }
