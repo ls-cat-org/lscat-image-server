@@ -425,7 +425,7 @@ void isJpeg(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
   size_t row_buffer_size;
   size_t out_buffer_size;
   unsigned char *out_buffer;
-
+  double stddev;
 
   pthread_mutex_lock(&wctx->metaMutex);
   fn = json_string_value(json_object_get(job, "fn"));
@@ -581,6 +581,13 @@ void isJpeg(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
   //
   // Perhaps autoscale black values
   //
+  stddev = json_number_value(json_object_get(imb->meta, "stddev"));
+  if (stddev <= 0.0) {
+    //
+    // For some reason 32 bit images give 0 stddev
+    //
+    stddev = json_number_value(json_object_get(imb->meta, "rms"));
+  }
   if (bval <= 0) {
     bval = json_number_value(json_object_get(imb->meta, "mean")) + json_number_value(json_object_get(imb->meta, "stddev"));
   }
