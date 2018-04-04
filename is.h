@@ -25,6 +25,7 @@
 #include <poll.h>
 #include <search.h>
 #include <setjmp.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -218,3 +219,12 @@ extern zmq_pollitem_t *isRemakeZMQPollItems(void *parent_router, void *err_rep, 
 extern int isNProcesses();
 extern zmq_pollitem_t *isGetZMQPollItems();
 extern void isInit();
+extern void isLogging_init();
+extern void isLogging_debug(char *fmt, ...);
+extern void isLogging_info(char *fmt, ...);
+extern void isLogging_notice(char *fmt, ...);
+extern void isLogging_warning(char *fmt, ...);
+extern void isLogging_err(char *fmt, ...);
+extern void isLogging_crit(char *fmt, ...);
+extern void isLogging_alert(char *fmt, ...);
+extern void isLogging_emerg(char *fmt, ...);

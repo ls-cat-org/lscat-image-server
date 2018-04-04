@@ -37,6 +37,8 @@ void isInit() {
   int nconv;                    // 1 if successfully read pid from file, <1 otherwise
   int err;                      // kill function return value
 
+  isLogging_init();
+
   // Error recovery block
   //
   do {
@@ -54,7 +56,7 @@ void isInit() {
       // processes as root.
       //
       if (errno != 0) {
-        fprintf(stderr, "%s: failed to read pid file: %s\n", id, strerror(errno));
+        isLogging_err("%s: failed to read pid file: %s\n", id, strerror(errno));
       }
       break;
     }
@@ -65,7 +67,7 @@ void isInit() {
     // up.
     err = kill(-old_pid, 9);
     if (err == -1 && errno != ESRCH) {
-      fprintf(stderr, "%s: Could not kill previous process: %s\n", id, strerror(errno));
+      isLogging_err("%s: Could not kill previous process: %s\n", id, strerror(errno));
       break;
     }
   } while (0);
@@ -76,7 +78,7 @@ void isInit() {
 
   our_pid_file = fopen(PID_FILE_NAME, "w");
   if (our_pid_file == NULL) {
-    fprintf(stderr, "%s: Could not open pid file: %s\n", id, strerror(errno));
+    isLogging_err("%s: Could not open pid file: %s\n", id, strerror(errno));
     exit (-1);
   }
 
@@ -95,7 +97,7 @@ void isProcessListInit() {
 
   err = hcreate_r(process_table_size, &process_table);
   if (err == 0) {
-    fprintf(stderr, "%s: hcreate_r fatal error: %s\n", id, strerror(errno));
+    isLogging_err("%s: hcreate_r fatal error: %s\n", id, strerror(errno));
     exit (-1);
   }
   n_processes = 0;
@@ -133,7 +135,7 @@ void isStartProcess(isProcessListType *p) {
   errno = 0;
   pwds = getpwnam(userName);
   if (pwds == NULL) {
-    fprintf(stderr, "%s: getpwnam failed for user %s: %s\n", id, userName, strerror(errno));
+    isLogging_err("%s: getpwnam failed for user %s: %s\n", id, userName, strerror(errno));
     return;
   }
 
@@ -148,7 +150,7 @@ void isStartProcess(isProcessListType *p) {
     errno = 0;
     esaf_pwds = getpwnam(esafUser);
     if (esaf_pwds == NULL) {
-      fprintf(stderr, "%s: bad esaf user name '%s':%s\n", id, esafUser, strerror(errno));
+      isLogging_err("%s: bad esaf user name '%s':%s\n", id, esafUser, strerror(errno));
       return;
     }
     gid = esaf_pwds->pw_gid;
@@ -163,7 +165,7 @@ void isStartProcess(isProcessListType *p) {
   errno = 0;
   child = fork();
   if (child == -1) {
-    fprintf(stderr, "%s: Could not start sub process: %s\n", id, strerror(errno));
+    isLogging_err("%s: Could not start sub process: %s\n", id, strerror(errno));
     exit (-1);
   }
   if (child) {
@@ -181,21 +183,21 @@ void isStartProcess(isProcessListType *p) {
   errno = 0;
   err = setgid(gid);
   if (err != 0) {
-    fprintf(stderr, "%s: Could not change gid to %d: %s\n", id, gid, strerror(errno));
+    isLogging_err("%s: Could not change gid to %d: %s\n", id, gid, strerror(errno));
     _exit (-1);
   }
 
   errno = 0;
   err = setuid(uid);
   if (err != 0) {
-    fprintf(stderr, "Could not change uid to %d: %s\n", uid, strerror(errno));
+    isLogging_err("Could not change uid to %d: %s\n", uid, strerror(errno));
     _exit (-1);
   }
 
   errno = 0;
   err = chdir(homeDirectory);
   if (err != 0) {
-    fprintf(stderr, "%s: Could not change working directory to %s: %s\n", id, homeDirectory, strerror(errno));
+    isLogging_err("%s: Could not change working directory to %s: %s\n", id, homeDirectory, strerror(errno));
     _exit (-1);
   }
 
@@ -232,13 +234,13 @@ isProcessListType *isCreateProcessListItem(void *zctx, json_t *isAuth, int esaf)
 
   rtn = calloc(1, sizeof(*rtn));
   if (rtn == NULL) {
-    fprintf(stderr, "%s: Out of memory\n", id);
+    isLogging_crit("%s: Out of memory\n", id);
     exit (-1);
   }
 
   rtn->key = strdup(ourKey);
   if (rtn->key == NULL) {
-    fprintf(stderr, "%s: out of memory (rtn->key)\n", id);
+    isLogging_crit("%s: out of memory (rtn->key)\n", id);
     exit (-1);
   }
   rtn->processID = 0;
@@ -248,21 +250,21 @@ isProcessListType *isCreateProcessListItem(void *zctx, json_t *isAuth, int esaf)
     
   rtn->parent_dealer = zmq_socket(zctx, ZMQ_DEALER);
   if (rtn->parent_dealer == NULL) {
-    fprintf(stderr, "%s: Could not create parent_dealer socket for %s: %s\n", id, rtn->key, zmq_strerror(errno));
+    isLogging_err("%s: Could not create parent_dealer socket for %s: %s\n", id, rtn->key, zmq_strerror(errno));
     exit (-1);
   }
   
   socket_option = 0;
   err = zmq_setsockopt(rtn->parent_dealer, ZMQ_RCVHWM, &socket_option, sizeof(socket_option));
   if (err == -1) {
-    fprintf(stderr, "%s: Could not set RCVWM for parent_dealer: %s\n", id, zmq_strerror(errno));
+    isLogging_err("%s: Could not set RCVWM for parent_dealer: %s\n", id, zmq_strerror(errno));
     exit (-1);
   }
 
   socket_option = 0;
   err = zmq_setsockopt(rtn->parent_dealer, ZMQ_SNDHWM, &socket_option, sizeof(socket_option));
   if (err == -1) {
-    fprintf(stderr, "%s: Could not set SNDWM for parent_dealer: %s\n", id, zmq_strerror(errno));
+    isLogging_err("%s: Could not set SNDWM for parent_dealer: %s\n", id, zmq_strerror(errno));
     exit (-1);
   }
 
@@ -271,7 +273,7 @@ isProcessListType *isCreateProcessListItem(void *zctx, json_t *isAuth, int esaf)
 
   err = zmq_bind(rtn->parent_dealer, dealer_endpoint);
   if (err == -1) {
-    fprintf(stderr, "%s: Could not bind to socket %s: %s\n", id, dealer_endpoint, zmq_strerror(errno));
+    isLogging_err("%s: Could not bind to socket %s: %s\n", id, dealer_endpoint, zmq_strerror(errno));
     exit (-1);
   }
 
@@ -336,7 +338,7 @@ zmq_pollitem_t *isRemakeZMQPollItems(void *parent_router, void *err_rep, void *e
 
   isZMQPollItems = calloc(3+n_processes, sizeof(*isZMQPollItems));
   if (isZMQPollItems == NULL) {
-    fprintf(stderr, "%s: Out of memory\n", id);
+    isLogging_crit("%s: Out of memory\n", id);
     exit (-1);
   }
 
@@ -397,13 +399,13 @@ void isDestroyProcessListItem(isProcessListType *p) {
   }
 
   if (plp != p) {
-    fprintf(stderr, "%s: could not find process %s\n", id, p->key);
+    isLogging_err("%s: could not find process %s\n", id, p->key);
     return;
   }
 
   err = zmq_close(p->parent_dealer);
   if (err == -1) {
-    fprintf(stderr, "%s: Could not close parent_dealer for %s: %s\n", id, p->key, zmq_strerror(errno));
+    isLogging_err("%s: Could not close parent_dealer for %s: %s\n", id, p->key, zmq_strerror(errno));
   }
 
   p->parent_dealer = NULL;
@@ -441,18 +443,18 @@ void remakeProcessList(redisContext *rc) {
   for (n_entries = 0, plp = firstProcessListItem; plp != NULL; plp = plp->next) {
     pid = json_string_value(json_object_get(plp->isAuth, "pid"));
     if (pid == NULL) {
-      fprintf(stderr, "%s: Failed to find pid in process list\n", id);
+      isLogging_err("%s: Failed to find pid in process list\n", id);
       exit (-1);
     }
     // See if the pid still exists
     //
     reply = redisCommand(rc, "EXISTS %s", pid);
     if (reply == NULL) {
-      fprintf(stderr, "%s: Redis error: %s\n", id, rc->errstr);
+      isLogging_err("%s: Redis error: %s\n", id, rc->errstr);
       exit (-1);
     }
     if (reply->type != REDIS_REPLY_INTEGER) {
-      fprintf(stderr, "%s: redis exists returned unexpected type %d\n", id, reply->type);
+      isLogging_err("%s: redis exists returned unexpected type %d\n", id, reply->type);
       exit (-1);
     }
     process_still_exists = reply->integer;
@@ -472,11 +474,11 @@ void remakeProcessList(redisContext *rc) {
 
     err = kill(plp->processID, SIGTERM);
     if (err == -1) {
-      fprintf(stderr, "%s: Failed to kill process %d: %s\n", id, plp->processID, strerror(errno));
+      isLogging_err("%s: Failed to kill process %d: %s\n", id, plp->processID, strerror(errno));
     } else {
       err = waitpid(plp->processID, NULL, WNOHANG);
       if (err == -1) {
-        fprintf(stderr, "%s: Failed to wait for process %d: %s\n", id, plp->processID, strerror(errno));
+        isLogging_err("%s: Failed to wait for process %d: %s\n", id, plp->processID, strerror(errno));
       }
     }
 
@@ -490,7 +492,7 @@ void remakeProcessList(redisContext *rc) {
   process_table_size = n_entries + INITIAL_PROCESS_TABLE_SIZE;
   err = hcreate_r(process_table_size, &process_table);
   if (err == 0) {
-    fprintf(stderr, "%s: Failed to remake hash table: %s\n", id, strerror(errno));
+    isLogging_err("%s: Failed to remake hash table: %s\n", id, strerror(errno));
     exit (-1);
   }
 
@@ -501,7 +503,7 @@ void remakeProcessList(redisContext *rc) {
     errno = 0;
     err = hsearch_r(item, ENTER, &rtn_value, &process_table);
     if( err == 0) {
-      fprintf(stderr, "failed to rebuild process list table: %s\n", strerror(errno));
+      isLogging_err("failed to rebuild process list table: %s\n", strerror(errno));
       exit (-1);
     }
   }
@@ -551,7 +553,7 @@ isProcessListType *isFindProcess(const char *pid, int esaf) {
   }
   p = item_return->data;
   if (p == NULL) {
-    fprintf(stderr, "isFindProcesses: hsearch succeeded but returned null data for key %s\n", ourKey);
+    isLogging_err("isFindProcesses: hsearch succeeded but returned null data for key %s\n", ourKey);
     listProcesses();
     return NULL;
   }
@@ -597,7 +599,6 @@ isProcessListType *isRun(void *zctx, redisContext *rc, json_t *isAuth, int esaf)
     return p;
   }
 
-  //  fprintf( stderr, "isRun: Could not find key %s: %s\n", ourKey, strerror(errno));
   //
   // Process was not found
   //
@@ -609,7 +610,7 @@ isProcessListType *isRun(void *zctx, redisContext *rc, json_t *isAuth, int esaf)
   err = hsearch_r(item, ENTER, &item_return, &process_table);
   p = item_return->data;
   if (err == 0) {
-    fprintf( stderr, "isRun: Could not ENTER key %s: %s\n", p->key, strerror(errno));
+    isLogging_err("isRun: Could not ENTER key %s: %s\n", p->key, strerror(errno));
     remakeProcessList(rc);
   }
   return p;

@@ -62,13 +62,13 @@ isWorkerContext_t  *isDataInit(const char *key) {
 
   rtn = calloc(1, sizeof(*rtn));
   if (rtn == NULL) {
-    fprintf(stderr, "%s: Out of memory\n", id);
+    isLogging_crit("%s: Out of memory\n", id);
     exit (-1);
   }
 
   rtn->key = strdup(key);
   if (rtn->key == NULL) {
-    fprintf(stderr, "%s: Out of memory\n", id);
+    isLogging_crit("%s: Out of memory\n", id);
     exit (-1);
   }
 
@@ -79,21 +79,21 @@ isWorkerContext_t  *isDataInit(const char *key) {
   rtn->zctx = zmq_ctx_new();
   rtn->router = zmq_socket(rtn->zctx, ZMQ_ROUTER);
   if (rtn->router == NULL) {
-    fprintf(stderr, "%s: Could not create router socket: %s\n", id, zmq_strerror(errno));
+    isLogging_crit("%s: Could not create router socket: %s\n", id, zmq_strerror(errno));
     exit (-1);
   }
 
   socket_option = 0;
   err = zmq_setsockopt(rtn->router, ZMQ_RCVHWM, &socket_option, sizeof(socket_option));
   if (err == -1) {
-    fprintf(stderr, "%s: Could not set RCVHWM for router: %s\n", id, zmq_strerror(errno));
+    isLogging_crit("%s: Could not set RCVHWM for router: %s\n", id, zmq_strerror(errno));
     exit (-1);
   }
 
   socket_option = 0;
   err = zmq_setsockopt(rtn->router, ZMQ_SNDHWM, &socket_option, sizeof(socket_option));
   if (err == -1) {
-    fprintf(stderr, "%s: Could not set SNDHWM for router: %s\n", id, zmq_strerror(errno));
+    isLogging_crit("%s: Could not set SNDHWM for router: %s\n", id, zmq_strerror(errno));
     exit (-1);
   }
 
@@ -102,27 +102,27 @@ isWorkerContext_t  *isDataInit(const char *key) {
 
   err = zmq_connect(rtn->router, router_endpoint);
   if (err == -1) {
-    fprintf(stderr, "%s: failed to connect to endpoint %s: %s\n", id, router_endpoint, strerror(errno));
+    isLogging_crit("%s: failed to connect to endpoint %s: %s\n", id, router_endpoint, strerror(errno));
     exit (-1);
   }
                     
   rtn->dealer = zmq_socket(rtn->zctx, ZMQ_DEALER);
   if (rtn->dealer == NULL) {
-    fprintf(stderr, "%s: Could not create dealer socket: %s\n", id, zmq_strerror(errno));
+    isLogging_crit("%s: Could not create dealer socket: %s\n", id, zmq_strerror(errno));
     exit (-1);
   }
 
   socket_option = 0;
   err = zmq_setsockopt(rtn->dealer, ZMQ_RCVHWM, &socket_option, sizeof(socket_option));
   if (err == -1) {
-    fprintf(stderr, "%s: Could not set RCVHWM for dealer: %s\n", id, zmq_strerror(errno));
+    isLogging_crit("%s: Could not set RCVHWM for dealer: %s\n", id, zmq_strerror(errno));
     exit (-1);
   }
 
   socket_option = 0;
   err = zmq_setsockopt(rtn->dealer, ZMQ_SNDHWM, &socket_option, sizeof(socket_option));
   if (err == -1) {
-    fprintf(stderr, "%s: Could not set SNDHWM for dealer: %s\n", id, zmq_strerror(errno));
+    isLogging_crit("%s: Could not set SNDHWM for dealer: %s\n", id, zmq_strerror(errno));
     exit (-1);
   }
 
@@ -130,7 +130,7 @@ isWorkerContext_t  *isDataInit(const char *key) {
   dealer_endpoint[sizeof(dealer_endpoint)-1] = 0;
   err = zmq_bind(rtn->dealer, dealer_endpoint);
   if (err == -1) {
-    fprintf(stderr, "%s: Could not bind dealer endpoint %s: %s\n", id, dealer_endpoint, strerror(errno));
+    isLogging_crit("%s: Could not bind dealer endpoint %s: %s\n", id, dealer_endpoint, strerror(errno));
     exit (-1);
   }
   
@@ -144,7 +144,7 @@ isWorkerContext_t  *isDataInit(const char *key) {
 
   err = hcreate_r( 2*N_IMAGE_BUFFERS, &rtn->bufTable);
   if (err == 0) {
-    fprintf(stderr, "%s: Failed to initialize hash table: %s\n", id, strerror(errno));
+    isLogging_crit("%s: Failed to initialize hash table: %s\n", id, strerror(errno));
     exit (-1);
   }
 
@@ -206,7 +206,7 @@ image_access_type isFindFile(const char *fn) {
   errno = 0;
   fd = open(fn, O_RDONLY);
   if (fd < 0) {
-    fprintf(stderr, "%s: Could not open file %s: %s\n", id, fn, strerror(errno));
+    isLogging_crit("%s: Could not open file %s: %s\n", id, fn, strerror(errno));
     return NOACCESS;
   }
 
@@ -216,12 +216,12 @@ image_access_type isFindFile(const char *fn) {
   close(fd);                    // let's not be leaking file descriptors
 
   if (err != 0) {
-    fprintf(stderr, "%s: Could not find file '%s': %s\n", id, fn, strerror(stat_errno));
+    isLogging_crit("%s: Could not find file '%s': %s\n", id, fn, strerror(stat_errno));
     return NOACCESS;
   }
   
   if (!S_ISREG(buf.st_mode)) {
-    fprintf(stderr, "%s: %s is not a regular file\n", id, fn);
+    isLogging_crit("%s: %s is not a regular file\n", id, fn);
     return NOACCESS;
   }
 
@@ -279,14 +279,14 @@ image_file_type isFileType(const char *fn) {
   errno = 0;
   fd = open(fn, O_RDONLY);
   if (fd == -1) {
-    fprintf(stderr, "%s: Could not open file '%s'  uid: %d  gid: %d  error: %s\n", id, fn, geteuid(), getegid(), strerror(errno));
+    isLogging_crit("%s: Could not open file '%s'  uid: %d  gid: %d  error: %s\n", id, fn, geteuid(), getegid(), strerror(errno));
     return UNKNOWN;
   }
 
   nbytes = read(fd, (char *)&buf4, 4);
   close(fd);
   if (nbytes != 4) {
-    fprintf(stderr, "%s: Could not read 4 bytes from file '%s'\n", id, fn);
+    isLogging_crit("%s: Could not read 4 bytes from file '%s'\n", id, fn);
     return UNKNOWN;
   }
 
@@ -305,21 +305,21 @@ image_file_type isFileType(const char *fn) {
   // Turn off HDF5 error reporting.  The routines already return error codes 
   herr = H5Eset_auto2(H5E_DEFAULT, NULL, NULL);
   if (herr < 0) {
-    fprintf(stderr, "%s: Could not turn off HDF5 error reporting\n", id);
+    isLogging_crit("%s: Could not turn off HDF5 error reporting\n", id);
   }
 
   ish5 = H5Fis_hdf5(fn);
 
   herr = H5Eset_auto2(H5E_DEFAULT, (H5E_auto2_t) H5Eprint2, stderr);
   if (herr < 0) {
-    fprintf(stderr, "%s: Could not turn back on HDF5 error reporting\n", id);
+    isLogging_crit("%s: Could not turn back on HDF5 error reporting\n", id);
   }
   
   if (ish5 > 0) {
     return HDF5;
   }
 
-  fprintf(stderr, "%s: Unknown file type '%s' buf4 = %x08\n", id, fn, buf4);
+  isLogging_crit("%s: Unknown file type '%s' buf4 = %x08\n", id, fn, buf4);
   return UNKNOWN;
 }
 
@@ -346,7 +346,7 @@ isImageBufType *createNewImageBuf(isWorkerContext_t *wctx, const char *key) {
   // call with ctxMutex locked
   rtn = calloc(1, sizeof(*rtn));
   if (rtn == NULL) {
-    fprintf(stderr, "%s: Out of memory\n", id);
+    isLogging_crit("%s: Out of memory\n", id);
     exit (-1);
   }
 
@@ -373,7 +373,7 @@ isImageBufType *createNewImageBuf(isWorkerContext_t *wctx, const char *key) {
   // of 2 head room so this is a serious programming error.
   //
   if (err == 0) {
-    fprintf(stderr, "%s: Failed to enter item %s: %s\n", id, rtn->key, strerror(errno));
+    isLogging_crit("%s: Failed to enter item %s: %s\n", id, rtn->key, strerror(errno));
     exit (-1);
   }
 
@@ -409,7 +409,7 @@ isImageBufType *createNewImageBuf(isWorkerContext_t *wctx, const char *key) {
   errno = 0;
   err = hcreate_r( wctx->max_buffers, &wctx->bufTable);
   if (err == 0) {
-    fprintf(stderr, "%s: Failed to initialize hash table\n", id);
+    isLogging_crit("%s: Failed to initialize hash table\n", id);
     exit (-1);
   }
   //
@@ -441,7 +441,7 @@ isImageBufType *createNewImageBuf(isWorkerContext_t *wctx, const char *key) {
     last = p;
     err = hsearch_r(item, ENTER, &return_item, &wctx->bufTable);
     if (err == 0) {
-      fprintf(stderr, "%s: Failed to enter item %s\n", id, p->key);
+      isLogging_crit("%s: Failed to enter item %s\n", id, p->key);
       exit (-1);
     }
   }    
@@ -553,7 +553,7 @@ isImageBufType *isGetImageBufFromKey(isWorkerContext_t *wctx, redisContext *rc, 
   //
   err = redisGetReply(rc, (void **)&rr);
   if (err != REDIS_OK) {
-    fprintf(stderr, "%s: Redis failure (hincby): %s\n", id, rc->errstr);
+    isLogging_crit("%s: Redis failure (hincby): %s\n", id, rc->errstr);
     exit (-1);
   }
 
@@ -567,7 +567,7 @@ isImageBufType *isGetImageBufFromKey(isWorkerContext_t *wctx, redisContext *rc, 
   //
   err = redisGetReply(rc, (void **)&rr);
   if (err != REDIS_OK) {
-    fprintf(stderr, "%s: Redis failure (expire): %s\n", id, rc->errstr);
+    isLogging_crit("%s: Redis failure (expire): %s\n", id, rc->errstr);
     exit (-1);
   }
   freeReplyObject(rr);
@@ -578,7 +578,7 @@ isImageBufType *isGetImageBufFromKey(isWorkerContext_t *wctx, redisContext *rc, 
   //
   err = redisGetReply(rc, (void **)&rr);
   if (err != REDIS_OK) {
-    fprintf(stderr, "%s: Redis failure (hmget): %s\n", id, rc->errstr);
+    isLogging_crit("%s: Redis failure (hmget): %s\n", id, rc->errstr);
     exit (-1);
   }
   
@@ -621,7 +621,7 @@ isImageBufType *isGetImageBufFromKey(isWorkerContext_t *wctx, redisContext *rc, 
     rtn->extra = NULL;
 
     if (rtn->buf_size != rtn->buf_width * rtn->buf_height * rtn->buf_depth) {
-      fprintf(stderr, "%s: Bad buffer size.  Width: %d  Height: %d  Depth: %d  Size: %d\n", id, rtn->buf_width, rtn->buf_height, rtn->buf_depth, rtn->buf_size);
+      isLogging_crit("%s: Bad buffer size.  Width: %d  Height: %d  Depth: %d  Size: %d\n", id, rtn->buf_width, rtn->buf_height, rtn->buf_depth, rtn->buf_size);
       exit (-1);
     }
 
@@ -650,7 +650,7 @@ isImageBufType *isGetImageBufFromKey(isWorkerContext_t *wctx, redisContext *rc, 
 
   rr = redisCommand(rc, "BRPOP %s-READY 0", key);
   if (rr == NULL) {
-    fprintf(stderr, "%s: Redis error: %s\n", id, rc->errstr);
+    isLogging_crit("%s: Redis error: %s\n", id, rc->errstr);
     exit (-1);
   }
   if (rr->type == REDIS_REPLY_STRING && strcmp(rr->str, "error")==0) {
@@ -672,7 +672,7 @@ isImageBufType *isGetImageBufFromKey(isWorkerContext_t *wctx, redisContext *rc, 
   // Expire
   err = redisGetReply(rc, (void **)&rr);
   if (err != REDIS_OK) {
-    fprintf(stderr, "%s: Redis failure (expire): %s\n", id, rc->errstr);
+    isLogging_crit("%s: Redis failure (expire): %s\n", id, rc->errstr);
     exit (-1);
   }
   freeReplyObject(rr);
@@ -680,7 +680,7 @@ isImageBufType *isGetImageBufFromKey(isWorkerContext_t *wctx, redisContext *rc, 
   // Mget
   err = redisGetReply(rc, (void **)&rr);
   if (err != REDIS_OK) {
-    fprintf(stderr, "%s: Redis failure (mget): %s\n", id, rc->errstr);
+    isLogging_crit("%s: Redis failure (mget): %s\n", id, rc->errstr);
     exit (-1);
   }
 
@@ -726,7 +726,7 @@ isImageBufType *isGetImageBufFromKey(isWorkerContext_t *wctx, redisContext *rc, 
   }
   
   if (rtn->buf_size != rtn->buf_width * rtn->buf_height * rtn->buf_depth) {
-    fprintf(stderr, "%s: Bad buffer size.  Width: %d  Height: %d  Depth: %d  Size: %d\n", id, rtn->buf_width, rtn->buf_height, rtn->buf_depth, rtn->buf_size);
+    isLogging_crit("%s: Bad buffer size.  Width: %d  Height: %d  Depth: %d  Size: %d\n", id, rtn->buf_width, rtn->buf_height, rtn->buf_depth, rtn->buf_size);
     exit (-1);
   }
   pthread_rwlock_unlock(&rtn->buflock);
@@ -762,7 +762,7 @@ void isWriteImageBufToRedis(isWorkerContext_t *wctx, isImageBufType *imb, redisC
   // meta reply
   err = redisGetReply(rc, (void **)&rr);
   if (err != REDIS_OK) {
-    fprintf(stderr, "%s: Redis failure (hset meta): %s\n", id, rc->errstr);
+    isLogging_crit("%s: Redis failure (hset meta): %s\n", id, rc->errstr);
     exit (-1);
   }
   freeReplyObject(rr);
@@ -770,7 +770,7 @@ void isWriteImageBufToRedis(isWorkerContext_t *wctx, isImageBufType *imb, redisC
   // data reply
   err = redisGetReply(rc, (void **)&rr);
   if (err != REDIS_OK) {
-    fprintf(stderr, "%s: Redis failure (hset data): %s\n", id, rc->errstr);
+    isLogging_crit("%s: Redis failure (hset data): %s\n", id, rc->errstr);
     exit (-1);
   }
   freeReplyObject(rr);
@@ -779,7 +779,7 @@ void isWriteImageBufToRedis(isWorkerContext_t *wctx, isImageBufType *imb, redisC
   if (imb->bad_pixel_map != NULL) {
     err = redisGetReply(rc, (void **)&rr);
     if (err != REDIS_OK) {
-      fprintf(stderr, "%s: Redis failure (hset badpixels): %s\n", id, rc->errstr);
+      isLogging_crit("%s: Redis failure (hset badpixels): %s\n", id, rc->errstr);
       exit (-1);
     }
     freeReplyObject(rr);
@@ -788,7 +788,7 @@ void isWriteImageBufToRedis(isWorkerContext_t *wctx, isImageBufType *imb, redisC
   // expire reply
   err = redisGetReply(rc, (void **)&rr);
   if (err != REDIS_OK) {
-    fprintf(stderr, "%s: Redis failure (hset expire): %s\n", id, rc->errstr);
+    isLogging_crit("%s: Redis failure (hset expire): %s\n", id, rc->errstr);
     exit (-1);
   }
   freeReplyObject(rr);
@@ -796,7 +796,7 @@ void isWriteImageBufToRedis(isWorkerContext_t *wctx, isImageBufType *imb, redisC
   // users reply
   err = redisGetReply(rc, (void **)&rr);
   if (err != REDIS_OK) {
-    fprintf(stderr, "%s: Redis failure (hget users): %s\n", id, rc->errstr);
+    isLogging_crit("%s: Redis failure (hget users): %s\n", id, rc->errstr);
     exit (-1);
   }
   n = rr->integer;
@@ -835,7 +835,7 @@ isImageBufType *isGetRawImageBuf(isWorkerContext_t *wctx, redisContext *rc, json
 
   gid = getegid();
   if (gid <= 0) {
-    fprintf(stderr, "%s: Bad gid %d\n", id, gid);
+    isLogging_crit("%s: Bad gid %d\n", id, gid);
     return NULL;
   }
   gid_strlen = ((int)log10(gid)) + 1;
@@ -853,7 +853,7 @@ isImageBufType *isGetRawImageBuf(isWorkerContext_t *wctx, redisContext *rc, json
   key_strlen = strlen(fn) + gid_strlen + frame_strlen +  3;
   key = calloc(1,  key_strlen + 1);
   if (key == NULL) {
-    fprintf(stderr, "%s: Out of memory\n", id);
+    isLogging_crit("%s: Out of memory\n", id);
     exit (-1);
   }
   snprintf(key, key_strlen, "%d:%s-%d", gid, fn, frame);
@@ -868,7 +868,7 @@ isImageBufType *isGetRawImageBuf(isWorkerContext_t *wctx, redisContext *rc, json
   rtn = isGetImageBufFromKey(wctx, rc, key);
   rtn->frame = frame;
   if (rtn->buf != NULL) {
-    fprintf(stderr, "%s: Found buffer for key %s\n", id, key);
+    isLogging_crit("%s: Found buffer for key %s\n", id, key);
     free(key);
     return rtn;
   }
@@ -893,7 +893,7 @@ isImageBufType *isGetRawImageBuf(isWorkerContext_t *wctx, redisContext *rc, json
       
   case UNKNOWN:
   default:
-    fprintf(stderr, "%s: unknown file type '%d' for file %s\n", id, ft, fn);
+    isLogging_crit("%s: unknown file type '%d' for file %s\n", id, ft, fn);
     err = -1;
   }
 

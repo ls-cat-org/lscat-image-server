@@ -269,7 +269,7 @@ char *parseComment( char const *cp, char const *needle) {
 
   rtn = malloc( strlen( cp));   // a little too much memory is allocated, better that way then the other way around
   if( rtn == NULL) {
-    fprintf( stderr, "%s: Out of memory\n", id);
+    isLogging_crit("%s: Out of memory\n", id);
     return NULL;
   }
 
@@ -306,7 +306,7 @@ json_t *isRayonixGetMeta( isWorkerContext_t *wctx, const char *fn) {
 
   rtn = json_object();
   if (rtn == NULL) {
-    fprintf(stderr, "%s: Could not create return object\n", id);
+    isLogging_err("%s: Could not create return object\n", id);
     return NULL;
   }
 
@@ -314,7 +314,7 @@ json_t *isRayonixGetMeta( isWorkerContext_t *wctx, const char *fn) {
   //
   f = fopen( fn, "r");
   if( f == NULL) {
-    fprintf( stderr, "%s: marTiffRead failed to open file '%s'\n", id, fn);
+    isLogging_err("%s: marTiffRead failed to open file '%s'\n", id, fn);
     return NULL;
   }
 
@@ -436,22 +436,21 @@ int isRayonixGetData( isWorkerContext_t *wctx, const char *fn, isImageBufType **
   imb = *imbp;
 
   if( setjmp( jmpenv)) {
-    fprintf( stderr, "%s: Caught bus error, trying to recover\n", id);
-    fflush( stderr);
+    isLogging_err("%s: Caught bus error, trying to recover\n", id);
     sleep( 1);
   }
 
   signew.sa_handler = sigbusHandler;
   signew.sa_sigaction = NULL;
   if(  sigaction( SIGBUS, &signew, &sigold) != 0) {
-    fprintf( stderr, "%s: Error setting sigaction\n", id);
+    isLogging_err("%s: Error setting sigaction\n", id);
   }
 
   //  TIFFSetErrorHandler( NULL);   // surpress annoying error messages 
   TIFFSetWarningHandler( NULL);   // surpress annoying warning messages 
   tf = TIFFOpen( fn, "r");   // open the file
   if( tf == NULL) {
-    fprintf( stderr, "%s: marTiffRead failed to open file '%s'\n", id, fn);
+    isLogging_err("%s: marTiffRead failed to open file '%s'\n", id, fn);
     signew.sa_handler = SIG_DFL;
     sigaction( SIGBUS, &signew, NULL);
     return -1;
@@ -464,7 +463,7 @@ int isRayonixGetData( isWorkerContext_t *wctx, const char *fn, isImageBufType **
   buf  = malloc( buf_size);
   if( buf == NULL) {
     TIFFClose( tf);
-    fprintf( stderr, "%s: Out of memory.  malloc(%d) failed\n", id,buf_size);
+    isLogging_crit("%s: Out of memory.  malloc(%d) failed\n", id,buf_size);
     signew.sa_handler = SIG_DFL;
     sigaction( SIGBUS, &signew, NULL);
     exit (-1);

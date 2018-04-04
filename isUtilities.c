@@ -25,7 +25,7 @@ char *fixLineFeeds( const char *s) {
   // same.
   rtn = calloc(1, strlen(s) + 1);
   if (rtn == NULL) {
-    fprintf(stderr, "Out of memory (fixLineFeeds)\n");
+    isLogging_crit("Out of memory (fixLineFeeds)\n");
     exit (-1);
   }
 
@@ -115,31 +115,31 @@ int verify_it(const unsigned char* msg, size_t mlen, char* sig, size_t slen, EVP
     {
       ctx = EVP_MD_CTX_create();
       if(ctx == NULL) {
-        fprintf(stderr, "%s: EVP_MD_CTX_create failed, error 0x%lx\n", id, ERR_get_error());
+        isLogging_err("%s: EVP_MD_CTX_create failed, error 0x%lx\n", id, ERR_get_error());
         break; /* failed */
       }
       
       const EVP_MD* md = EVP_get_digestbyname("SHA256");
       if(md == NULL) {
-        fprintf(stderr, "%s: EVP_get_digestbyname failed, error 0x%lx\n", id, ERR_get_error());
+        isLogging_err("%s: EVP_get_digestbyname failed, error 0x%lx\n", id, ERR_get_error());
         break; /* failed */
       }
       
       int rc = EVP_DigestInit_ex(ctx, md, NULL);
       if(rc != 1) {
-        fprintf(stderr, "%s: EVP_DigestInit_ex failed, error 0x%lx\n", id, ERR_get_error());
+        isLogging_err("%s: EVP_DigestInit_ex failed, error 0x%lx\n", id, ERR_get_error());
         break; /* failed */
       }
       
       rc = EVP_DigestVerifyInit(ctx, NULL, md, NULL, pkey);
       if(rc != 1) {
-        fprintf(stderr, "%s: EVP_DigestVerifyInit failed, error 0x%lx\n", id, ERR_get_error());
+        isLogging_err("%s: EVP_DigestVerifyInit failed, error 0x%lx\n", id, ERR_get_error());
         break; /* failed */
       }
       
       rc = EVP_DigestVerifyUpdate(ctx, msg, mlen);
       if(rc != 1) {
-        fprintf(stderr, "%s: EVP_DigestVerifyUpdate failed, error 0x%lx\n", id, ERR_get_error());
+        isLogging_err("%s: EVP_DigestVerifyUpdate failed, error 0x%lx\n", id, ERR_get_error());
         break; /* failed */
       }
       
@@ -148,7 +148,7 @@ int verify_it(const unsigned char* msg, size_t mlen, char* sig, size_t slen, EVP
       
       rc = EVP_DigestVerifyFinal(ctx, (unsigned char *)sig, slen);
       if(rc != 1) {
-        fprintf(stderr, "%s: EVP_DigestVerifyFinal failed: %s\n", id, ERR_error_string(ERR_get_error(), NULL));
+        isLogging_err("%s: EVP_DigestVerifyFinal failed: %s\n", id, ERR_error_string(ERR_get_error(), NULL));
         break; /* failed */
       }
       result = 0;
@@ -181,13 +181,13 @@ int verifyIsAuth( char *isAuth, char *isAuthSig_str) {
   openssl_base64_decode(isAuthSig_str, &isAuthSig, &isAuthSig_len);
   
   if (isAuthSig_len == 0 || isAuthSig == NULL) {
-    fprintf(stderr, "%s: Could not decode isAuthSig\n", id);
+    isLogging_err("%s: Could not decode isAuthSig\n", id);
     return 0;
   }
 
   fp = fopen("ls-ee-contrabass-pubkey.pem", "r");
   if (fp == NULL) {
-    fprintf(stderr, "%s: Could not open public key\n", id);
+    isLogging_err("%s: Could not open public key\n", id);
     exit (-1);
   }
   pkey = PEM_read_PUBKEY(fp, NULL, NULL, NULL);
@@ -222,7 +222,7 @@ int isEsafAllowed(json_t *isAuth, int esaf) {
 
   allowedESAFs = json_object_get(isAuth, "allowedESAFs");
   if (allowedESAFs == NULL) {
-    fprintf(stderr, "isEsafAllowed: No allowedESAFs array not found\n");
+    isLogging_err("isEsafAllowed: No allowedESAFs array not found\n");
     return 0;
   }
 
@@ -258,19 +258,19 @@ void set_json_object_string(const char *cid, json_t *j, const char *key, const c
   err = vsnprintf( v, sizeof(v), fmt, arg_ptr);
   v[sizeof(v)-1] = 0;
   if (err < 0 || err >= sizeof(v)) {
-    fprintf(stderr, "%s->%s: Could not create temporary string for key '%s'\n", cid, id, key);
+    isLogging_err("%s->%s: Could not create temporary string for key '%s'\n", cid, id, key);
     exit (-1);
   }
   va_end( arg_ptr);
 
   tmp_obj = json_string(v);
   if (tmp_obj == NULL) {
-    fprintf(stderr, "%s->%s: Could not create json object for key '%s'\n", cid, id, key);
+    isLogging_err("%s->%s: Could not create json object for key '%s'\n", cid, id, key);
     exit (-1);
   }
   err = json_object_set_new(j, key, tmp_obj);
   if (err != 0) {
-    fprintf(stderr, "%s->%s: Could not add key '%s' to json object\n", cid, id, key);
+    isLogging_err("%s->%s: Could not add key '%s' to json object\n", cid, id, key);
     exit (-1);
   }
 }
@@ -294,12 +294,12 @@ void set_json_object_integer(const char *cid, json_t *j, const char *key, int va
 
   tmp_obj = json_integer(value);
   if (tmp_obj == NULL) {
-    fprintf(stderr, "%s->%s: Could not create json object for key '%s'\n", id, cid, key);
+    isLogging_err("%s->%s: Could not create json object for key '%s'\n", id, cid, key);
     exit (-1);
   }
   err = json_object_set_new(j, key, tmp_obj);
   if (err != 0) {
-    fprintf(stderr, "%s->%s: Could not add key '%s' to json object\n", cid, id, key);
+    isLogging_err("%s->%s: Could not add key '%s' to json object\n", cid, id, key);
     exit (-1);
   }
 }
@@ -326,20 +326,20 @@ void set_json_object_integer_array( const char *cid, json_t *j, const char *key,
 
   tmp_obj = json_array();
   if (tmp_obj == NULL) {
-    fprintf(stderr, "%s->%s: Could not create json array object for key '%s'\n", cid, id, key);
+    isLogging_err("%s->%s: Could not create json array object for key '%s'\n", cid, id, key);
     exit (-1);
   }
 
   for (i=0; i<n; i++) {
     tmp2_obj = json_integer(values[i]);
     if (tmp2_obj == NULL) {
-      fprintf(stderr, "%s->%s: Could not create integer object for index %d\n", cid, id, i);
+      isLogging_err("%s->%s: Could not create integer object for index %d\n", cid, id, i);
       exit (-1);
     }
     
     err = json_array_append_new(tmp_obj,tmp2_obj);
     if (err == -1) {
-      fprintf(stderr, "%s->%s: Could not append array index %d to json_array\n", cid, id, i);
+      isLogging_err("%s->%s: Could not append array index %d to json_array\n", cid, id, i);
       exit (-1);
     }
 
@@ -347,7 +347,7 @@ void set_json_object_integer_array( const char *cid, json_t *j, const char *key,
 
   err = json_object_set_new(j, key, tmp_obj);
   if (err != 0) {
-    fprintf(stderr, "%s->%s: Could not add key '%s' to json object\n", cid, id, key);
+    isLogging_err("%s->%s: Could not add key '%s' to json object\n", cid, id, key);
     exit (-1);
   }
 }
@@ -369,18 +369,18 @@ void set_json_object_real(const char *cid, json_t *j, const char *key, double va
   int err;
 
   if (isnan(value) || isinf(value)) {
-    fprintf(stderr, "%s->%s: Ignoring request for key %s with value %f\n", cid, id, key, value);
+    isLogging_err("%s->%s: Ignoring request for key %s with value %f\n", cid, id, key, value);
     return;
   }
 
   tmp_obj = json_real(value);
   if (tmp_obj == NULL) {
-    fprintf(stderr, "%s->%s: Could not create json object for key '%s' with value %f\n", cid, id, key, value);
+    isLogging_err("%s->%s: Could not create json object for key '%s' with value %f\n", cid, id, key, value);
     exit (-1);
   }
   err = json_object_set_new(j, key, tmp_obj);
   if (err != 0) {
-    fprintf(stderr, "%s->%s: Could not add key '%s' to json object\n", cid, id, key);
+    isLogging_err("%s->%s: Could not add key '%s' to json object\n", cid, id, key);
     exit (-1);
   }
 }
@@ -406,20 +406,20 @@ void set_json_object_float_array( const char *cid, json_t *j, const char *key, f
 
   tmp_obj = json_array();
   if (tmp_obj == NULL) {
-    fprintf(stderr, "%s->%s: Could not create json array object for key '%s'\n", cid, id, key);
+    isLogging_err("%s->%s: Could not create json array object for key '%s'\n", cid, id, key);
     exit (-1);
   }
 
   for (i=0; i < n; i++) {
     tmp2_obj = json_real(values[i]);
     if (tmp2_obj == NULL) {
-      fprintf(stderr, "%s->%s: Could not create integer object for index %d\n", cid, id, i);
+      isLogging_err("%s->%s: Could not create integer object for index %d\n", cid, id, i);
       exit (-1);
     }
     
     err = json_array_append_new(tmp_obj,tmp2_obj);
     if (err == -1) {
-      fprintf(stderr, "%s->%s: Could not append array index %d to json_array\n", cid, id, i);
+      isLogging_err("%s->%s: Could not append array index %d to json_array\n", cid, id, i);
       exit (-1);
     }
 
@@ -427,7 +427,7 @@ void set_json_object_float_array( const char *cid, json_t *j, const char *key, f
 
   err = json_object_set_new(j, key, tmp_obj);
   if (err != 0) {
-    fprintf(stderr, "%s->%s: Could not add key '%s' to json object\n", cid, id, key);
+    isLogging_err("%s->%s: Could not add key '%s' to json object\n", cid, id, key);
     exit (-1);
   }
 }
@@ -456,41 +456,41 @@ void set_json_object_float_array_2d(const char *cid, json_t *j, const char *k, f
 
   tmp_obj = json_array();
   if (tmp_obj == NULL) {
-    fprintf(stderr, "%s->%s: Could not json 2d array object for key %s\n", cid, id, k);
+    isLogging_err("%s->%s: Could not json 2d array object for key %s\n", cid, id, k);
     exit (-1);
   }
 
   for (col=0; col<cols; col++) {
     tmp2_obj = json_array();
     if (tmp2_obj == NULL) {
-      fprintf(stderr, "%s->%s: Could not create tmp2_obj for key %s column %d\n", cid, id, k, col);
+      isLogging_err("%s->%s: Could not create tmp2_obj for key %s column %d\n", cid, id, k, col);
       exit (-1);
     }
     
     for (row=0; row<rows; row++) {
       tmp3_obj = json_real(*(v + rows * col + row));
       if (tmp3_obj == NULL) {
-        fprintf(stderr, "%s->%s: Could not create tmp3_obj for key %s column %d row %d\n", cid, id, k, col, row);
+        isLogging_err("%s->%s: Could not create tmp3_obj for key %s column %d row %d\n", cid, id, k, col, row);
         exit (-1);
       }
 
       err = json_array_append_new(tmp2_obj, tmp3_obj);
       if (err != 0) {
-        fprintf(stderr, "%s->%s: Could not append value to array key %s  col %d row %d\n", cid, id, k, col, row);
+        isLogging_err("%s->%s: Could not append value to array key %s  col %d row %d\n", cid, id, k, col, row);
         exit (-1);
       }
     }
 
     err = json_array_append_new(tmp_obj, tmp2_obj);
     if (err != 0) {
-      fprintf(stderr, "%s->%s: Could not append column to result array key %s col %d\n", cid, id, k, col);
+      isLogging_err("%s->%s: Could not append column to result array key %s col %d\n", cid, id, k, col);
       exit (-1);
     }
   }
 
   err = json_object_set_new(j, k, tmp_obj);
   if (err != 0) {
-    fprintf(stderr, "%s->%s: Could not add key %s to json object\n", cid, id, k);
+    isLogging_err("%s->%s: Could not add key %s to json object\n", cid, id, k);
     exit (-1);
   }
 }
@@ -514,11 +514,11 @@ int get_integer_from_json_object(const char *cid, json_t *j, char *key) {
   
   tmp_obj = json_object_get(j, key);
   if (tmp_obj == NULL) {
-    fprintf(stderr, "%s->%s: Failed to get integer '%s' from json object\n", cid, id, key);
+    isLogging_err("%s->%s: Failed to get integer '%s' from json object\n", cid, id, key);
     exit (-1);
   }
   if (json_typeof(tmp_obj) != JSON_INTEGER) {
-    fprintf(stderr, "%s->%s: json key '%s' did not hold an integer.  Got type %d\n", cid, id, key, json_typeof(tmp_obj));
+    isLogging_err("%s->%s: json key '%s' did not hold an integer.  Got type %d\n", cid, id, key, json_typeof(tmp_obj));
     exit (-1);
   }
 
@@ -541,12 +541,12 @@ double get_double_from_json_object(const char *cid,  const json_t *j, const char
   
   tmp_obj = json_object_get(j, key);
   if (tmp_obj == NULL) {
-    fprintf(stderr, "%s->%s: Failed to get number '%s' from json object\n", cid, id, key);
+    isLogging_err("%s->%s: Failed to get number '%s' from json object\n", cid, id, key);
     exit (-1);
   }
 
   if (json_typeof(tmp_obj) != JSON_REAL && json_typeof(tmp_obj) != JSON_INTEGER) {
-    fprintf(stderr, "%s->%s: json key '%s' did not hold an integer or a real.  Got type %d\n", cid, id, key, json_typeof(tmp_obj));
+    isLogging_err("%s->%s: json key '%s' did not hold an integer or a real.  Got type %d\n", cid, id, key, json_typeof(tmp_obj));
     exit (-1);
   }
 
@@ -600,7 +600,7 @@ void is_zmq_error_reply(zmq_msg_t *msgs, int n_msgs, void *err_dealer, char *fmt
 
   msg = calloc(1, msg_len);
   if (msg == NULL) {
-    fprintf(stderr, "%s: Out of memory\n", id);
+    isLogging_crit("%s: Out of memory\n", id);
     exit (-1);
   }
 
@@ -612,12 +612,12 @@ void is_zmq_error_reply(zmq_msg_t *msgs, int n_msgs, void *err_dealer, char *fmt
   zmq_msg_init(&zrply);
   err = zmq_msg_init_data(&zrply, msg, strlen(msg), is_zmq_free_fn, NULL);
   if (err == -1) {
-    fprintf(stderr, "%s: Could not create reply message: %s\n", id, zmq_strerror(errno));
+    isLogging_err("%s: Could not create reply message: %s\n", id, zmq_strerror(errno));
     exit (-1);
   }
 
   err = zmq_msg_send(&zrply, err_dealer, 0);
   if (err == -1) {
-    fprintf(stderr, "%s: could not send reply (zrply 1): %s\n", id, zmq_strerror(errno));
+    isLogging_err("%s: could not send reply (zrply 1): %s\n", id, zmq_strerror(errno));
   }
 }

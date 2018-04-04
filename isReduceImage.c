@@ -834,12 +834,12 @@ isImageBufType *isReduceImage(isWorkerContext_t *wctx, redisContext *rc, json_t 
   // finding buffer overflows.
   //
   if (dstWidth > 10000) {
-    fprintf(stderr, "%s: unlikely valid destination size width %d\n", id, dstWidth);
+    isLogging_err("%s: unlikely valid destination size width %d\n", id, dstWidth);
     return NULL;
   }
 
   if (fn == NULL) {
-    fprintf(stderr, "%s: Cannot find file name in job\n", id);
+    isLogging_err("%s: Cannot find file name in job\n", id);
     return NULL;
   }
   //
@@ -852,7 +852,7 @@ isImageBufType *isReduceImage(isWorkerContext_t *wctx, redisContext *rc, json_t 
   // Reality check on gid
   //
   if (gid < 9000) {
-    fprintf(stderr, "%s: Unlikely gid %d\n", id, gid);
+    isLogging_err("%s: Unlikely gid %d\n", id, gid);
     return NULL;
   }
 
@@ -864,7 +864,7 @@ isImageBufType *isReduceImage(isWorkerContext_t *wctx, redisContext *rc, json_t 
   reducedKeyStrlen = strlen(fn) + (int)log10(frame) + 1 + 128;
   reducedKey = calloc(1, reducedKeyStrlen + 1);
   if (reducedKey == NULL) {
-    fprintf(stderr, "%s: Out of memory (reducedKey)\n", id);
+    isLogging_crit("%s: Out of memory (reducedKey)\n", id);
     exit (-1);
   }
   snprintf(reducedKey, reducedKeyStrlen, "%d:%s-%d-%0.1f-%0.3f-%0.3f-%d",
@@ -890,7 +890,7 @@ isImageBufType *isReduceImage(isWorkerContext_t *wctx, redisContext *rc, json_t 
   // Get the unreduced file
   raw = isGetRawImageBuf(wctx, rc, job);
   if (raw == NULL) {
-    fprintf(stderr, "%s: Failed to get raw data for %s\n", id, rtn->key);
+    isLogging_err("%s: Failed to get raw data for %s\n", id, rtn->key);
     //
     // Can't fill the buffer we want, should probably raise some kind
     // of hell.  Presumably isGetRawImageBuf complained to the
@@ -918,7 +918,7 @@ isImageBufType *isReduceImage(isWorkerContext_t *wctx, redisContext *rc, json_t 
 
   image_depth = json_integer_value(json_object_get(raw->meta, "image_depth"));
   if (image_depth != 2 && image_depth != 4) {
-    fprintf(stderr, "%s: bad image depth %d.  Likely this is a serious error somewhere\n", id, image_depth);
+    isLogging_err("%s: bad image depth %d.  Likely this is a serious error somewhere\n", id, image_depth);
     exit (-1);
   }
 
@@ -928,7 +928,7 @@ isImageBufType *isReduceImage(isWorkerContext_t *wctx, redisContext *rc, json_t 
   rtn->buf_size = dstWidth * dstHeight * image_depth;
   rtn->buf = calloc(1, rtn->buf_size);
   if (rtn->buf == NULL) {
-    fprintf(stderr, "%s: Out of memory\n", id);
+    isLogging_crit("%s: Out of memory\n", id);
     exit (-1);
   }
 
@@ -956,7 +956,7 @@ isImageBufType *isReduceImage(isWorkerContext_t *wctx, redisContext *rc, json_t 
     break;
 
   default:
-    fprintf(stderr, "%s: Unusable image depth %d\n", id, image_depth);
+    isLogging_err("%s: Unusable image depth %d\n", id, image_depth);
     exit (-1);
   }
 

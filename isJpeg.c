@@ -41,7 +41,7 @@ void isJpegLabel(const char *label, int width, int height, struct jpeg_compress_
 
   row_buffer = calloc(1, row_buffer_size);
   if (row_buffer == NULL) {
-    fprintf(stderr, "%s: Out of memory (row_buffer)\n", id);
+    isLogging_crit("%s: Out of memory (row_buffer)\n", id);
     pthread_exit (NULL);
   }
 
@@ -166,7 +166,7 @@ void isJpegSend(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job, 
 
   err = zmq_msg_init_data(&job_msg, job_str, strlen(job_str), is_zmq_free_fn, NULL);
   if (err != 0) {
-    fprintf(stderr, "%s: zmq_msg_init failed (job_str): %s\n", id, zmq_strerror(errno));
+    isLogging_err("%s: zmq_msg_init failed (job_str): %s\n", id, zmq_strerror(errno));
     is_zmq_error_reply(NULL, 0, tcp->rep, "%s: Could not initialize reply message (job_str)", id);
     pthread_exit (NULL);
   }
@@ -184,7 +184,7 @@ void isJpegSend(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job, 
 
   err = zmq_msg_init_data(&meta_msg, meta_str, strlen(meta_str), is_zmq_free_fn, NULL);
   if (err == -1) {
-    fprintf(stderr, "%s: zmq_msg_init failed (meta_str): %s\n", id, zmq_strerror(errno));
+    isLogging_err("%s: zmq_msg_init failed (meta_str): %s\n", id, zmq_strerror(errno));
     is_zmq_error_reply(NULL, 0, tcp->rep, "%s: Could not initialize reply message (meta_str)", id);
     pthread_exit (NULL);
   }
@@ -193,7 +193,7 @@ void isJpegSend(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job, 
   // JPEG
   err = zmq_msg_init_data(&jpeg_msg, out_buffer, jpeg_len, is_zmq_free_fn, NULL);
   if (err == -1) {
-    fprintf(stderr, "%s: zmq_msg_init failed (jpeg): %s\n", id, zmq_strerror(errno));
+    isLogging_err("%s: zmq_msg_init failed (jpeg): %s\n", id, zmq_strerror(errno));
     is_zmq_error_reply(NULL, 0, tcp->rep, "%s: Could not initialize reply message (jpeg)", id);
     pthread_exit (NULL);
   }
@@ -203,28 +203,28 @@ void isJpegSend(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job, 
     // Error Message
     err = zmq_msg_send(&err_msg, tcp->rep, ZMQ_SNDMORE);
     if (err == -1) {
-      fprintf(stderr, "%s: Could not send empty error frame: %s\n", id, zmq_strerror(errno));
+      isLogging_err("%s: Could not send empty error frame: %s\n", id, zmq_strerror(errno));
       break;
     }
 
     // Job 
     err = zmq_msg_send(&job_msg, tcp->rep, ZMQ_SNDMORE);
     if (err < 0) {
-      fprintf(stderr, "%s: sending job_str failed: %s\n", id, zmq_strerror(errno));
+      isLogging_err("%s: sending job_str failed: %s\n", id, zmq_strerror(errno));
       break;
     }
 
     // Meta
     err = zmq_msg_send(&meta_msg, tcp->rep, ZMQ_SNDMORE);
     if (err == -1) {
-      fprintf(stderr, "%s: sending meta_str failed: %s\n", id, zmq_strerror(errno));
+      isLogging_err("%s: sending meta_str failed: %s\n", id, zmq_strerror(errno));
       break;
     }
 
     // Jpeg
     err = zmq_msg_send(&jpeg_msg, tcp->rep, 0);
     if (err == -1) {
-      fprintf(stderr, "%s: sending jpeg failed: %s\n", id, zmq_strerror(errno));
+      isLogging_err("%s: sending jpeg failed: %s\n", id, zmq_strerror(errno));
       break;
     }
   } while (0);
@@ -283,7 +283,7 @@ void isJpegBlank(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job)
 
   row_buffer = calloc(1, row_buffer_size);
   if (row_buffer == NULL) {
-    fprintf(stderr, "%s: Out of memory (row_buffer)\n", id);
+    isLogging_crit("%s: Out of memory (row_buffer)\n", id);
     is_zmq_error_reply(NULL, 0, tcp->rep, "%s: Out of memory (row_buffer)", id);
     exit (-1);
   }
@@ -295,7 +295,7 @@ void isJpegBlank(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job)
 
   out_buffer = calloc(1, out_buffer_size);
   if (out_buffer == NULL) {
-    fprintf(stderr, "%s: Out of memory (out_buffer)\n", id);
+    isLogging_crit("%s: Out of memory (out_buffer)\n", id);
     is_zmq_error_reply(NULL, 0, tcp->rep, "%s: Out of memory (out_buffer)", id);
     exit (-1);
   }
@@ -311,7 +311,7 @@ void isJpegBlank(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job)
     }
     free(row_buffer);
     free(out_buffer);
-    fprintf( stderr, "%s: jpeg compression error\n", id);
+    isLogging_err("%s: jpeg compression error\n", id);
     is_zmq_error_reply(NULL, 0, tcp->rep, "%s: Jpeg creation failed", id);
     return;
   }
@@ -445,7 +445,7 @@ void isJpeg(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
     tmps = json_dumps(job, JSON_SORT_KEYS | JSON_COMPACT | JSON_INDENT(0));
     pthread_mutex_unlock(&wctx->metaMutex);
 
-    fprintf(stderr, "%s: missing data for job %s\n", id, tmps);
+    isLogging_err("%s: missing data for job %s\n", id, tmps);
     // is_zmq_error_reply(NULL, 0, tcp->rep, "%s: missing data for job %s", id, tmps);
 
     free(tmps);
@@ -466,7 +466,7 @@ void isJpeg(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
 
   row_buffer = calloc(1, row_buffer_size);
   if (row_buffer == NULL) {
-    fprintf(stderr, "%s: Out of memory (row_buffer)\n", id);
+    isLogging_crit("%s: Out of memory (row_buffer)\n", id);
     is_zmq_error_reply(NULL, 0, tcp->rep, "%s: Out of memory (row_buffer)", id);
     pthread_exit (NULL);
   }
@@ -478,7 +478,7 @@ void isJpeg(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
 
   out_buffer = calloc(1, out_buffer_size);
   if (out_buffer == NULL) {
-    fprintf(stderr, "%s: Out of memory (out_buffer)\n", id);
+    isLogging_crit("%s: Out of memory (out_buffer)\n", id);
     is_zmq_error_reply(NULL, 0, tcp->rep, "%s: Out of memory (out_buffer)", id);
     pthread_exit (NULL);
   }
@@ -497,7 +497,7 @@ void isJpeg(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
 
     pthread_rwlock_unlock(&imb->buflock);
 
-    fprintf( stderr, "%s: jpeg compression error\n", id);
+    isLogging_err("%s: jpeg compression error\n", id);
     is_zmq_error_reply(NULL, 0, tcp->rep, "%s: jpeg compression error", id);
 
     pthread_mutex_lock(&wctx->ctxMutex);

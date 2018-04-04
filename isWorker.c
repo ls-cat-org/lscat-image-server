@@ -42,21 +42,21 @@ void *isWorker(void *voidp) {
 
   tc.rep = zmq_socket(wctx->zctx, ZMQ_REP);
   if (tc.rep == NULL) {
-    fprintf(stderr, "%s: failed to create zmq socket: %s\n", id, zmq_strerror(errno));
+    isLogging_err("%s: failed to create zmq socket: %s\n", id, zmq_strerror(errno));
     exit (-1);
   }
 
   socket_option = 0;
   err = zmq_setsockopt(tc.rep, ZMQ_RCVHWM, &socket_option, sizeof(socket_option));
   if (err == -1) {
-    fprintf(stderr, "%s: Could not set RCVHWM for rc.rep: %s\n", id, zmq_strerror(errno));
+    isLogging_err("%s: Could not set RCVHWM for rc.rep: %s\n", id, zmq_strerror(errno));
     exit (-1);
   }
 
   socket_option = 0;
   err = zmq_setsockopt(tc.rep, ZMQ_SNDHWM, &socket_option, sizeof(socket_option));
   if (err == -1) {
-    fprintf(stderr, "%s: Could not set SNDHWM for rc.rep: %s\n", id, zmq_strerror(errno));
+    isLogging_err("%s: Could not set SNDHWM for rc.rep: %s\n", id, zmq_strerror(errno));
     exit (-1);
   }
 
@@ -65,7 +65,7 @@ void *isWorker(void *voidp) {
   
   err = zmq_connect(tc.rep, dealer_endpoint);
   if (err == -1) {
-    fprintf(stderr, "%s: Failed to connect to dealer endpoint %s: %s\n", id, dealer_endpoint, zmq_strerror(errno));
+    isLogging_err("%s: Failed to connect to dealer endpoint %s: %s\n", id, dealer_endpoint, zmq_strerror(errno));
     exit (-1);
   }
 
@@ -75,9 +75,9 @@ void *isWorker(void *voidp) {
   tc.rc = redisConnect("127.0.0.1", 6379);
   if (tc.rc == NULL || tc.rc->err) {
     if (tc.rc != NULL) {
-      fprintf(stderr, "%s: Failed to connect to redis: %s\n", id, tc.rc->errstr);
+      isLogging_err("%s: Failed to connect to redis: %s\n", id, tc.rc->errstr);
     } else {
-      fprintf(stderr, "%s: Failed to get redis context\n", id);
+      isLogging_err("%s: Failed to get redis context\n", id);
     }
     fflush(stderr);
     exit (-1);
@@ -90,7 +90,7 @@ void *isWorker(void *voidp) {
     zmq_msg_init(&zmsg);
     err = zmq_msg_recv(&zmsg, tc.rep, 0);
     if (err == -1) {
-      fprintf(stderr, "%s: problem receiving message: %s\n", id, zmq_strerror(errno));
+      isLogging_err("%s: problem receiving message: %s\n", id, zmq_strerror(errno));
       zmq_msg_close(&zmsg);
       if (errno == EFSM) {
         //
@@ -113,7 +113,7 @@ void *isWorker(void *voidp) {
     zmq_msg_close(&zmsg);
 
     if (job == NULL) {
-      fprintf(stderr, "%s: Failed to parse request: %s\n", id, jerr.text);
+      isLogging_err("%s: Failed to parse request: %s\n", id, jerr.text);
       is_zmq_error_reply(NULL, 0, tc.rep, "%s: Could not parse request: %s", id, jerr.text);
       continue;
     }
@@ -124,7 +124,7 @@ void *isWorker(void *voidp) {
     pthread_mutex_unlock(&wctx->metaMutex);
 
     if (job_type == NULL) {
-      fprintf(stderr, "%s: No type parameter in job %s\n", id, jobstr);
+      isLogging_err("%s: No type parameter in job %s\n", id, jobstr);
       is_zmq_error_reply(NULL, 0, tc.rep, "%s: No type parameter in job %s", id, jobstr);
     } else {
       // Cheapo command parser.  Probably the best way to go considering
@@ -135,7 +135,7 @@ void *isWorker(void *voidp) {
         isIndex(wctx, &tc, job);
       } else {
 
-        fprintf(stderr, "%s: Unknown job type '%s' in job '%s'\n", id, job_type, jobstr);
+        isLogging_err("%s: Unknown job type '%s' in job '%s'\n", id, job_type, jobstr);
         is_zmq_error_reply(NULL, 0, tc.rep, "%s: Unknown job type '%s' in job '%s'", id, job_type, jobstr);
       }
     }
@@ -180,7 +180,7 @@ void isSupervisor(const char *key) {
     err = pthread_create(&(threads[i]), NULL, isWorker, wctx);
 
     if (err != 0) {
-      fprintf(stderr, "%s: Could not start worker for %s because %s\n",
+      isLogging_err("%s: Could not start worker for %s because %s\n",
               id, key, err==EAGAIN ? "Insufficient resources" : (err==EINVAL ? "Bad attributes" : (err==EPERM ? "No permission" : "Unknown Reasons")));
       return;
     }
@@ -198,7 +198,7 @@ void isSupervisor(const char *key) {
       if (errno == EINTR) {
         break;
       }
-      fprintf(stderr, "%s: zmq_poll error: %s\n", id, zmq_strerror(errno));
+      isLogging_err("%s: zmq_poll error: %s\n", id, zmq_strerror(errno));
       exit (-1);
     }
 
@@ -236,13 +236,13 @@ void isSupervisor(const char *key) {
     err = pthread_join(threads[i], NULL);
     switch(err) {
     case EDEADLK:
-      fprintf(stderr, "%s: deadlock detected on join for thread %d\n", id, i);
+      isLogging_err("%s: deadlock detected on join for thread %d\n", id, i);
       break;
     case EINVAL:
-      fprintf(stderr, "%s: thread %d is unjoinable\n", id, i);
+      isLogging_err("%s: thread %d is unjoinable\n", id, i);
       break;
     case ESRCH:
-      fprintf(stderr, "%s: thread %d could not be found\n", id, i);
+      isLogging_err("%s: thread %d could not be found\n", id, i);
       break;
     }
   }

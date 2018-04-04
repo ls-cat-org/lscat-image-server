@@ -67,7 +67,7 @@ void isIndex(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
   // Hey! we already have the job, so lets add it now
   err = zmq_msg_init_data(&job_msg, job_str, strlen(job_str), is_zmq_free_fn, NULL);
   if (err != 0) {
-    fprintf(stderr, "%s: zmq_msg_init failed (job_str): %s\n", id, zmq_strerror(errno));
+    isLogging_err("%s: zmq_msg_init failed (job_str): %s\n", id, zmq_strerror(errno));
     is_zmq_error_reply(NULL, 0, tcp->rep, "%s: Could not initialize reply message (job_str)", id);
     pthread_exit (NULL);
   }
@@ -87,7 +87,7 @@ void isIndex(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
 
   err = zmq_msg_init_data(&index_msg, index_str, strlen(index_str), is_zmq_free_fn, NULL);
   if (err == -1) {
-    fprintf(stderr, "%s: zmq_msg_init failed (index_str): %s\n", id, zmq_strerror(errno));
+    isLogging_err("%s: zmq_msg_init failed (index_str): %s\n", id, zmq_strerror(errno));
     is_zmq_error_reply(NULL, 0, tcp->rep, "%s: Could not initialize reply message (index_str)", id);
     pthread_exit (NULL);
   }
@@ -97,21 +97,21 @@ void isIndex(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
     // Error Message
     err = zmq_msg_send(&err_msg, tcp->rep, ZMQ_SNDMORE);
     if (err == -1) {
-      fprintf(stderr, "%s: Could not send empty error frame: %s\n", id, zmq_strerror(errno));
+      isLogging_err("%s: Could not send empty error frame: %s\n", id, zmq_strerror(errno));
       break;
     }
 
     // Job 
     err = zmq_msg_send(&job_msg, tcp->rep, ZMQ_SNDMORE);
     if (err < 0) {
-      fprintf(stderr, "%s: sending job_str failed: %s\n", id, zmq_strerror(errno));
+      isLogging_err("%s: sending job_str failed: %s\n", id, zmq_strerror(errno));
       break;
     }
 
     // Meta
     err = zmq_msg_send(&index_msg, tcp->rep, 0);
     if (err == -1) {
-      fprintf(stderr, "%s: sending index_str failed: %s\n", id, zmq_strerror(errno));
+      isLogging_err("%s: sending index_str failed: %s\n", id, zmq_strerror(errno));
       break;
     }
   } while (0);

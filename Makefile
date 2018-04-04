@@ -16,6 +16,9 @@ install:
 	install --mode=755 is /usr/local/bin
 	install --mode=644 is.conf /etc/rsyslog.d
 
+isLogging.o: isLogging.c is.h Makefile
+	gcc -g -Wall -c isLogging.c
+
 isData.o: isData.c is.h Makefile
 	gcc -g -Wall -c isData.c
 
@@ -46,5 +49,5 @@ isIndex.o: isIndex.c is.h Makefile
 isBitmapFont.o: isBitmapFont.c is.h Makefile
 	gcc -g -Wall -c isBitmapFont.c
 
-is: isMain.c is.h Makefile isUtilities.o isH5.o isRayonix.o isProcessManagement.o isWorker.o isData.o isReduceImage.o isJpeg.o isBitmapFont.o isIndex.o
-	gcc -g -Wall isMain.c -L /usr/local/lib64 -L /usr/local/lib -L/usr/lib -o is isUtilities.o isH5.o isRayonix.o isProcessManagement.o isWorker.o isData.o isReduceImage.o isJpeg.o isIndex.o isBitmapFont.o -lhiredis -ljansson -lhdf5 -ltiff -lcrypto -ljpeg -lm -lzmq -pthread
+is: isMain.c is.h Makefile isUtilities.o isH5.o isRayonix.o isProcessManagement.o isWorker.o isData.o isReduceImage.o isJpeg.o isBitmapFont.o isIndex.o isLogging.o
+	gcc -g -Wall isMain.c -L /usr/local/lib64 -L /usr/local/lib -L/usr/lib -o is isLogging.o isUtilities.o isH5.o isRayonix.o isProcessManagement.o isWorker.o isData.o isReduceImage.o isJpeg.o isIndex.o isBitmapFont.o -lhiredis -ljansson -lhdf5 -ltiff -lcrypto -ljpeg -lm -lzmq -pthread

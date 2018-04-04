@@ -102,7 +102,7 @@ int main(int argc, char **argv) {
   n_zpollitems = N_ZPOLLITEMS_INC;
   zpollitems = calloc(n_zpollitems, sizeof(*zpollitems));
   if (zpollitems == NULL) {
-    fprintf(stderr, "%s: Out of memory (zpollites)\n", id);
+    isLogging_crit("%s: Out of memory (zpollites)\n", id);
     exit (-1);
   }
 
@@ -116,9 +116,9 @@ int main(int argc, char **argv) {
   rc = redisConnect(REMOTE_SERVER_REDIS_ADDRESS, REMOTE_SERVER_REDIS_PORT);
   if (rc == NULL || rc->err) {
     if (rc) {
-      fprintf(stderr, "%s: Failed to connect to remote redis at %s: %s\n", id, REMOTE_SERVER_REDIS_ADDRESS, rc->errstr);
+      isLogging_err("%s: Failed to connect to remote redis at %s: %s\n", id, REMOTE_SERVER_REDIS_ADDRESS, rc->errstr);
     } else {
-      fprintf(stderr, "%s: Failed to get redis remote context\n", id);
+      isLogging_err("%s: Failed to get redis remote context\n", id);
     }
     exit (-1);
   }
@@ -129,9 +129,9 @@ int main(int argc, char **argv) {
   rcLocal = redisConnect("127.0.0.1", 6379);
   if (rcLocal == NULL || rcLocal->err) {
     if (rcLocal) {
-      fprintf(stderr, "%s: Failed to connect to local redis: %s\n", id, rcLocal->errstr);
+      isLogging_err("%s: Failed to connect to local redis: %s\n", id, rcLocal->errstr);
     } else {
-      fprintf(stderr, "%s: Failed to get local redis context\n", id);
+      isLogging_err("%s: Failed to get local redis context\n", id);
     }
     exit (-1);
   }
@@ -155,7 +155,7 @@ int main(int argc, char **argv) {
   router = zmq_socket(zctx, ZMQ_ROUTER);
   err = zmq_connect(router, PUBLIC_DEALER);
   if (err == -1) {
-    fprintf(stderr, "%s: Failed to connect router to dealer %s: %s\n", id, PUBLIC_DEALER, zmq_strerror(errno));
+    isLogging_err("%s: Failed to connect router to dealer %s: %s\n", id, PUBLIC_DEALER, zmq_strerror(errno));
     exit (-1);
   }
 
@@ -165,7 +165,7 @@ int main(int argc, char **argv) {
   socket_option = 0;
   err = zmq_setsockopt(router, ZMQ_RCVHWM, &socket_option, sizeof(socket_option));
   if (err == -1) {
-    fprintf(stderr, "%s: Could not set RCVHWM for router: %s\n", id, zmq_strerror(errno));
+    isLogging_err("%s: Could not set RCVHWM for router: %s\n", id, zmq_strerror(errno));
     exit (-1);
   }
 
@@ -175,7 +175,7 @@ int main(int argc, char **argv) {
   socket_option = 0;
   err = zmq_setsockopt(router, ZMQ_SNDHWM, &socket_option, sizeof(socket_option));
   if (err == -1) {
-    fprintf(stderr, "%s: Could not set SNDHWM for router: %s\n", id, zmq_strerror(errno));
+    isLogging_err("%s: Could not set SNDHWM for router: %s\n", id, zmq_strerror(errno));
     exit (-1);
   }
 
@@ -189,7 +189,7 @@ int main(int argc, char **argv) {
   //
   err_dealer = zmq_socket(zctx, ZMQ_DEALER);
   if (err_dealer == NULL) {
-    fprintf(stderr, "%s: Could not create dealer socket: %s\n", id, zmq_strerror(errno));
+    isLogging_err("%s: Could not create dealer socket: %s\n", id, zmq_strerror(errno));
     exit (-1);
   }
 
@@ -199,7 +199,7 @@ int main(int argc, char **argv) {
   socket_option = 0;
   err = zmq_setsockopt(err_dealer, ZMQ_RCVHWM, &socket_option, sizeof(socket_option));
   if (err == -1) {
-    fprintf(stderr, "%s: Could not set RCVHWM for err_dealer: %s\n", id, zmq_strerror(errno));
+    isLogging_err("%s: Could not set RCVHWM for err_dealer: %s\n", id, zmq_strerror(errno));
     exit (-1);
   }
 
@@ -209,7 +209,7 @@ int main(int argc, char **argv) {
   socket_option = 0;
   err = zmq_setsockopt(err_dealer, ZMQ_SNDHWM, &socket_option, sizeof(socket_option));
   if (err == -1) {
-    fprintf(stderr, "%s: Could not set SNDHWM for err_dealer: %s\n", id, zmq_strerror(errno));
+    isLogging_err("%s: Could not set SNDHWM for err_dealer: %s\n", id, zmq_strerror(errno));
     exit (-1);
   }
 
@@ -217,7 +217,7 @@ int main(int argc, char **argv) {
   //
   err        = zmq_bind(err_dealer, ERR_REP);
   if (err == -1) {
-    fprintf(stderr, "%s: Could not bind err_dealer to socket %s: %s\n", id, ERR_REP, zmq_strerror(errno));
+    isLogging_err("%s: Could not bind err_dealer to socket %s: %s\n", id, ERR_REP, zmq_strerror(errno));
     exit (-1);
   }
 
@@ -225,7 +225,7 @@ int main(int argc, char **argv) {
   //
   err_rep = zmq_socket(zctx, ZMQ_REP);
   if (err_rep == NULL) {
-    fprintf(stderr, "%s: Could not create err_rep socket: %s\n", id, zmq_strerror(errno));
+    isLogging_err("%s: Could not create err_rep socket: %s\n", id, zmq_strerror(errno));
     exit (-1);
   }
 
@@ -234,7 +234,7 @@ int main(int argc, char **argv) {
   socket_option = 0;
   err = zmq_setsockopt(err_rep, ZMQ_RCVHWM, &socket_option, sizeof(socket_option));
   if (err == -1) {
-    fprintf(stderr, "%s: Could not set RCVHWM for err_rep: %s\n", id, zmq_strerror(errno));
+    isLogging_err("%s: Could not set RCVHWM for err_rep: %s\n", id, zmq_strerror(errno));
     exit (-1);
   }
 
@@ -243,7 +243,7 @@ int main(int argc, char **argv) {
   socket_option = 0;
   err = zmq_setsockopt(err_rep, ZMQ_SNDHWM, &socket_option, sizeof(socket_option));
   if (err == -1) {
-    fprintf(stderr, "%s: Could not set SNDHWM for err_rep: %s\n", id, zmq_strerror(errno));
+    isLogging_err("%s: Could not set SNDHWM for err_rep: %s\n", id, zmq_strerror(errno));
     exit (-1);
   }
 
@@ -251,7 +251,7 @@ int main(int argc, char **argv) {
   //
   err     = zmq_connect(err_rep, ERR_REP);
   if (err == -1) {
-    fprintf(stderr, "%s: Could not connect err_rep to socket %s: %s\n", id, ERR_REP, zmq_strerror(errno));
+    isLogging_err("%s: Could not connect err_rep to socket %s: %s\n", id, ERR_REP, zmq_strerror(errno));
     exit (-1);
   }
 
@@ -284,7 +284,7 @@ int main(int argc, char **argv) {
     //
     err = zmq_poll(zpollitems, n_zpollitems, -1);
     if (err == -1) {
-      fprintf(stderr, "%s: zmq_poll returned error (%d poll items): %s\n", id, n_zpollitems, zmq_strerror(errno));
+      isLogging_err("%s: zmq_poll returned error (%d poll items): %s\n", id, n_zpollitems, zmq_strerror(errno));
       exit (-1);
     }
     
@@ -362,7 +362,7 @@ int main(int argc, char **argv) {
       zmq_msg_init(&envelope_msgs[i]);
       nreceived = zmq_msg_recv(&envelope_msgs[i], router, 0);
       if (nreceived == -1) {
-        fprintf(stderr, "%s: Error receiving envelope from public dealer: %s\n", id, zmq_strerror(errno));
+        isLogging_err("%s: Error receiving envelope from public dealer: %s\n", id, zmq_strerror(errno));
         exit (-1);
       }
       more = zmq_msg_more(&envelope_msgs[i]);
@@ -372,7 +372,7 @@ int main(int argc, char **argv) {
     }
 
     if (i == sizeof(envelope_msgs)/sizeof(envelope_msgs[i]) || !more) {
-      fprintf(stderr, "%s: Unexpected incoming message format. Too many router/dealers?\n", id);
+      isLogging_err("%s: Unexpected incoming message format. Too many router/dealers?\n", id);
       exit (-1);
     }
 
@@ -384,7 +384,7 @@ int main(int argc, char **argv) {
     zmq_msg_init(&zmsg);
     nreceived = zmq_msg_recv(&zmsg, router, 0);
     if (nreceived == -1) {
-      fprintf(stderr, "%s: Error receiving message from public dealer: %s\n", id, zmq_strerror(errno));
+      isLogging_err("%s: Error receiving message from public dealer: %s\n", id, zmq_strerror(errno));
       exit (-1);
     }
 
@@ -399,7 +399,7 @@ int main(int argc, char **argv) {
     isRequest = json_loadb(zmq_msg_data(&zmsg), zmq_msg_size(&zmsg), 0, &jerr);
 
     if (isRequest == NULL) {
-      fprintf(stderr, "%s: Failed to parse '%s': %s\n", id, (char *)zmq_msg_data(&zmsg), jerr.text);
+      isLogging_err("%s: Failed to parse '%s': %s\n", id, (char *)zmq_msg_data(&zmsg), jerr.text);
       is_zmq_error_reply(envelope_msgs, n_envelope_msgs, err_dealer, "%s: Failed to parse request: %s", id, jerr.text);
       continue;
     }
@@ -408,7 +408,7 @@ int main(int argc, char **argv) {
     if (pid == NULL) {
       char *tmpstr;
       tmpstr = json_dumps(isRequest, JSON_SORT_KEYS | JSON_COMPACT | JSON_INDENT(0));
-      fprintf(stderr, "%s: isRequest without pid: %s\n", id, tmpstr);
+      isLogging_err("%s: isRequest without pid: %s\n", id, tmpstr);
       is_zmq_error_reply(envelope_msgs, n_envelope_msgs, err_dealer, "%s: request does not contain pid", id);
       free(tmpstr);
       json_decref(isRequest);
@@ -426,21 +426,21 @@ int main(int argc, char **argv) {
       //
       reply = redisCommand(rc, "HMGET %s isAuth isAuthSig", pid);
       if (reply == NULL) {
-        fprintf(stderr, "%s: Redis error (isAuth): %s\n", id, rc->errstr);
+        isLogging_err("%s: Redis error (isAuth): %s\n", id, rc->errstr);
         exit(-1);
       }
     
       if (reply->type == REDIS_REPLY_ERROR) {
-        fprintf(stderr, "%s: Reids hmget isAuth produced an error: %s\n", id, reply->str);
+        isLogging_err("%s: Reids hmget isAuth produced an error: %s\n", id, reply->str);
         exit(-1);
       }
 
       if (reply->type != REDIS_REPLY_ARRAY) {
         if (subreply->type == REDIS_REPLY_NIL) {
-          fprintf(stderr, "%s: Process %s is not active\n", id, pid);
+          isLogging_err("%s: Process %s is not active\n", id, pid);
           is_zmq_error_reply(envelope_msgs, n_envelope_msgs, err_dealer, "%s: Process %s is not active", id, pid);
         } else {
-          fprintf(stderr, "%s: Redis hmget isAuth isAuthSig did not return an array, got type %d\n", id, reply->type);
+          isLogging_err("%s: Redis hmget isAuth isAuthSig did not return an array, got type %d\n", id, reply->type);
           is_zmq_error_reply(envelope_msgs, n_envelope_msgs, err_dealer, "%s: Process %s is not authorized (1)", id, pid);
         }
 
@@ -451,7 +451,7 @@ int main(int argc, char **argv) {
 
       subreply = reply->element[0];
       if (subreply->type != REDIS_REPLY_STRING) {
-        fprintf(stderr, "%s: isAuth reply is not a string, got type %d\n", id, subreply->type);
+        isLogging_err("%s: isAuth reply is not a string, got type %d\n", id, subreply->type);
         is_zmq_error_reply(envelope_msgs, n_envelope_msgs, err_dealer, "%s: Process %s is not authorized (2)", id, pid);
         
         json_decref(isRequest);
@@ -462,7 +462,7 @@ int main(int argc, char **argv) {
 
       subreply = reply->element[1];
       if (subreply->type != REDIS_REPLY_STRING) {
-        fprintf(stderr, "%s: isAuthSig reply is not a string, got type %d\n", id, subreply->type);
+        isLogging_err("%s: isAuthSig reply is not a string, got type %d\n", id, subreply->type);
         is_zmq_error_reply(envelope_msgs, n_envelope_msgs, err_dealer, "%s: Process %s is not authorized (3)", id, pid);
         
         json_decref(isRequest);
@@ -472,7 +472,7 @@ int main(int argc, char **argv) {
       isAuthSig = subreply->str;
         
       if (!verifyIsAuth( isAuth_str, isAuthSig)) {
-        fprintf(stderr, "%s: Bad isAuth signature for pid %s: isAuth_str: '%s'\n", id, pid, isAuth_str);
+        isLogging_err("%s: Bad isAuth signature for pid %s: isAuth_str: '%s'\n", id, pid, isAuth_str);
         is_zmq_error_reply(envelope_msgs, n_envelope_msgs, err_dealer, "%s: Process %s is not authorized (4)", id, pid);
 
         json_decref(isRequest);
@@ -482,7 +482,7 @@ int main(int argc, char **argv) {
 
       isAuth = json_loads(isAuth_str, 0, &jerr);
       if (isRequest == NULL) {
-        fprintf(stderr, "%s: Failed to parse '%s': %s\n", id, subreply->str, jerr.text);
+        isLogging_err("%s: Failed to parse '%s': %s\n", id, subreply->str, jerr.text);
         is_zmq_error_reply(envelope_msgs, n_envelope_msgs, err_dealer, "%s: Process %s is not authorized (5)", id, pid);
 
         json_decref(isRequest);
@@ -496,7 +496,7 @@ int main(int argc, char **argv) {
       freeReplyObject(reply);
 
       if (strcmp(pid, json_string_value(json_object_get(isAuth, "pid"))) != 0) {
-        fprintf(stderr, "%s: pid from request does not match pid from isAuth: '%s' vs '%s'\n", id, pid, json_string_value(json_object_get(isAuth, "pid")));
+        isLogging_err("%s: pid from request does not match pid from isAuth: '%s' vs '%s'\n", id, pid, json_string_value(json_object_get(isAuth, "pid")));
         is_zmq_error_reply(envelope_msgs, n_envelope_msgs, err_dealer, "%s: Process %s is not authorized (6)", id, pid);
 
         json_decref(isRequest);
@@ -504,7 +504,7 @@ int main(int argc, char **argv) {
         continue;
       }
       if (!isEsafAllowed(isAuth, esaf)) {
-        fprintf(stderr, "%s: user %s is not permitted to access esaf %d\n", id, json_string_value(json_object_get(isAuth, "uid")), esaf);
+        isLogging_err("%s: user %s is not permitted to access esaf %d\n", id, json_string_value(json_object_get(isAuth, "uid")), esaf);
         is_zmq_error_reply(envelope_msgs, n_envelope_msgs, err_dealer, "%s: Process %s is not authorized for esaf %d", id, pid, esaf);
         
         json_decref(isRequest);
@@ -520,22 +520,22 @@ int main(int argc, char **argv) {
       //
       reply = redisCommand(rc, "EXISTS %s", pid);
       if (reply == NULL) {
-        fprintf(stderr, "%s: Redis error (exists pid): %s\n", id, rc->errstr);
+        isLogging_err("%s: Redis error (exists pid): %s\n", id, rc->errstr);
         exit(-1);
       }
       
       if (reply->type == REDIS_REPLY_ERROR) {
-        fprintf(stderr, "%s: Reids exists pid produced an error: %s\n", id, reply->str);
+        isLogging_err("%s: Reids exists pid produced an error: %s\n", id, reply->str);
         exit(-1);
       }
 
       if (reply->type != REDIS_REPLY_INTEGER) {
-        fprintf(stderr, "%s: Redis exists pid did not return an integer, got type %d\n", id, reply->type);
+        isLogging_err("%s: Redis exists pid did not return an integer, got type %d\n", id, reply->type);
         exit (-1);
       }
 
       if (reply->integer != 1) {
-        fprintf(stderr, "%s: Process %s is no longer active\n", id, pid);
+        isLogging_err("%s: Process %s is no longer active\n", id, pid);
         is_zmq_error_reply(envelope_msgs, n_envelope_msgs, err_dealer, "%s: Process %s is not authorized (7)", id, pid);
 
         //
