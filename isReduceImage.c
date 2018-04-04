@@ -706,7 +706,6 @@ void reduceImage32( isImageBufType *src, isImageBufType *dst, int x, int y, int 
     set_json_object_real(id,    src->meta, "stddev",     json_real_value(json_object_get(dst->meta, "stddev")));
     set_json_object_integer(id, src->meta, "min",        json_integer_value(json_object_get(dst->meta, "min")));
     set_json_object_integer(id, src->meta, "max",        json_integer_value(json_object_get(dst->meta, "max")));
-    set_json_object_real(id,    src->meta, "stddev",     json_integer_value(json_object_get(dst->meta, "stddev")));
     set_json_object_integer(id, src->meta, "nSaturated", nsat);
   }
 
@@ -937,7 +936,9 @@ isImageBufType *isReduceImage(isWorkerContext_t *wctx, redisContext *rc, json_t 
   rtn->buf_height = dstHeight;
   rtn->buf_depth  = image_depth;
 
-  rtn->meta = raw->meta;
+  set_json_object_integer(id, raw->meta, "frame", frame);
+
+  rtn->meta = json_copy(raw->meta);
   json_incref(rtn->meta);
 
   x = winWidth  * segcol;
