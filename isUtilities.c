@@ -624,15 +624,15 @@ void is_zmq_error_reply(zmq_msg_t *msgs, int n_msgs, void *err_dealer, char *fmt
 
 
 herr_t is_h5_walker(unsigned n, const H5E_error2_t *err_desc, void *dummy) {
-  isLogging_err("file %s function %s line %s: %s", err_desc->file_name, err_desc->func_name, err_desc->desc);
+  isLogging_err("%d file: %s function: %s line: %d  desc: %s", n, err_desc->file_name, err_desc->func_name, err_desc->line, err_desc->desc);
   return 0;
 }
 
-int is_h5_error_handler(hid_t estack_id) {
+int is_h5_error_handler(hid_t estack_id, void *dummy) {
   static const char *id = FILEID "is_h5_error_handler";
   herr_t herr;
 
-  herr = H5Ewalk2(estack_id, H5E_WALK_DOWNWARD, is_h5_walker, NULL);
+  herr = H5Ewalk2(estack_id, H5E_WALK_DOWNWARD, is_h5_walker, dummy);
   if (herr < 0) {
     isLogging_err("%s: Failed to walk the h5 errors\n", id);
   }
