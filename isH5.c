@@ -103,7 +103,7 @@ h5_to_json_t json_convert_array[] = {
  ** done.  Programming errors are fatal with a brief but descriptive
  ** unique message.
  **/
-json_t *get_json( hid_t master_file, h5_to_json_t *htj) {
+json_t *get_json( const char *fn, hid_t master_file, h5_to_json_t *htj) {
   static const char *id = FILEID "get_json";
   json_t *rtn;          // our returned object
   herr_t herr;          // h5 error
@@ -128,6 +128,7 @@ json_t *get_json( hid_t master_file, h5_to_json_t *htj) {
     exit (-1);
   }
 
+  //isLogging_debug("%s: Calling H5Dopen2 for %s", id, fn);
   data_set = H5Dopen2( master_file, htj->h5_location, H5P_DEFAULT);
   if (data_set < 0) {
     isLogging_err("%s: Could not open data_set %s\n", id, htj->h5_location);
@@ -353,7 +354,7 @@ json_t *isH5GetMeta(isWorkerContext_t *wctx, const char *fn) {
 
   pthread_mutex_lock(&wctx->metaMutex);
   for (i=0; i < sizeof(json_convert_array)/sizeof(json_convert_array[0]); i++) {
-    tmp_obj = get_json(master_file, &json_convert_array[i]);
+    tmp_obj = get_json(fn, master_file, &json_convert_array[i]);
 
     if (!tmp_obj) {
       json_decref(meta);
@@ -469,6 +470,7 @@ int discovery_cb(hid_t lid, const char *name, const H5L_info_t *info, void *op_d
       }    
     }
     */
+    //isLogging_debug("%s: calling H5Dopen2 for %s", id, name);
     these_frames->data_set = H5Dopen2(lid, name, H5P_DEFAULT);
     if (these_frames->data_set < 0) {
       isLogging_err("%s: Failed to open dataset %s\n", id, name);
@@ -476,16 +478,18 @@ int discovery_cb(hid_t lid, const char *name, const H5L_info_t *info, void *op_d
       break;
     }
 
-    these_frames->file_space = H5Dget_space(these_frames->data_set);
-    if (these_frames->file_space < 0) {
-      isLogging_err("%s: Could not get data_set space for %s\n", id, name);
+    //isLogging_debug("%s: calling H5Dget_type for %s", id, name);
+    these_frames->file_type = H5Dget_type(these_frames->data_set);
+    if (these_frames->file_type < 0) {
+      isLogging_err("%s: Could not get data_set type for %s\n", id, name);
       failed = 1;
       break;
     }
 
-    these_frames->file_type = H5Dget_type(these_frames->data_set);
-    if (these_frames->file_type < 0) {
-      isLogging_err("%s: Could not get data_set type for %s\n", id, name);
+    //isLogging_debug("%s: calling H5Dget_space for %s", id, name);
+    these_frames->file_space = H5Dget_space(these_frames->data_set);
+    if (these_frames->file_space < 0) {
+      isLogging_err("%s: Could not get data_set space for %s\n", id, name);
       failed = 1;
       break;
     }
@@ -727,6 +731,7 @@ int isH5GetData(isWorkerContext_t *wctx, const char *fn, isImageBufType **imbp) 
     //
     // Find which frame is where
     //
+    //isLogging_debug("%s: visiting file %s", id, fn);
     herr = H5Lvisit_by_name(master_file, "/entry/data", H5_INDEX_NAME, H5_ITER_INC, discovery_cb, extra, H5P_DEFAULT);
     if (herr < 0) {
       isLogging_err("%s: Could not discover which frame is where for file %s\n", id, fn);
@@ -752,6 +757,7 @@ int isH5GetData(isWorkerContext_t *wctx, const char *fn, isImageBufType **imbp) 
       //
       // Get the bad pixel map
       //
+      //isLogging_debug("%s: calling H5Dopen2 for pixel mask", id);
       data_set = H5Dopen2(master_file, "/entry/instrument/detector/detectorSpecific/pixel_mask", H5P_DEFAULT);
       if (data_set < 0) {
         isLogging_err("%s: Could not open pixel mask data set\n", id);
