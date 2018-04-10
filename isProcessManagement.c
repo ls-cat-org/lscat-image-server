@@ -40,11 +40,11 @@ void isInit() {
 
   isLogging_init();
 
+
   herr = H5Eset_auto2(H5E_DEFAULT, (H5E_auto2_t) is_h5_error_handler, stderr);
   if (herr < 0) {
     isLogging_crit("%s: Could not set HDF5 error reporting\n", id);
   }
-
 
   // Error recovery block
   //

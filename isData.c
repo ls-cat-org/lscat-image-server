@@ -882,12 +882,18 @@ isImageBufType *isGetRawImageBuf(isWorkerContext_t *wctx, redisContext *rc, json
   switch (ft) {
   case HDF5:
     rtn->meta = isH5GetMeta(wctx, fn);
+    if (!rtn->meta) {
+      break;
+    }
     err = isH5GetData(wctx, fn, &rtn);
     break;
       
   case RAYONIX:
   case RAYONIX_BS:
     rtn->meta = isRayonixGetMeta(wctx, fn);
+    if (!rtn->meta) {
+      break;
+    }
     err = isRayonixGetData(wctx, fn, &rtn);
     break;
       
