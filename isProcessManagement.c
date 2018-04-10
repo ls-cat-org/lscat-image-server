@@ -522,11 +522,12 @@ void remakeProcessList(redisContext *rc) {
  **
  */
 void listProcesses() {
+  static const char *id = FILEID "listProcesses";
   isProcessListType *pp;
   int i;
 
   for (i=1, pp=firstProcessListItem; pp!=NULL; i++, pp=pp->next) {
-    isLogging_debug("listProcesses: %d: %s\n", i, pp->key);
+    isLogging_debug("%s: %d: %s\n", id, i, pp->key);
   }
 }
 
