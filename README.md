@@ -1,7 +1,7 @@
 LS-CAT Image Server
 ===================
 
-@copyright 2017 by Northwestern University.  All rights reserved.
+@copyright 2017-2018 by Northwestern University.  All rights reserved.
 @author Keith Brister
 
 Overview
@@ -85,10 +85,10 @@ receiving a new one.  For us this means that
 ![Image Server Data Flow](isOverview.png)
 <!--@image latex isOverview.eps "Image Server Data Flow"-->
 
-2. Request is aggregated by `is_proxy`.  This allows for multiple
-   instances of `is.js (which we have) on possibly multiple web
+1. Request is aggregated by `is_proxy`.  This allows for multiple
+   instances of `is.js` (which we have) on possibly multiple web
    servers (which we do not have *yet*).  Note that the location of
-   `is_proxy` is well know so that `is.js` and the Image Server
+   `is_proxy` is well known so that `is.js` and the Image Server
    Process Manager can connect to it.  This obviates the need for a
    more complex discovery mechanism.
 
@@ -173,10 +173,10 @@ A Note About Error Handling
 
 In this project all programming and initialization errors are
 considered fatal.  Either `assert` is called or a mesage is printed
-to stderr and `exit(-1)` is called.
+to syslog and `exit(-1)` is called.
 
 Non-programming errors always result in a error being sent back to the
-user via ZMQ and perhaps a message being printed to stderr.
+user via ZMQ and perhaps a message being printed to syslog.
 
-Debugging output is sent to stdout.
+Debugging output is sent to syslog.
 
