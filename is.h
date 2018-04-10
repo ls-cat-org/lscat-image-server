@@ -228,4 +228,4 @@ extern void isLogging_err(char *fmt, ...);
 extern void isLogging_crit(char *fmt, ...);
 extern void isLogging_alert(char *fmt, ...);
 extern void isLogging_emerg(char *fmt, ...);
-extern int is_h5_error_handler(hid_t estack_id);
+extern int is_h5_error_handler(hid_t estack_id, void *dummy);
