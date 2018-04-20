@@ -608,7 +608,7 @@ void reduceImage16( isImageBufType *src, isImageBufType *dst, int x, int y, int 
             (double)json_real_value(json_object_get(dst->meta, "stddev")));
   }
 
-  set_json_object_integer(id, src->meta, "spots", spots);
+  set_json_object_integer(id, dst->meta, "spots", spots);
 }
 
 /** Reduce the given 32 bit image
@@ -738,7 +738,7 @@ void reduceImage32( isImageBufType *src, isImageBufType *dst, int x, int y, int 
             (double)json_real_value(json_object_get(dst->meta, "stddev")));
   }
 
-  set_json_object_integer(id, src->meta, "spots", spots);
+  set_json_object_integer(id, dst->meta, "spots", spots);
 }
 
             
