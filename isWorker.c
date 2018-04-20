@@ -133,8 +133,9 @@ void *isWorker(void *voidp) {
         isJpeg(wctx, &tc, job);
       } else if (strcasecmp("index", job_type) == 0) {
         isIndex(wctx, &tc, job);
+      } else if (strcasecmp("spots", job_type) == 0) {
+        isSpots(wctx, &tc, job);
       } else {
-
         isLogging_err("%s: Unknown job type '%s' in job '%s'\n", id, job_type, jobstr);
         is_zmq_error_reply(NULL, 0, tc.rep, "%s: Unknown job type '%s' in job '%s'", id, job_type, jobstr);
       }
