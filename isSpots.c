@@ -34,6 +34,7 @@ void isSpots(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
   zmq_msg_t err_msg;            // error message to send via zmq
   zmq_msg_t job_msg;            // the job message to send via zmq
   zmq_msg_t meta_msg;           // the metadata to send via zmq
+  json_t *jxsize;               // xsize entry in job
 
   pthread_mutex_lock(&wctx->metaMutex);
   fn = json_string_value(json_object_get(job, "fn"));
@@ -52,6 +53,19 @@ void isSpots(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
 
     return;
   }
+
+  // Set a default xsize if none was specified
+  jxsize = json_object_get(job, "xsize");
+  if (jxsize == NULL ) {
+    set_json_object_integer(id, job, "xsize", IS_DEFAULT_SPOT_IMAGE_WIDTH);
+  } else {
+    json_decref(jxsize);
+  }
+
+  // Enforce looking at the full image
+  set_json_object_real(id, job, "segcol", 0.0);
+  set_json_object_real(id, job, "segrow", 0.0);
+  set_json_object_real(id, job, "zoom", 1.0);
 
   // when isReduceImage returns a buffer it is read locked
   imb = isReduceImage(wctx, tcp->rc, job);

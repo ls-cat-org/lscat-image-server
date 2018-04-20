@@ -73,6 +73,9 @@
 //! There is some overhead for jpegs, this should allow enough overhead for output buffer allocation purposes.
 #define MIN_JPEG_BUFFER 2048
 
+//! Default size (width) of the spot finder image
+#define IS_DEFAULT_SPOT_IMAGE_WIDTH 384
+
 //! Well known address of the image server request dealer.
 #define PUBLIC_DEALER  "tcp://10.1.253.10:60202"
 
