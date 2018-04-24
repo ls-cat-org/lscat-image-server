@@ -40,6 +40,8 @@ void isSpots(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
   fn = json_string_value(json_object_get(job, "fn"));
   pthread_mutex_unlock(&wctx->metaMutex);
 
+  isLogging_info("%s: request for image %s", id, fn);
+
   if (fn == NULL || strlen(fn) == 0) {
     char *tmps;
 
@@ -58,8 +60,6 @@ void isSpots(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
   jxsize = json_object_get(job, "xsize");
   if (jxsize == NULL ) {
     set_json_object_integer(id, job, "xsize", IS_DEFAULT_SPOT_IMAGE_WIDTH);
-  } else {
-    json_decref(jxsize);
   }
 
   // Enforce looking at the full image
@@ -124,6 +124,8 @@ void isSpots(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
     pthread_exit (NULL);
   }
 
+  isLogging_info("%s: returning meta data %s", id, meta_str);
+
   // Send them out
   do {
     // Error Message
@@ -141,7 +143,7 @@ void isSpots(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
     }
 
     // Meta
-    err = zmq_msg_send(&meta_msg, tcp->rep, ZMQ_SNDMORE);
+    err = zmq_msg_send(&meta_msg, tcp->rep, 0);
     if (err == -1) {
       isLogging_err("%s: sending meta_str failed: %s\n", id, zmq_strerror(errno));
       break;
