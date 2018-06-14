@@ -5,22 +5,42 @@
  */
 #include "is.h"
 
-json_t *isIndexImages(json_t *job, const char *f1, const char *f2, const int frame1, const int frame2) {
+json_t *isIndexImages(redisContext *rrc, const char *progressPublisher, const char *f1, const char *f2, const int frame1, const int frame2) {
   static const char *id = FILEID "isIndexImages";
-  json_t *rtn;
-  int c;
-  int pipein[2];
-  int pipeout[2];
-  int pipeerr[2];
-  int pipeprogress[2];
-  int pipejson[2];
-  int pollstat;
-  struct pollfd pollin;
-  struct pollfd pollout;
-  struct pollfd pollerr;
-  struct pollfd pollprogress;
-  struct pollfd polljson;
-  struct pollfd polllist[5];
+  char *f1_local;               // f1 without dir component
+  char *f2_local;               // f2 without dir component
+  char *json_output;            // json formated output from called program
+  char *json_output_end;        // Place to add json new output 
+  char *s_err;                  // stderr output from called program
+  char *s_err_end;              // Place to add new stderr output
+  char *tmp_dir_template;       // our temporary directory name template
+  char *tmp_dir;                // our temporary directory name
+  char child_progress[256];     // short progress string to return out-of-band
+  int bytes_read;               // generic bytes read from a file descriptor
+  int c;                        // returned by fork: 0 = in child, >0 = in parent, -1 = fork error
+  int err;                      // returned by waitpid: 0 = still running, > 0 done, -1 error
+  int i;                        // loop over poll events
+  int json_output_size;         // size of json_output
+  int keep_on_truckin;          // flag to keep polling
+  int npoll;                    // number of fd for poll to listen for
+  int pipeerr[2];               // Our stderr pipes
+  int pipein[2];                // Our stdin pipes
+  int pipejson[2];              // Our json pipes
+  int pipeout[2];               // Our stdout pipes
+  int pipeprogress[2];          // Our progress pipes
+  int pollstat;                 // result of poll command
+  int s_err_size;               // size of s_err
+  FILE *shell_script;           // shell script file we are creating (then running)
+  int status;                   // status returned by waitpid
+  json_error_t jerr;            // error returned when creating json object
+  json_t *rtn;                  // our return value
+  redisReply *reply;            // returned by redisCommand when we publish our progress
+  struct pollfd pollerr;        // poll for stderr 
+  struct pollfd polljson;       // poll for json fd
+  struct pollfd polllist[5];    // list of fd's we're polling
+  struct pollfd pollout;        // poll for stdout
+  struct pollfd pollprogress;   // poll for progress
+
 
   rtn = NULL;
 
@@ -28,26 +48,24 @@ json_t *isIndexImages(json_t *job, const char *f1, const char *f2, const int fra
    *    Set up pipes to child process    *
    ***************************************/
   pipe2(pipein,       O_NONBLOCK | O_CLOEXEC);  // Future use: setup child in anticipation then send command via stdin
-  pipe2(pipeout,      O_NONBLOCK | O_CLOEXEC);  // We'll be throwing this out by sending to /dev/null
+  pipe2(pipeout,      O_NONBLOCK | O_CLOEXEC);  // We'll be throwing this out by, well, not saving it.
   pipe2(pipeerr,      O_NONBLOCK | O_CLOEXEC);  // At some point we'll parse this for errors.  No API developed yet
   pipe2(pipeprogress, O_NONBLOCK);              // Progress report to be sent out of band to the user
   pipe2(pipejson,     O_NONBLOCK);              // The result we are looking for as a response to the original request
 
   char * const index_args[] = {
-    "/pf/people/edu/northwestern/k-brister/zz/t.sh",
+    "indexing_script.sh",
     NULL
   };
 
   char * env[] = {
     "BASH_ENV=/usr/local/bin/is_indexing_setup.sh",
-    NULL,               // reserved for progress fd
-    NULL,               // reserved for json fd
     NULL
   };
 
   c = fork();
   if (c == -1) {
-    printf( "fork 2 failed: %s\n", strerror(errno));
+    isLogging_err( "%s: fork 2 failed: %s\n", id, strerror(errno));
     exit (-1);
   }
 
@@ -64,221 +82,280 @@ json_t *isIndexImages(json_t *job, const char *f1, const char *f2, const int fra
     close(pipeprogress[0]);     // close unneeded end of pipe
     close(pipejson[0]);         // close unneeded end of pipe
 
-    snprintf(env_progress_fd, sizeof(env_progress_fd)-1, "LSCAT_PROGRESS_FD=%d", pipeprogress[1]);
-    env_progress_fd[sizeof(env_progress_fd)-1] = 0;
-    env[1]=env_progress_fd;
+    //
+    // Make tmp directory
+    //
+    tmp_dir_template = strdup("/pf/tmp/isIndex-XXXXXX");
+    tmp_dir = mkdtemp(tmp_dir_template);
+    if (tmp_dir == NULL) {
+      isLogging_err("%s: failed to create temp directory from template %s: %s", id, tmp_dir_template, strerror(errno));
+      exit (-1);
+    }
 
-    snprintf(env_json_fd, sizeof(env_json_fd)-1, "LSCAT_JSON_FD=%d", pipejson[1]);
-    env_json_fd[sizeof(env_json_fd)-1] = 0;
-    env[2] = env_json_fd;
+    isLogging_info("%s: Using temp directory %s", id, tmp_dir);
 
+    //
+    // Change to tmp directory
+    //
+    err = chdir(tmp_dir);
+    if (err == -1) {
+      isLogging_err("%s: failed to change to temp directory %s: %s", id, tmp_dir, strerror(errno));
+      exit (-1);
+    }
+
+    //
+    // Make hard links in tmp directory to data files
+    //
+    if (f1 && strlen(f1)) {
+      f1_local = file_name_component(id, f1);
+      err = link(f1, f1_local);
+      if (err == -1) {
+        isLogging_err("%s: failed to link file %s: %s", id, f1, strerror(errno));
+        // Should we exit here?
+      }
+    }
+
+    if (f2 && strlen(f2)) {
+      f2_local = file_name_component(id, f2);
+      err = link(f2, f2_local);
+      if (err == -1) {
+        isLogging_err("%s: failed to link file %s: %s", id, f2, strerror(errno));
+        // Should we extit or return here?
+      }
+    }
+
+    shell_script = fopen("indexing_script.sh", "w");
+    if (shell_script == NULL) {
+      isLogging_err("%s: could not open indexing_script: %s", id, strerror(errno));
+      exit (-1);
+    }
+    fprintf(shell_script, "#! /bin/bash\n");
+    fprintf(shell_script, "rapd.index --json --json-fd %d --progress-fd %d ", pipejson[1], pipeprogress[1]);
+    //
+    // if f1 and f2 are the same and frame1 and frame2 are different then we specify the frame numbers and one file name
+    //
+    if ((strcmp(f1,f2) == 0 || f2==NULL || strlen(f2)==0) && frame1 != frame2) {
+      fprintf(shell_script, "--hdf5-image-range %d,%d %s", frame1, frame2, f1_local);
+    } else {
+      // else we just specify the two file names and ignore the frame numbers
+      fprintf(shell_script, "%s %s", f1_local, f2_local);
+    }
+    fprintf(shell_script, "\nexit 0\n");
+    fclose(shell_script);
+    err = chmod("indexing_script.sh", S_IXUSR | S_IRUSR | S_IWUSR);
+    if (err == -1) {
+      isLogging_err("%s: could not set mode for script: %s", id, strerror(errno));
+      exit (-1);
+    }
+    
     execve( index_args[0], index_args, env);
   
     // We only get here on failure
     printf("execve 2 failed: %s\n", strerror(errno));
     exit (-1);
   }
+
   /*************  In Parent *****************/  
+  json_output     = NULL;
+  json_output_end = NULL;
+  json_output_size = 0;
+  s_err            = NULL;
+  s_err_end        = NULL;
+  s_err_size       = 0;
 
-  {
-    static char * const fd_names[] = {
-      // "stdin",
-      "stdout",
-      "stderr",
-      "json",
-      "progress"
-    };
-    char *json_output, *json_output_end;
-    int json_output_size;
-    char child_stdout[256];
-    char child_stderr[256];
-    char child_json[256];
-    char child_progress[256];
-    int bytes_read;
-    int npoll;
-    int i;
-    int log_stdout, log_stderr, log_json, log_progress;
+  pollout.fd = pipeout[0];
+  pollout.events = POLLIN;
 
-    
-    log_stdout   = open("stdout.log", O_CREAT | O_WRONLY | O_TRUNC );
-    log_stderr   = open("stderr.log", O_CREAT | O_WRONLY | O_TRUNC );
-    log_json     = open("json.log", O_CREAT | O_WRONLY | O_TRUNC );
-    log_progress = open("progress.log", O_CREAT | O_WRONLY | O_TRUNC );
+  pollerr.fd = pipeerr[0];
+  pollerr.events = POLLIN;
 
-    json_output = NULL;
-    json_output_end = NULL;
-    json_output_size = 0;
+  pollprogress.fd = pipeprogress[0];
+  pollprogress.events = POLLIN;
 
-    pollout.fd = pipeout[0];
-    pollout.events = POLLIN;
+  polljson.fd     = pipejson[0];
+  polljson.events = POLLIN;
 
-    pollerr.fd = pipeerr[0];
-    pollerr.events = POLLIN;
+  close(pipeprogress[1]);       // close unneeded end of pipe
+  close(pipejson[1]);           // close unneeded end of pipe
 
-    pollprogress.fd = pipeprogress[0];
-    pollprogress.events = POLLIN;
+  //
+  // Ignore pollin for now
+  //
+  keep_on_truckin = 1;
+  printf( "starting poll loop\n");
+  do {
+    npoll = 0;;
+    if (pollout.fd >= 0) {
+      polllist[npoll++] = pollout;
+    }
+    if (pollerr.fd >= 0) {
+      polllist[npoll++] = pollerr;
+    }
+    if (polljson.fd >= 0) {
+      polllist[npoll++] = polljson;
+    }
+    if (pollprogress.fd >= 0) {
+      polllist[npoll++] = pollprogress;
+    }
 
-    polljson.fd     = pipejson[0];
-    polljson.events = POLLIN;
+    pollstat = poll( polllist, npoll, 100);
+    if (pollstat == -1) {
+      printf("poll exited with error: %s\n", strerror(errno));
+      exit (-1);
+    }
 
-    close(pipeprogress[1]);       // close unneeded end of pipe
-    close(pipejson[1]);           // close unneeded end of pipe
-
-    //
-    // Ignore pollin for now
-    //
-    keep_on_truckin = 1;
-    printf( "starting poll loop\n");
-    do {
-      npoll = 0;;
-      if (pollout.fd >= 0) {
-        polllist[npoll++] = pollout;
+    if (pollstat == 0) {
+      //
+      // Check to see if our process is still running
+      //
+      err = waitpid(c, &status, WNOHANG);
+      if (err == c) {
+        keep_on_truckin = 0;
+        break;
       }
-      if (pollerr.fd >= 0) {
-        polllist[npoll++] = pollerr;
+      if (err == -1) {
+        isLogging_info("%s: waitpid 2 failed: %s\n", id, strerror(errno));
+        keep_on_truckin = 0;
+        break;
       }
-      if (polljson.fd >= 0) {
-        polllist[npoll++] = polljson;
-      }
-      if (pollprogress.fd >= 0) {
-        polllist[npoll++] = pollprogress;
-      }
+      continue;
+    }
 
-      pollstat = poll( polllist, npoll, 100);
-      if (pollstat == -1) {
-        printf("poll exited with error: %s\n", strerror(errno));
-        exit (-1);
-      }
+    for (i=0; i<npoll; i++) {
+      // check for errors
+      if (polllist[i].revents & (POLLERR | POLLHUP)) {
+        isLogging_info("%s: Error or hangup on fd %d\n", id, polllist[i].fd);
 
-      if (pollstat == 0) {
-        //
-        // Check to see if our process is still running
-        //
-        err = waitpid(c, &status, WNOHANG);
-        if (err == c) {
-          printf("*******  process ended  ********\n");
-
-          //printf("JSON RETURNED\n%*s\n", json_output_size, json_output);
-          printf("json_output_size: %d\n", json_output_size);
-          keep_on_truckin = 0;
-          break;
-        }
-        if (err == -1) {
-          printf("waitpid 2 failed: %s\n", strerror(errno));
-          exit (-1);
+        if (polllist[i].fd == pollout.fd) {
+          pollout.fd = -1;
         }
 
-        continue;
+        if (polllist[i].fd == pollerr.fd) {
+          pollerr.fd = -1;
+        }
+
+        if (polllist[i].fd == polljson.fd) {
+          polljson.fd = -1;
+        }
+
+        if (polllist[i].fd == pollprogress.fd) {
+          pollprogress.fd = -1;
+        }
+
+        close(polllist[i].fd);
       }
 
-      for (i=0; i<npoll; i++) {
-        // check for errors
-        if (polllist[i].revents & (POLLERR | POLLHUP)) {
-          printf("Error or hangup on fd %d\n", polllist[i].fd);
-          if (polllist[i].fd == pollout.fd) {
-            close(pollout.fd);
-            pollout.fd = -1;
+      // stdout service
+      // 
+      // We plan to ignore stdout but we at least need to service
+      // the socket so the clild does not hang with a full buffer.
+      //
+      if ((polllist[i].revents & POLLIN) && polllist[i].fd == pollout.fd) {
+        do {
+          char tmp[256];
+
+          bytes_read = read(pollout.fd, tmp, sizeof(tmp));
+          if (bytes_read == -1 && errno != EAGAIN && errno != EWOULDBLOCK) {
+            isLogging_info("%s: stdout read with error %s", id, strerror(errno));
           }
+        } while(bytes_read > 0);
+      }
 
-          if (polllist[i].fd == pollerr.fd) {
-            close(pollerr.fd);
-            pollerr.fd = -1;
+      // stderr service
+      //
+      // How exactly we handle errors is not fully designed at this
+      // point in time.  For now we'll pass back the errors in the
+      // return value so at least it's all handled in-band.
+      //
+      if ((polllist[i].revents & POLLIN) && polllist[i].fd == pollerr.fd) {
+        do {
+          char tmp[256];
+
+          tmp[0] = 0;
+          bytes_read = read(pollerr.fd, tmp, sizeof(tmp));
+          if (bytes_read > 0) {
+            // new stderr area
+            s_err = realloc(s_err, s_err_size + bytes_read);
+
+            // place to add the new stuff
+            s_err_end = s_err + s_err_size;
+
+            // add it
+            memcpy(s_err_end, tmp, bytes_read);
+
+            // new size of our stderr string
+            s_err_size += bytes_read;
           }
-
-          if (polllist[i].fd == polljson.fd) {
-            close(polljson.fd);
-            polljson.fd = -1;
+          if (bytes_read == -1 && errno != EAGAIN && errno != EWOULDBLOCK) {
+            isLogging_info("%s: stderr read with error %s", id, strerror(errno));
           }
+        } while(bytes_read > 0);
+      }
 
-          if (polllist[i].fd == pollprogress.fd) {
-            close(pollprogress.fd);
-            pollprogress.fd = -1;
+      // progress service
+      if ((polllist[i].revents & POLLIN) && polllist[i].fd == pollprogress.fd) {
+        do {
+          child_progress[0] = 0;
+          bytes_read = read(pollprogress.fd, child_progress, sizeof(child_progress)-1);
+          if (bytes_read > -1) {
+            child_progress[bytes_read] = 0;
+
+            if (rrc && progressPublisher) {
+              reply = redisCommand(rrc, "PUBLISH %s {\"progress\": \"%*s\"", progressPublisher, bytes_read, child_progress);
+              if (reply == NULL) {
+                isLogging_info("%s: redis progress publisher %s returned error %s when publishing '%*s'", id, progressPublisher, rrc->errstr, bytes_read, child_progress);
+              } else {
+                freeReplyObject(reply);
+              }
+            }
           }
-        }
+          if (bytes_read == -1 && errno != EAGAIN && errno != EWOULDBLOCK) {
+            isLogging_info("%s: progress read error: %s", id, strerror(errno));
+          }
+        } while(bytes_read > 0);
+      }
 
-        // stdout service
-        if ((polllist[i].revents & POLLIN) && polllist[i].fd == pollout.fd) {
-          do {
-            child_stdout[0] = 0;
-            bytes_read = read(pollout.fd, child_stdout, sizeof(child_stdout));
-            if (bytes_read > -1) {
-              child_stdout[bytes_read] = 0;
-              printf("read %d bytes from stdout: %s\n", bytes_read, child_stdout);
-              write(log_stdout, child_stdout, bytes_read);
-            }
-            if (bytes_read == -1 && errno != EAGAIN && errno != EWOULDBLOCK) {
-              printf("stdout read with error %s\n", strerror(errno));
-            }
-          } while(bytes_read > 0);
-        }
-
-        // stderr service
-        if ((polllist[i].revents & POLLIN) && polllist[i].fd == pollerr.fd) {
-          do {
-            child_stderr[0] = 0;
-            bytes_read = read(pollerr.fd, child_stderr, sizeof(child_stderr)-1);
-            if (bytes_read > -1) {
-              child_stderr[bytes_read] = 0;
-              printf("read %d bytes from stderr: %s\n", bytes_read, child_stderr);
-              write(log_stderr, child_stderr, bytes_read);
-            }
-            if (bytes_read == -1 && errno != EAGAIN && errno != EWOULDBLOCK) {
-              printf("stderr read with error %s\n", strerror(errno));
-            }
-          } while(bytes_read > 0);
-        }
-
-        // progress service
-        if ((polllist[i].revents & POLLIN) && polllist[i].fd == pollprogress.fd) {
-          do {
-            child_progress[0] = 0;
-            bytes_read = read(pollprogress.fd, child_progress, sizeof(child_progress)-1);
-            if (bytes_read > -1) {
-              child_progress[bytes_read] = 0;
-              printf("read %d bytes from progress pipe: %s\n", bytes_read, child_progress);
-              write(log_progress, child_progress, bytes_read);
-            }
-            if (bytes_read == -1 && errno != EAGAIN && errno != EWOULDBLOCK) {
-              printf("progress read with error %s\n", strerror(errno));
-            }
-          } while(bytes_read > 0);
-        }
-
-        // json service
-        if ((polllist[i].revents & POLLIN) && polllist[i].fd == polljson.fd) {
-          do {
-            char tmp[256];
+      // json service
+      if ((polllist[i].revents & POLLIN) && polllist[i].fd == polljson.fd) {
+        do {
+          char tmp[256];
           
-            tmp[0] = 0;
-            bytes_read = read(polljson.fd, tmp, sizeof(tmp));
-            if (bytes_read > 0) {
-              write(log_json, tmp, bytes_read);
-              json_output = realloc(json_output, json_output_size + bytes_read);
+          tmp[0] = 0;
+          bytes_read = read(polljson.fd, tmp, sizeof(tmp));
+          if (bytes_read > 0) {
+            json_output = realloc(json_output, json_output_size + bytes_read);
             
-              // location to start writing new data
-              json_output_end = json_output + json_output_size;
+            // location to start writing new data
+            json_output_end = json_output + json_output_size;
             
-              // move read data to the json buffer
-              memcpy(json_output_end, tmp, bytes_read);
+            // move read data to the json buffer
+            memcpy(json_output_end, tmp, bytes_read);
             
-              // save the new json_output buffer size
-              json_output_size += bytes_read;
-            }
-            if (bytes_read == -1 && errno != EAGAIN && errno != EWOULDBLOCK) {
-              printf("json read with error %s\n", strerror(errno));
-            }
-          } while(bytes_read > 0);
-        }
+            // save the new json_output buffer size
+            json_output_size += bytes_read;
+          }
+          if (bytes_read == -1 && errno != EAGAIN && errno != EWOULDBLOCK) {
+            isLogging_info("json read with error %s", strerror(errno));
+          }
+        } while(bytes_read > 0);
       }
-    } while (keep_on_truckin);
+    }
+  } while (keep_on_truckin);
+    
+  rtn = json_loads(json_output, 0, &jerr);
+  if (rtn == NULL ) {
+    isLogging_info("%s: json decode error for string '%s': %s line %d  column %d", id, json_output, jerr.text, jerr.line, jerr.column);
+  }
 
-    close(log_stdout);
-    close(log_stderr);
-    close(log_progress);
-    close(log_json);
-  
+  if (s_err_size > 0) {
+    json_t *j_stderr;
 
-
+    if (rtn == NULL) {
+      rtn = json_object();
+    }
+    j_stderr = json_stringn(s_err, s_err_size);
+    json_object_set_new(rtn, "stderr", j_stderr);
+  }
 
   return rtn;
 }
@@ -305,6 +382,10 @@ void isIndex(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
   static const char *id = FILEID "isIndex";
   const char *fn1;
   const char *fn2;
+  const char *progressPublisher;
+  const char *progressAddress;
+  int   progressPort;
+  redisContext *remote_redis;
   int  frame1;
   int  frame2;
   char *job_str;                // stringified version of job
@@ -316,11 +397,30 @@ void isIndex(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
   zmq_msg_t index_msg;          // the indexing result message to send via zmq
 
   pthread_mutex_lock(&wctx->metaMutex);
-  fn1 = json_string_value(json_object_get(job, "fn1"));
-  fn2 = json_string_value(json_object_get(job, "fn2"));
-  frame1 = json_integer_value(json_object_get(job, "frame1"));
-  frame2 = json_integer_value(json_object_get(job, "frame2"));
+  fn1               = json_string_value(json_object_get(job,  "fn1"));
+  fn2               = json_string_value(json_object_get(job,  "fn2"));
+  frame1            = json_integer_value(json_object_get(job, "frame1"));
+  frame2            = json_integer_value(json_object_get(job, "frame2"));
+  progressPublisher = json_string_value(json_object_get(job,  "progressPublisher"));
+  progressAddress   = json_string_value(json_object_get(job,  "progressAddress"));
+  progressPort      = json_integer_value(json_object_get(job, "progressPort"));
   pthread_mutex_unlock(&wctx->metaMutex);
+
+  //
+  // Set up progress reporting if requested.  Not an error if this
+  // does not work but log it anyway.
+  //
+  remote_redis = NULL;
+  if (progressPublisher != NULL && progressAddress != NULL && progressPort > 0) {
+    remote_redis = redisConnect(progressAddress, progressPort);
+    if (remote_redis == NULL || remote_redis->err) {
+      if (remote_redis) {
+        isLogging_info("%s: Failed to connect to remote redis %s:%d: %s", id, progressAddress, progressPort, remote_redis->err);
+      } else {
+        isLogging_info("%s: Failed to connect to remote redis %s:%d", id, progressAddress, progressPort);
+      }
+    }
+  }
 
   // Err message part
   zmq_msg_init(&err_msg);
@@ -344,7 +444,7 @@ void isIndex(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
   }
 
   // The actual work is done here
-  index = isIndexImages(job, fn1, fn2, frame1, frame2);
+  index = isIndexImages(remote_redis, progressPublisher, fn1, fn2, frame1, frame2);
 
   // Indexing result message part
   index_str = NULL;

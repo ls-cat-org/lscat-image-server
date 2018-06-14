@@ -638,3 +638,58 @@ int is_h5_error_handler(hid_t estack_id, void *dummy) {
   }
   return 0;
 }
+
+
+/** Return the file name (ie.\ basename) of a path.
+ *
+ *  Although similar to the existing basename verions this routine
+ *  does not modify its argument.
+ *
+ *  @param parent_id Name of the calling routing (for error reporting)
+ *
+ *  @param path The path from which to extract the file name.
+ *
+ *  @returns Pointer to file name. You must free the result when you
+ *  are done with it.
+ *
+ *  @remark There are already two incompatiable versions of basename
+ * in glibc/posix.  Let's not add a third function with the same name.
+ *
+ * @remark If memory cannot be allocated for the return value this
+ * function causes the program to exit.
+ */
+
+char *file_name_component(const char *parent_id, const char *path) {
+  static const char *id = FILEID "file_name_component";
+  const char *rslash;
+  char *rtn;
+
+  //
+  // Here are the pathological cases
+  //
+  if (path == NULL || strcmp(path,".")==0 || strcmp(path,"..")==0) {
+    errno = 0;
+    rtn = strdup("");
+    if (rtn == NULL) {
+      isLogging_err("%s->%s: Could not return pathological file component for path '%s': %s", parent_id, id, path, strerror(errno));
+      exit (-1);
+    }
+    return rtn;
+  }
+
+  //
+  // Find the right most / char
+  //
+  rslash = strrchr(path, '/');
+  if (rslash == NULL) {
+    rslash = path-1;
+  }
+  errno = 0;
+  rtn = strdup(rslash+1);
+  if (rtn == NULL) {
+    isLogging_err("%s->%s: strdup failed finding file name component for path '%s': %s", parent_id, id, path, strerror(errno));
+    exit (-1);
+  }
+  return rtn;
+}
+
