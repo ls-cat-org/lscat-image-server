@@ -61,13 +61,18 @@
 int main(int argc, char **argv) {
   static const char *id = FILEID "main";
 
+  // Make these static so the get initialized as NULL and our signal
+  // handler works less badly
+  //
+  static struct sigaction sa;          // set up our signal handler
+  static void *zctx;                   // Our ZMQ context.
+  static void *router;                 // Router socket we recieve our commands on
+  static void *err_dealer;             // Socket to read errors generated when a user process cannot be forked
+  static void *err_rep;                // Socket to handle the above errors (We need the err sockets to keep all the code ZMQ protocol complaint)
+
   zmq_pollitem_t *zpollitems;   // list of sockets we need to service
   int n_zpollitems;             // number of said sockets
 
-  void *zctx;                   // Our ZMQ context.
-  void *router;                 // Router socket we recieve our commands on
-  void *err_dealer;             // Socket to read errors generated when a user process cannot be forked
-  void *err_rep;                // Socket to handle the above errors (We need the err sockets to keep all the code ZMQ protocol complaint)
   zmq_msg_t zmsg;               // Move messages between various socket when we service them
   int nreceived;                // Bytes received in a ZMQ messages (or -1 on error)
 
@@ -89,13 +94,50 @@ int main(int argc, char **argv) {
   zmq_msg_t envelope_msgs[16];  // routing messages: likely there are no more than 2, 16 is way overkill but we'll break if there are more proxies than this between us and the user.
   int n_envelope_msgs;          // number of "envelope messages"
   int socket_option;            // used to set ZMQ socket options
+  int dev_mode;                 // flag to use development sockets instead of production sockets
+
+  //
+  // Exit "elegantly" on ^C
+  //
+  void our_handler(int sig) {
+    int i;
+    if (router) {
+      zmq_close(router);
+    }
+    
+    if (err_dealer) {
+      zmq_close(err_dealer);
+    }
+
+    if (err_rep) {
+      zmq_close(err_rep);
+    }
+
+    for (i=2; i<n_zpollitems; i++) {
+      zmq_close(zpollitems[i].socket);
+    }
+
+    if (zctx) {
+      zmq_ctx_term(zctx);
+    }
+  }
+  sa.sa_handler = our_handler;
+  sa.sa_flags     = SA_SIGINFO | SA_RESTART;
+  sigfillset(&sa.sa_mask);
+
+  dev_mode = 0;
+  if (strstr(argv[0],"dev")) {
+    dev_mode = 1;
+    isLogging_info("Developement Mode");
+  };
+
 
   // Make sure we are the only "is" process running on this node.
   // Needed since we need to bind to a particular ipc socket AND if
   // our predecessor has died but left its ZMQ threads running we
   // don't want it to steal our messages (and do nothing with them)
   //
-  isInit();
+  isInit(dev_mode);
 
   isLogging_info("Welcome to the LS-CAT Image Server by Keith Brister ©2017-2018 by Northwestern University.  All rights reserved.\n");
 
@@ -153,9 +195,9 @@ int main(int argc, char **argv) {
   // Connection to the web server's is_proxy service that forwards user requests
   //
   router = zmq_socket(zctx, ZMQ_ROUTER);
-  err = zmq_connect(router, PUBLIC_DEALER);
+  err = zmq_connect(router, dev_mode ? PUBLIC_DEV_DEALER : PUBLIC_DEALER);
   if (err == -1) {
-    isLogging_err("%s: Failed to connect router to dealer %s: %s\n", id, PUBLIC_DEALER, zmq_strerror(errno));
+    isLogging_err("%s: Failed to connect router to dealer %s: %s\n", id, dev_mode ? PUBLIC_DEV_DEALER : PUBLIC_DEALER, zmq_strerror(errno));
     exit (-1);
   }
 
@@ -215,9 +257,9 @@ int main(int argc, char **argv) {
 
   // Bind the err_dealer to its (and err_rep's) inproc socket
   //
-  err        = zmq_bind(err_dealer, ERR_REP);
+  err        = zmq_bind(err_dealer, dev_mode ? ERR_DEV_REP : ERR_REP);
   if (err == -1) {
-    isLogging_err("%s: Could not bind err_dealer to socket %s: %s\n", id, ERR_REP, zmq_strerror(errno));
+    isLogging_err("%s: Could not bind err_dealer to socket %s: %s\n", id, dev_mode ? ERR_DEV_REP : ERR_REP, zmq_strerror(errno));
     exit (-1);
   }
 
@@ -249,12 +291,11 @@ int main(int argc, char **argv) {
 
   // Connect the error responder to the bound error dealer
   //
-  err     = zmq_connect(err_rep, ERR_REP);
+  err     = zmq_connect(err_rep, dev_mode ? ERR_DEV_REP : ERR_REP);
   if (err == -1) {
-    isLogging_err("%s: Could not connect err_rep to socket %s: %s\n", id, ERR_REP, zmq_strerror(errno));
+    isLogging_err("%s: Could not connect err_rep to socket %s: %s\n", id, dev_mode ? ERR_DEV_REP : ERR_REP, zmq_strerror(errno));
     exit (-1);
   }
-
 
   // No envelope messages to close yet
   //
@@ -263,6 +304,7 @@ int main(int argc, char **argv) {
   //
   // Here is our main loop
   //
+  sigaction(SIGINT, &sa, NULL);
   while (1) {
     //
     // We are really just about servicing ZMQ sockets.  Similar to the
@@ -276,7 +318,6 @@ int main(int argc, char **argv) {
 
     // List of sockets to listen to
     zpollitems = isRemakeZMQPollItems(router, err_rep, err_dealer);
-    n_zpollitems = isNProcesses() + 3;
     n_zpollitems = isNProcesses() + 3;
 
     //
