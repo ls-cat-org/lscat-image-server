@@ -24,8 +24,8 @@
 
 
 //! Initialize our objects
-void isLogging_init() {
-  openlog("is", LOG_PID | LOG_PERROR, LOG_USER);
+void isLogging_init(int dev_mode) {
+  openlog(dev_mode ? "is-dev" : "is", LOG_PID | LOG_PERROR, LOG_USER);
 };
 
 void isLogging_debug(char *fmt, ...) {
