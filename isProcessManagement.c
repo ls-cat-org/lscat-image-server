@@ -30,7 +30,7 @@ static int n_processes;
 
 /** On startup ensure that other verions of this program are killed.
  */
-void isInit() {
+void isInit(int dev_mode) {
   static const char *id = FILEID "isInit";
   FILE *our_pid_file;           // Read old pid and then write new pid
   pid_t old_pid;                // old pid: kill on sight
@@ -38,8 +38,7 @@ void isInit() {
   int err;                      // kill function return value
   herr_t herr;                  // trap errors setting h5 error redirection
 
-  isLogging_init();
-
+  isLogging_init(dev_mode);
 
   herr = H5Eset_auto2(H5E_DEFAULT, (H5E_auto2_t) is_h5_error_handler, stderr);
   if (herr < 0) {
@@ -49,7 +48,7 @@ void isInit() {
   // Error recovery block
   //
   do {
-    our_pid_file = fopen(PID_FILE_NAME, "r");
+    our_pid_file = fopen(dev_mode ? PID_DEV_FILE_NAME : PID_FILE_NAME, "r");
     if (our_pid_file == NULL) {
       // Assume we bombed out because the file does not yet exist
       // rather than some other more insidious reason.
@@ -83,7 +82,7 @@ void isInit() {
     fclose(our_pid_file);
   }
 
-  our_pid_file = fopen(PID_FILE_NAME, "w");
+  our_pid_file = fopen(dev_mode ? PID_DEV_FILE_NAME : PID_FILE_NAME, "w");
   if (our_pid_file == NULL) {
     isLogging_err("%s: Could not open pid file: %s\n", id, strerror(errno));
     exit (-1);
