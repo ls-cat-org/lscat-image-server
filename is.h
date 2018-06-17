@@ -57,6 +57,7 @@
 
 //! Save our pid so we can autokill stuff later.
 #define PID_FILE_NAME "/var/run/is.pid"
+#define PID_DEV_FILE_NAME "/var/run/is-dev.pid"
 
 //! Prefix procedure names with the file name and a space for debug output.
 #define FILEID __FILE__ " "
@@ -77,11 +78,13 @@
 #define IS_DEFAULT_SPOT_IMAGE_WIDTH 384
 
 //! Well known address of the image server request dealer.
-#define PUBLIC_DEALER  "tcp://10.1.253.10:60202"
+#define PUBLIC_DEALER      "tcp://10.1.253.10:60202"
+#define PUBLIC_DEV_DEALER  "tcp://10.1.253.10:60203"
 
 //! Special reply server to handle errors that occur before we can
 //! route the request to the appropriate process.
 #define ERR_REP        "inproc://#err_rep"
+#define ERR_DEV_REP    "inproc://#err_dev_rep"
 
 //! Spot sensor sensitivity
 //!
@@ -223,7 +226,7 @@ extern void is_zmq_error_reply(zmq_msg_t *msgs, int n_msgs, void *err_dealer, ch
 extern zmq_pollitem_t *isRemakeZMQPollItems(void *parent_router, void *err_rep, void *err_dealer);
 extern int isNProcesses();
 extern zmq_pollitem_t *isGetZMQPollItems();
-extern void isInit();
+extern void isInit(int dev_mode);
 extern void isLogging_init();
 extern void isLogging_debug(char *fmt, ...);
 extern void isLogging_info(char *fmt, ...);
