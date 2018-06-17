@@ -182,7 +182,7 @@ json_t *isIndexImages(redisContext *rrc, const char *progressPublisher, const ch
   // Ignore pollin for now
   //
   keep_on_truckin = 1;
-  printf( "starting poll loop\n");
+  isLogging_info("%s: starting poll loop", id);
   do {
     npoll = 0;;
     if (pollout.fd >= 0) {
@@ -295,15 +295,24 @@ json_t *isIndexImages(redisContext *rrc, const char *progressPublisher, const ch
       // progress service
       if ((polllist[i].revents & POLLIN) && polllist[i].fd == pollprogress.fd) {
         do {
-          child_progress[0] = 0;
-          bytes_read = read(pollprogress.fd, child_progress, sizeof(child_progress)-1);
+          char tmp[256];
+          int i, j;
+
+          bytes_read = read(pollprogress.fd, tmp, sizeof(tmp)-1);
           if (bytes_read > -1) {
-            child_progress[bytes_read] = 0;
+            tmp[bytes_read] = 0;
+            child_progress[0] = 0;
+            for (i=0, j=0; j<bytes_read; j++) {
+              if (tmp[j] >= 32 && tmp[j] < 128) {
+                child_progress[i++] = tmp[j];
+              }
+            }
+            child_progress[i] = 0;
 
             if (rrc && progressPublisher) {
-              reply = redisCommand(rrc, "PUBLISH %s {\"progress\": \"%*s\"", progressPublisher, bytes_read, child_progress);
+              reply = redisCommand(rrc, "PUBLISH %s {\"progress\":\"%s\"}", progressPublisher, child_progress);
               if (reply == NULL) {
-                isLogging_info("%s: redis progress publisher %s returned error %s when publishing '%*s'", id, progressPublisher, rrc->errstr, bytes_read, child_progress);
+                isLogging_info("%s: redis progress publisher %s returned error %s when publishing \"%*s\"", id, progressPublisher, rrc->errstr, strlen(child_progress), child_progress);
               } else {
                 freeReplyObject(reply);
               }
