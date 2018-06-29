@@ -47,11 +47,11 @@ json_t *isIndexImages(redisContext *rrc, const char *progressPublisher, const ch
   /***************************************
    *    Set up pipes to child process    *
    ***************************************/
-  pipe2(pipein,       O_NONBLOCK | O_CLOEXEC);  // Future use: setup child in anticipation then send command via stdin
-  pipe2(pipeout,      O_NONBLOCK | O_CLOEXEC);  // We'll be throwing this out by, well, not saving it.
-  pipe2(pipeerr,      O_NONBLOCK | O_CLOEXEC);  // At some point we'll parse this for errors.  No API developed yet
-  pipe2(pipeprogress, O_NONBLOCK);              // Progress report to be sent out of band to the user
-  pipe2(pipejson,     O_NONBLOCK);              // The result we are looking for as a response to the original request
+  pipe2(pipein,       O_CLOEXEC);  // Future use: setup child in anticipation then send command via stdin
+  pipe2(pipeout,      O_CLOEXEC);  // We'll be throwing this out by, well, not saving it.
+  pipe2(pipeerr,      O_CLOEXEC);  // At some point we'll parse this for errors.  No API developed yet
+  pipe2(pipeprogress, 0);          // Progress report to be sent out of band to the user
+  pipe2(pipejson,     0);          // The result we are looking for as a response to the original request
 
   char * const index_args[] = {
     "indexing_script.sh",
@@ -79,8 +79,8 @@ json_t *isIndexImages(redisContext *rrc, const char *progressPublisher, const ch
     dup2(pipeout[1],   1);      // stdout goes to pipeout
     dup2(pipeerr[1],   2);      // stderr goes to pipeerr
 
-    close(pipeprogress[0]);     // close unneeded end of pipe
-    close(pipejson[0]);         // close unneeded end of pipe
+    //close(pipeprogress[0]);     // close unneeded end of pipe
+    //close(pipejson[0]);         // close unneeded end of pipe
 
     //
     // Make tmp directory
@@ -106,9 +106,12 @@ json_t *isIndexImages(redisContext *rrc, const char *progressPublisher, const ch
     //
     // Make hard links in tmp directory to data files
     //
+    // (Hardlinks aren't working to /pf/esafs but are from
+    // /pf/esafs-bu, changed to soft links for now.)
+    //
     if (f1 && strlen(f1)) {
       f1_local = file_name_component(id, f1);
-      err = link(f1, f1_local);
+      err = symlink(f1, f1_local);
       if (err == -1) {
         isLogging_err("%s: failed to link file %s: %s", id, f1, strerror(errno));
         // Should we exit here?
@@ -117,7 +120,7 @@ json_t *isIndexImages(redisContext *rrc, const char *progressPublisher, const ch
 
     if (f2 && strlen(f2)) {
       f2_local = file_name_component(id, f2);
-      err = link(f2, f2_local);
+      err = symlink(f2, f2_local);
       if (err == -1) {
         isLogging_err("%s: failed to link file %s: %s", id, f2, strerror(errno));
         // Should we extit or return here?
@@ -227,22 +230,26 @@ json_t *isIndexImages(redisContext *rrc, const char *progressPublisher, const ch
         isLogging_info("%s: Error or hangup on fd %d\n", id, polllist[i].fd);
 
         if (polllist[i].fd == pollout.fd) {
+          close(polllist[i].fd);
           pollout.fd = -1;
         }
 
         if (polllist[i].fd == pollerr.fd) {
+          close(polllist[i].fd);
           pollerr.fd = -1;
         }
 
         if (polllist[i].fd == polljson.fd) {
+          close(polllist[i].fd);
           polljson.fd = -1;
+          isLogging_err("%s: Closing json pipe after reading %d bytes", id, json_output_size);
         }
 
         if (polllist[i].fd == pollprogress.fd) {
+          close(polllist[i].fd);
           pollprogress.fd = -1;
+          isLogging_err("%s: Closing progress pipe", id);
         }
-
-        close(polllist[i].fd);
       }
 
       // stdout service
@@ -258,7 +265,8 @@ json_t *isIndexImages(redisContext *rrc, const char *progressPublisher, const ch
           if (bytes_read == -1 && errno != EAGAIN && errno != EWOULDBLOCK) {
             isLogging_info("%s: stdout read with error %s", id, strerror(errno));
           }
-        } while(bytes_read > 0);
+          //} while(bytes_read > 0);
+        } while(0);
       }
 
       // stderr service
@@ -289,7 +297,8 @@ json_t *isIndexImages(redisContext *rrc, const char *progressPublisher, const ch
           if (bytes_read == -1 && errno != EAGAIN && errno != EWOULDBLOCK) {
             isLogging_info("%s: stderr read with error %s", id, strerror(errno));
           }
-        } while(bytes_read > 0);
+          //} while(bytes_read > 0);
+        } while(0);
       }
 
       // progress service
@@ -310,7 +319,7 @@ json_t *isIndexImages(redisContext *rrc, const char *progressPublisher, const ch
             child_progress[i] = 0;
 
             if (rrc && progressPublisher) {
-              reply = redisCommand(rrc, "PUBLISH %s {\"progress\":\"%s\"}", progressPublisher, child_progress);
+              reply = redisCommand(rrc, "PUBLISH %s {\"progress\":\"%s\",\"done\":false}", progressPublisher, child_progress);
               if (reply == NULL) {
                 isLogging_info("%s: redis progress publisher %s returned error %s when publishing \"%*s\"", id, progressPublisher, rrc->errstr, strlen(child_progress), child_progress);
               } else {
@@ -321,7 +330,8 @@ json_t *isIndexImages(redisContext *rrc, const char *progressPublisher, const ch
           if (bytes_read == -1 && errno != EAGAIN && errno != EWOULDBLOCK) {
             isLogging_info("%s: progress read error: %s", id, strerror(errno));
           }
-        } while(bytes_read > 0);
+          //} while(bytes_read > 0);
+        } while(0);
       }
 
       // json service
@@ -346,16 +356,36 @@ json_t *isIndexImages(redisContext *rrc, const char *progressPublisher, const ch
           if (bytes_read == -1 && errno != EAGAIN && errno != EWOULDBLOCK) {
             isLogging_info("json read with error %s", strerror(errno));
           }
-        } while(bytes_read > 0);
+          //} while(bytes_read > 0);
+        } while( 0);
       }
     }
-  } while (keep_on_truckin);
+  } while (npoll && keep_on_truckin);
     
-  rtn = json_loads(json_output, 0, &jerr);
-  if (rtn == NULL ) {
-    isLogging_info("%s: json decode error for string '%s': %s line %d  column %d", id, json_output, jerr.text, jerr.line, jerr.column);
+  reply = redisCommand(rrc, "PUBLISH %s {\"done\":true}", progressPublisher);
+  if (reply == NULL) {
+    isLogging_info("%s: redis progress publisher %s returned error %s", id, progressPublisher, rrc->errstr);
+  } else {
+    freeReplyObject(reply);
   }
 
+  //
+  // Sometimes rapd forgets to send us the json.  Don't bother trying
+  // to parse.
+  //
+  if (json_output_size == 0) {
+    rtn = NULL;
+  } else {
+    rtn = json_loads(json_output, 0, &jerr);
+    if (rtn == NULL ) {
+      isLogging_info("%s: json decode error for string '%s': %s line %d  column %d", id, json_output, jerr.text, jerr.line, jerr.column);
+    }
+  }
+
+  //
+  // If we did happen to get something from stderr then we'll add that
+  // to the output as it might help us sort things out.
+  //
   if (s_err_size > 0) {
     json_t *j_stderr;
 
@@ -454,6 +484,8 @@ void isIndex(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
 
   // The actual work is done here
   index = isIndexImages(remote_redis, progressPublisher, fn1, fn2, frame1, frame2);
+
+  redisFree(remote_redis);
 
   // Indexing result message part
   index_str = NULL;
