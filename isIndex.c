@@ -5,7 +5,7 @@
  */
 #include "is.h"
 
-json_t *isIndexImages(redisContext *rrc, const char *progressPublisher, const char *f1, const char *f2, const int frame1, const int frame2) {
+json_t *isIndexImages(redisContext *rrc, const char *progressPublisher, const char *tag, const char *f1, const char *f2, const int frame1, const int frame2) {
   static const char *id = FILEID "isIndexImages";
   char *f1_local;               // f1 without dir component
   char *f2_local;               // f2 without dir component
@@ -319,7 +319,7 @@ json_t *isIndexImages(redisContext *rrc, const char *progressPublisher, const ch
             child_progress[i] = 0;
 
             if (rrc && progressPublisher) {
-              reply = redisCommand(rrc, "PUBLISH %s {\"progress\":\"%s\",\"done\":false}", progressPublisher, child_progress);
+              reply = redisCommand(rrc, "PUBLISH %s {\"progress\":\"%s\",\"done\":false,\"tag\":\"%s\"}", progressPublisher, child_progress, tag);
               if (reply == NULL) {
                 isLogging_info("%s: redis progress publisher %s returned error %s when publishing \"%*s\"", id, progressPublisher, rrc->errstr, strlen(child_progress), child_progress);
               } else {
@@ -362,7 +362,7 @@ json_t *isIndexImages(redisContext *rrc, const char *progressPublisher, const ch
     }
   } while (npoll && keep_on_truckin);
     
-  reply = redisCommand(rrc, "PUBLISH %s {\"done\":true}", progressPublisher);
+  reply = redisCommand(rrc, "PUBLISH %s {\"done\":true,\"tag\":\"%s\"}", progressPublisher, tag);
   if (reply == NULL) {
     isLogging_info("%s: redis progress publisher %s returned error %s", id, progressPublisher, rrc->errstr);
   } else {
@@ -421,6 +421,7 @@ void isIndex(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
   static const char *id = FILEID "isIndex";
   const char *fn1;
   const char *fn2;
+  const char *tag;
   const char *progressPublisher;
   const char *progressAddress;
   int   progressPort;
@@ -436,6 +437,7 @@ void isIndex(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
   zmq_msg_t index_msg;          // the indexing result message to send via zmq
 
   pthread_mutex_lock(&wctx->metaMutex);
+  tag               = json_string_value(json_object_get(job,  "tag"));
   fn1               = json_string_value(json_object_get(job,  "fn1"));
   fn2               = json_string_value(json_object_get(job,  "fn2"));
   frame1            = json_integer_value(json_object_get(job, "frame1"));
@@ -483,7 +485,7 @@ void isIndex(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
   }
 
   // The actual work is done here
-  index = isIndexImages(remote_redis, progressPublisher, fn1, fn2, frame1, frame2);
+  index = isIndexImages(remote_redis, progressPublisher, tag ? tag : "Tag_Not_Found", fn1, fn2, frame1, frame2);
 
   redisFree(remote_redis);
 
