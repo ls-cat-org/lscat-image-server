@@ -109,6 +109,7 @@ json_t *isIndexImages(redisContext *rrc, const char *progressPublisher, const ch
     // (Hardlinks aren't working to /pf/esafs but are from
     // /pf/esafs-bu, changed to soft links for now.)
     //
+    f1_local = NULL;
     if (f1 && strlen(f1)) {
       f1_local = file_name_component(id, f1);
       err = symlink(f1, f1_local);
@@ -118,6 +119,7 @@ json_t *isIndexImages(redisContext *rrc, const char *progressPublisher, const ch
       }
     }
 
+    f2_local = NULL;
     if (f2 && strlen(f2)) {
       f2_local = file_name_component(id, f2);
       err = symlink(f2, f2_local);
@@ -134,16 +136,26 @@ json_t *isIndexImages(redisContext *rrc, const char *progressPublisher, const ch
     }
     fprintf(shell_script, "#! /bin/bash\n");
     fprintf(shell_script, "rapd.index --json --json-fd %d --progress-fd %d ", pipejson[1], pipeprogress[1]);
-    //
-    // if f1 and f2 are the same and frame1 and frame2 are different then we specify the frame numbers and one file name
-    //
-    if ((strcmp(f1,f2) == 0 || f2==NULL || strlen(f2)==0) && frame1 != frame2) {
-      fprintf(shell_script, "--hdf5-image-range %d,%d %s", frame1, frame2, f1_local);
+    fflush(shell_script);
+
+    // Always need f1 but not always f2
+    if (f2_local==NULL || strlen(f2_local)==0 || strcmp(f1_local,f2_local)==0) {
+      if (frame1==0) {
+        // Just go for it
+        fprintf(shell_script, "%s", f1_local);
+      } else {
+        // use the requested frames
+        fprintf(shell_script, "--hdf5_image_range %d,%d %s", frame1, frame2, f1_local);
+      }
     } else {
-      // else we just specify the two file names and ignore the frame numbers
-      fprintf(shell_script, "%s %s", f1_local, f2_local);
+      // Here f1 and f2 are specified (and different).  We have to
+      // assume these files specify a single frame
+      fprint(shell_script, "%s %s", f1_local, f2_local);
     }
+
+    fflush(shell_script);
     fprintf(shell_script, "\nexit 0\n");
+    fflush(shell_script);
     fclose(shell_script);
     err = chmod("indexing_script.sh", S_IXUSR | S_IRUSR | S_IWUSR);
     if (err == -1) {
@@ -376,7 +388,7 @@ json_t *isIndexImages(redisContext *rrc, const char *progressPublisher, const ch
   if (json_output_size == 0) {
     rtn = NULL;
   } else {
-    rtn = json_loads(json_output, 0, &jerr);
+    rtn = json_loadb(json_output, json_output_size, 0, &jerr);
     if (rtn == NULL ) {
       isLogging_info("%s: json decode error for string '%s': %s line %d  column %d", id, json_output, jerr.text, jerr.line, jerr.column);
     }
