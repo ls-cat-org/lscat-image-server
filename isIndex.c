@@ -50,7 +50,7 @@ json_t *isIndexImages(redisContext *rrc, const char *progressPublisher, const ch
   pipe2(pipein,       O_CLOEXEC);  // Future use: setup child in anticipation then send command via stdin
   pipe2(pipeout,      O_CLOEXEC);  // We'll be throwing this out by, well, not saving it.
   pipe2(pipeerr,      O_CLOEXEC);  // At some point we'll parse this for errors.  No API developed yet
-  pipe2(pipeprogress, 0);          // Progress report to be sent out of band to the user
+  pipe2(pipeprogress, 0);          // Progress report to be sent out-of-band to the user
   pipe2(pipejson,     0);          // The result we are looking for as a response to the original request
 
   char * const index_args[] = {
@@ -73,7 +73,7 @@ json_t *isIndexImages(redisContext *rrc, const char *progressPublisher, const ch
     /*************  In Child *****************/  
     //
     // Make use of the O_CLOEXEC option in pipe2, above, so we don't
-    // explicitly close the descriptors in the 5 pipes here.
+    // explicitly close the descriptors in the pipes here.
     //
     dup2(pipein[0],    0);      // stdin comes from pipein
     dup2(pipeout[1],   1);      // stdout goes to pipeout
@@ -125,7 +125,7 @@ json_t *isIndexImages(redisContext *rrc, const char *progressPublisher, const ch
       err = symlink(f2, f2_local);
       if (err == -1) {
         isLogging_err("%s: failed to link file %s: %s", id, f2, strerror(errno));
-        // Should we extit or return here?
+        // Should we exit or return here?
       }
     }
 
@@ -139,7 +139,7 @@ json_t *isIndexImages(redisContext *rrc, const char *progressPublisher, const ch
     fflush(shell_script);
 
     // Always need f1 but not always f2
-    if (f2_local==NULL || strlen(f2_local)==0 || strcmp(f1_local,f2_local)==0) {
+    if (f2==NULL || strlen(f2)==0 || strcmp(f1,f2)==0) {
       if (frame1==0) {
         // Just go for it
         fprintf(shell_script, "%s", f1_local);
@@ -150,7 +150,7 @@ json_t *isIndexImages(redisContext *rrc, const char *progressPublisher, const ch
     } else {
       // Here f1 and f2 are specified (and different).  We have to
       // assume these files specify a single frame
-      fprint(shell_script, "%s %s", f1_local, f2_local);
+      fprintf(shell_script, "%s %s", f1_local, f2_local);
     }
 
     fflush(shell_script);
