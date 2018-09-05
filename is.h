@@ -185,6 +185,7 @@ typedef struct isThreadContextStruct {
 typedef struct isProcessListStruct {
   struct isProcessListStruct *next;     //!< Linked list of of processes running as a specific user in a specific group
   const char *key;                      //!< Unique key to identify this user/esaf combination
+  int dev_mode;                         //!< Used to generate zmq socket names
   int esaf;                             //!< Our esaf
   pid_t processID;                      //!< The process id returned to the parent by fork
   json_t *isAuth;                       //!< Authenticated user name, role, and list of allowed esafs
@@ -199,7 +200,7 @@ extern int isH5GetData(isWorkerContext_t *wctx, const char *fn, isImageBufType *
 extern int isRayonixGetData(isWorkerContext_t *wctx, const char *fn, isImageBufType **imbp);
 extern isProcessListType *isFindProcess(const char *pid, int esaf);
 extern void isSupervisor(const char *key);
-extern isProcessListType *isRun(void *zctx, redisContext *rc, json_t *isAuth, int esaf);
+extern isProcessListType *isRun(void *zctx, redisContext *rc, json_t *isAuth, int esaf, int dev_mode);
 extern void isProcessListInit();
 extern image_file_type isFileType(const char *fn);
 extern image_access_type isFindFile(const char *fn);

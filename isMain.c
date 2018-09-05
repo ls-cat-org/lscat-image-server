@@ -558,7 +558,7 @@ int main(int argc, char **argv) {
         continue;
       }
 
-      pli = isRun(zctx, rc, isAuth, esaf);
+      pli = isRun(zctx, rc, isAuth, esaf, dev_mode);
     } else {
       //
       // Here we've authenticated this pid (perhaps some time ago).  We

@@ -224,7 +224,7 @@ void isStartProcess(isProcessListType *p) {
  **
  ** @returns New process list item with ZMQ set up to communicate with the 
  */
-isProcessListType *isCreateProcessListItem(void *zctx, json_t *isAuth, int esaf) {
+isProcessListType *isCreateProcessListItem(void *zctx, json_t *isAuth, int esaf, int dev_mode) {
   static const char *id = FILEID "isCreateProcessListItem";
   char ourKey[128];
   char *pid;
@@ -235,7 +235,7 @@ isProcessListType *isCreateProcessListItem(void *zctx, json_t *isAuth, int esaf)
 
   pid = (char *)json_string_value(json_object_get(isAuth, "pid"));
 
-  snprintf(ourKey, sizeof(ourKey)-1, "%s-%d", pid, esaf);
+  snprintf(ourKey, sizeof(ourKey)-1, "%s-%d%s", pid, esaf, dev_mode ? "-dev" : "");
   ourKey[sizeof(ourKey)-1] = 0;
 
   rtn = calloc(1, sizeof(*rtn));
@@ -581,7 +581,8 @@ isProcessListType *isFindProcess(const char *pid, int esaf) {
  **
  ** @returns Process list item for this, perhaps new, process.
  */
-isProcessListType *isRun(void *zctx, redisContext *rc, json_t *isAuth, int esaf) {
+isProcessListType *isRun(void *zctx, redisContext *rc, json_t *isAuth, int esaf, int dev_mode) {
+  static const char *id = FILEID "isRun";
   char ourKey[128];
   char *pid;
   isProcessListType *p;
@@ -593,7 +594,7 @@ isProcessListType *isRun(void *zctx, redisContext *rc, json_t *isAuth, int esaf)
   // See if we already have this process going
   //
   pid = (char *)json_string_value(json_object_get(isAuth, "pid"));
-  snprintf(ourKey, sizeof(ourKey)-1, "%s-%d", pid, esaf);
+  snprintf(ourKey, sizeof(ourKey)-1, "%s-%d%s", pid, esaf, dev_mode ? "-dev" : "");
   ourKey[sizeof(ourKey)-1] = 0;
 
   item.key  = ourKey;
@@ -609,7 +610,7 @@ isProcessListType *isRun(void *zctx, redisContext *rc, json_t *isAuth, int esaf)
   //
   // Process was not found
   //
-  p = isCreateProcessListItem(zctx, isAuth, esaf);
+  p = isCreateProcessListItem(zctx, isAuth, esaf, dev_mode);
   item.key  = (char *)p->key;
   item.data = p;
 
@@ -617,7 +618,7 @@ isProcessListType *isRun(void *zctx, redisContext *rc, json_t *isAuth, int esaf)
   err = hsearch_r(item, ENTER, &item_return, &process_table);
   p = item_return->data;
   if (err == 0) {
-    isLogging_err("isRun: Could not ENTER key %s: %s\n", p->key, strerror(errno));
+    isLogging_err("%s: Could not ENTER key %s: %s\n", id, p->key, strerror(errno));
     remakeProcessList(rc);
   }
   return p;
