@@ -1,0 +1,19 @@
+/var/log/ls-cat/is.log {
+  rotate 32
+  daily
+  compress
+  missingok
+  notifempty
+  copytruncate
+  dateyesterday
+}
+
+/var/log/ls-cat/is-dev.log {
+  rotate 32
+  daily
+  compress
+  missingok
+  notifempty
+  copytruncate
+  dateyesterday
+}
