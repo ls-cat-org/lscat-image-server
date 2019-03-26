@@ -17,6 +17,7 @@ install:
 	install --mode=644 is.conf /etc/rsyslog.d
 	install --mode=644 is-dev.conf /etc/rsyslog.d
 	systemctl restart rsyslog.service
+	install --mode=644 is.logrotate /etc/logrotate.d/is
 
 isLogging.o: isLogging.c is.h Makefile
 	gcc -g -Wall -c isLogging.c
