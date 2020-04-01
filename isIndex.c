@@ -120,7 +120,7 @@ json_t *isIndexImages(redisContext *rrc, const char *progressPublisher, const ch
     }
 
     f2_local = NULL;
-    if (f2 && strlen(f2)) {
+    if (f2 && strlen(f2) && strcmp(f1,f2) != 0) {
       f2_local = file_name_component(id, f2);
       err = symlink(f2, f2_local);
       if (err == -1) {
@@ -405,6 +405,7 @@ json_t *isIndexImages(redisContext *rrc, const char *progressPublisher, const ch
       rtn = json_object();
     }
     j_stderr = json_stringn(s_err, s_err_size);
+    free(s_err);
     json_object_set_new(rtn, "stderr", j_stderr);
   }
 

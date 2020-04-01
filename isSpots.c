@@ -11,7 +11,7 @@
  **  @li @c wctx->ctxMutex  Keeps the worker theads in line
  **
  ** @param tcp Thread data
- **   @li @c tcp->rep  ZMQ Response socket into which the throw our response.
+ **   @li @c tcp->rep  ZMQ Response socket into which to throw our response.
  **
  ** @param job  What the user asked us to do
  ** @param pid                 {String}     - Token representing a valid user

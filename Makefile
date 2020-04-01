@@ -49,11 +49,14 @@ isJpeg.o: isJpeg.c is.h Makefile
 isIndex.o: isIndex.c is.h Makefile
 	gcc -g -Wall -c isIndex.c
 
+isRsync.o: isRsync.c is.h Makefile
+	gcc -g -Wall -c isRsync.c
+
 isSpots.o: isSpots.c is.h Makefile
 	gcc -g -Wall -c isSpots.c
 
 isBitmapFont.o: isBitmapFont.c is.h Makefile
 	gcc -g -Wall -c isBitmapFont.c
 
-is: isMain.c is.h Makefile isUtilities.o isH5.o isRayonix.o isProcessManagement.o isWorker.o isData.o isReduceImage.o isJpeg.o isBitmapFont.o isIndex.o isSpots.o isLogging.o
-	gcc -g -Wall isMain.c -L /usr/local/lib64 -L /usr/local/lib -L/usr/lib -o is isLogging.o isUtilities.o isH5.o isRayonix.o isProcessManagement.o isWorker.o isData.o isReduceImage.o isJpeg.o isIndex.o isSpots.o isBitmapFont.o -lhiredis -ljansson -lhdf5 -ltiff -lcrypto -ljpeg -lm -lzmq -pthread
+is: isMain.c is.h Makefile isUtilities.o isH5.o isRayonix.o isProcessManagement.o isWorker.o isData.o isReduceImage.o isJpeg.o isBitmapFont.o isIndex.o isSpots.o isRsync.o isLogging.o
+	gcc -g -Wall isMain.c -L /usr/local/lib64 -L /usr/local/lib -L/usr/lib -o is isLogging.o isUtilities.o isH5.o isRayonix.o isProcessManagement.o isWorker.o isData.o isReduceImage.o isJpeg.o isIndex.o isSpots.o isRsync.o isBitmapFont.o -lhiredis -ljansson -lhdf5 -ltiff -lcrypto -ljpeg -lm -lzmq -pthread

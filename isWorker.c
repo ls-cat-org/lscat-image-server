@@ -135,6 +135,10 @@ void *isWorker(void *voidp) {
         isIndex(wctx, &tc, job);
       } else if (strcasecmp("spots", job_type) == 0) {
         isSpots(wctx, &tc, job);
+      } else if (strcasecmp("rsync_host_test", job_type) == 0) {
+        isRsyncHostTest(wctx, &tc, job);
+      } else if (strcasecmp("rsync_connection_test", job_type) == 0) {
+        isRsyncConnectionTest(wctx, &tc, job);
       } else {
         isLogging_err("%s: Unknown job type '%s' in job '%s'\n", id, job_type, jobstr);
         is_zmq_error_reply(NULL, 0, tc.rep, "%s: Unknown job type '%s' in job '%s'", id, job_type, jobstr);

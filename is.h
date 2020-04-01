@@ -11,12 +11,14 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <fts.h>
 #include <hdf5.h>
 #include <hiredis/hiredis.h>
 #include <jansson.h>
 #include <jpeglib.h>
 #include <math.h>
 #include <mcheck.h>
+#include <netdb.h>
 #include <openssl/err.h>
 #include <openssl/evp.h>
 #include <openssl/ssl.h>
@@ -31,6 +33,7 @@
 #include <string.h>
 #include <syslog.h>
 #include <sys/types.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <tiffio.h>
@@ -193,49 +196,51 @@ typedef struct isProcessListStruct {
 } isProcessListType;
 
 
-extern void destroyImageBuffer(isWorkerContext_t *wctx, isImageBufType *p);
+extern char *file_name_component(const char *parent_id, const char *path);
+extern double get_double_from_json_object(const char *cid,  const json_t *j, const char *key);
+extern image_access_type isFindFile(const char *fn);
+extern image_file_type isFileType(const char *fn);
+extern int get_integer_from_json_object(const char *cid, json_t *j, char *key);
+extern int isEsafAllowed(json_t *isAuth, int esaf);
+extern int isH5GetData(isWorkerContext_t *wctx, const char *fn, isImageBufType **imbp);
+extern int isNProcesses();
+extern int isRayonixGetData(isWorkerContext_t *wctx, const char *fn, isImageBufType **imbp);
+extern int is_h5_error_handler(hid_t estack_id, void *dummy);
+extern int verifyIsAuth( char *isAuth, char *isAuthSig_str);
+extern isImageBufType *isGetImageBufFromKey(isWorkerContext_t *ibctx, redisContext *rc, char *key);
+extern isImageBufType *isGetRawImageBuf(isWorkerContext_t *ibctx, redisContext *rc, json_t *job);
+extern isImageBufType *isReduceImage(isWorkerContext_t *ibctx, redisContext *rc, json_t *job);
+extern isProcessListType *isFindProcess(const char *pid, int esaf);
+extern isProcessListType *isRun(void *zctx, redisContext *rc, json_t *isAuth, int esaf, int dev_mode);
+extern isWorkerContext_t  *isDataInit(const char *key);
 extern json_t *isH5GetMeta(isWorkerContext_t *wctx, const char *fn);
 extern json_t *isRayonixGetMeta(isWorkerContext_t *wctx, const char *fn);
-extern int isH5GetData(isWorkerContext_t *wctx, const char *fn, isImageBufType **imbp);
-extern int isRayonixGetData(isWorkerContext_t *wctx, const char *fn, isImageBufType **imbp);
-extern isProcessListType *isFindProcess(const char *pid, int esaf);
-extern void isSupervisor(const char *key);
-extern isProcessListType *isRun(void *zctx, redisContext *rc, json_t *isAuth, int esaf, int dev_mode);
-extern void isProcessListInit();
-extern image_file_type isFileType(const char *fn);
-extern image_access_type isFindFile(const char *fn);
-extern int isEsafAllowed(json_t *isAuth, int esaf);
-extern void set_json_object_string(const char *cid, json_t *j, const char *key, const char *fmt, ...);
-extern void set_json_object_integer(const char *cid, json_t *j, const char *key, int value);
-extern void set_json_object_real(const char *cid, json_t *j, const char *key, double value);
-extern void set_json_object_float_array_2d(const char *cid, json_t *j, const char *k, float *v, int rows, int cols);
-extern void set_json_object_float_array( const char *cid, json_t *j, const char *key, float *values, int n);
-extern int get_integer_from_json_object(const char *cid, json_t *j, char *key);
-extern double get_double_from_json_object(const char *cid,  const json_t *j, const char *key);
-extern isImageBufType *isGetRawImageBuf(isWorkerContext_t *ibctx, redisContext *rc, json_t *job);
-extern isWorkerContext_t  *isDataInit(const char *key);
-extern int verifyIsAuth( char *isAuth, char *isAuthSig_str);
+extern void destroyImageBuffer(isWorkerContext_t *wctx, isImageBufType *p);
 extern void isDataDestroy(isWorkerContext_t *c);
-extern void isWriteImageBufToRedis(isWorkerContext_t *wctx, isImageBufType *imb, redisContext *rc);
-extern isImageBufType *isReduceImage(isWorkerContext_t *ibctx, redisContext *rc, json_t *job);
-extern isImageBufType *isGetImageBufFromKey(isWorkerContext_t *ibctx, redisContext *rc, char *key);
-extern void isJpeg( isWorkerContext_t *ibctx, isThreadContextType *tcp, json_t *job);
 extern void isIndex( isWorkerContext_t *ibctx, isThreadContextType *tcp, json_t *job);
-extern void isSpots( isWorkerContext_t *ibctx, isThreadContextType *tcp, json_t *job);
-extern void is_zmq_free_fn(void *data, void *hint);
-extern void is_zmq_error_reply(zmq_msg_t *msgs, int n_msgs, void *err_dealer, char *fmt, ...);
-extern zmq_pollitem_t *isRemakeZMQPollItems(void *parent_router, void *err_rep, void *err_dealer);
-extern int isNProcesses();
-extern zmq_pollitem_t *isGetZMQPollItems();
 extern void isInit(int dev_mode);
-extern void isLogging_init();
+extern void isJpeg( isWorkerContext_t *ibctx, isThreadContextType *tcp, json_t *job);
+extern void isLogging_alert(char *fmt, ...);
+extern void isLogging_crit(char *fmt, ...);
 extern void isLogging_debug(char *fmt, ...);
+extern void isLogging_emerg(char *fmt, ...);
+extern void isLogging_err(char *fmt, ...);
 extern void isLogging_info(char *fmt, ...);
+extern void isLogging_init();
 extern void isLogging_notice(char *fmt, ...);
 extern void isLogging_warning(char *fmt, ...);
-extern void isLogging_err(char *fmt, ...);
-extern void isLogging_crit(char *fmt, ...);
-extern void isLogging_alert(char *fmt, ...);
-extern void isLogging_emerg(char *fmt, ...);
-extern int is_h5_error_handler(hid_t estack_id, void *dummy);
-extern char *file_name_component(const char *parent_id, const char *path);
+extern void isProcessListInit();
+extern void isRsyncConnectionTest(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job);
+extern void isRsyncHostTest(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job);
+extern void isSpots( isWorkerContext_t *ibctx, isThreadContextType *tcp, json_t *job);
+extern void isSupervisor(const char *key);
+extern void isWriteImageBufToRedis(isWorkerContext_t *wctx, isImageBufType *imb, redisContext *rc);
+extern void is_zmq_error_reply(zmq_msg_t *msgs, int n_msgs, void *err_dealer, char *fmt, ...);
+extern void is_zmq_free_fn(void *data, void *hint);
+extern void set_json_object_float_array( const char *cid, json_t *j, const char *key, float *values, int n);
+extern void set_json_object_float_array_2d(const char *cid, json_t *j, const char *k, float *v, int rows, int cols);
+extern void set_json_object_integer(const char *cid, json_t *j, const char *key, int value);
+extern void set_json_object_real(const char *cid, json_t *j, const char *key, double value);
+extern void set_json_object_string(const char *cid, json_t *j, const char *key, const char *fmt, ...);
+extern zmq_pollitem_t *isGetZMQPollItems();
+extern zmq_pollitem_t *isRemakeZMQPollItems(void *parent_router, void *err_rep, void *err_dealer);
