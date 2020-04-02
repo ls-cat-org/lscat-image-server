@@ -220,6 +220,7 @@ extern void isDataDestroy(isWorkerContext_t *c);
 extern void isIndex( isWorkerContext_t *ibctx, isThreadContextType *tcp, json_t *job);
 extern void isInit(int dev_mode);
 extern void isJpeg( isWorkerContext_t *ibctx, isThreadContextType *tcp, json_t *job);
+extern void isRsyncLocalDirStats(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job);
 extern void isLogging_alert(char *fmt, ...);
 extern void isLogging_crit(char *fmt, ...);
 extern void isLogging_debug(char *fmt, ...);

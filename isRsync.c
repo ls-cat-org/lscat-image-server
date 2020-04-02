@@ -17,7 +17,7 @@
  **
  ** @param job
  */
-void ifResyncLocalSize(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
+void isRsyncLocalDirStats(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
   static const char *id = FILEID "isRsyncLocalSize";
   const char *localDirName;             // our name to look up
   json_t *rtn_json;                     // Object to return
@@ -30,8 +30,8 @@ void ifResyncLocalSize(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t
   FTSENT *ftsp;                         // structure to walk the directory tree
   FTSENT *ftsep;                        // pointer to linked list of directory contents
   const char *dirList[2];               // fodder for fts_open
-  int nbytes;                           // sum of file sizes
-  int nfiles;                           // number of files found
+  uint64 nbytes;                           // sum of file sizes
+  uint64 nfiles;                           // number of files found
   int ndirs;                            // number of directories found
   int ncirculars;                       // number of directories that lead to infinite loops
   int nsymlinks;                        // number of symbolic links
