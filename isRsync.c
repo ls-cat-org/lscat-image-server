@@ -119,6 +119,7 @@ void isRsyncLocalDirStats(isWorkerContext_t *wctx, isThreadContextType *tcp, jso
   json_object_set_new(rtn_json, "localDirName", json_string(localDirName));
   json_object_set_new(rtn_json, "localDirSize", json_integer(nbytes));
   json_object_set_new(rtn_json, "nDirs",        json_integer(ndirs));
+  json_object_set_new(rtn_json, "nFiles",       json_integer(nfiles));
   json_object_set_new(rtn_json, "nCircDirs",    json_integer(ncirculars));
   json_object_set_new(rtn_json, "nSymLinks",    json_integer(nsymlinks));
   json_object_set_new(rtn_json, "nBadSymLinks", json_integer(nbadsymlinks));
