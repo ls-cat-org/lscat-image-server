@@ -362,7 +362,7 @@ void isRsyncConnectionTest(isWorkerContext_t *wctx, isThreadContextType *tcp, js
     exit(-1);
   }
 
-  snprintf(dfCmd, dfCmdSize-1, "mkdir -p %s && df -h %s", destDir, destDir);
+  snprintf(dfCmd, dfCmdSize-1, "sh -c \"mkdir -p %s && df -h %s\"", destDir, destDir);
   dfCmd[dfCmdSize-1] = 0;
 
   isLogging_info("%s: request to check connection to %s", id, hostName);
@@ -398,8 +398,8 @@ void isRsyncConnectionTest(isWorkerContext_t *wctx, isThreadContextType *tcp, js
   /***************************************
    *    Set up pipes to child process    *
    ***************************************/
-  pipe2(pipeout,      O_CLOEXEC);  // We'll be throwing this out by, well, not saving it.
-  pipe2(pipeerr,      O_CLOEXEC);  // At some point we'll parse this for errors.  No API developed yet
+  pipe2(pipeout,      O_CLOEXEC);  // Returned to user to see how much space they have
+  pipe2(pipeerr,      O_CLOEXEC);  // Returned to user to debug errors
 
   c = fork();
   if (c == -1) {
