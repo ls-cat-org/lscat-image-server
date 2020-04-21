@@ -16,22 +16,22 @@
 //
 // File descriptor to handle
 //
-// We currently do not have a use case for handling stdin so beyond
-// making a provision for this via is_out it is unsupported
+// We currently do not have a use case for handling stdin beyond
+// making a provision via is_out: writing to the child stdin is
+// unsupported until we know what we want to do.
 //
 typedef struct isSubProcessFD_struct {
   int fd;                               // child's file descriptor we want to pipe
   int is_out;                           // 0 = we write to (like stdin), 1 = we read from (like stdout)
-  void *(progressReporter(char *));     // if not null this function handles the progress updates
-  int line_or_raw;                      // 1 = send full lines only to progressReporter, 0 = whatever we have
-  void *(done(char *));                 // if not null this function handles the final result
+  void (*progressReporter)(char *);     // if not null this function handles the progress updates
+  int read_lines;                       // 1 = send full lines only to progressReporter, 0 = whatever we have
+  void (*done)(char *);                 // if not null this function handles the final result
   int _piped_fd;                        // (private) parent's version of fd
   int _event;                           // (private) our poll event (POLLIN or POLLOUT)
   int _pipe[2];                         // (private) pipe between parent and child
   char *_buf;                           // our reading buffer
   char *_buf_end;                       // end of _s
   int _buf_size;                        // current number of buffer bytes
-  isSubProcessFD_type *_next;           // (private) manage active polling objects via linked list
 } isSubProcessFD_type;
 
 typedef struct isSubProcess_struct {
@@ -40,6 +40,7 @@ typedef struct isSubProcess_struct {
   char **argv;                          // null terminated list of arguments
   isSubProcessFD_type *fds;             // list of fds we are asked to manage
   int nfds;                             // number of fds in list
+  int rtn;                              // return value of sub process
 } isSubProcess_type;
 
 
@@ -55,7 +56,7 @@ typedef struct isSubProcess_struct {
  **
  ** 
  */
-int isSubProcess(const char *cid, isSubProcessType *spt) {
+int isSubProcess(const char *cid, isSubProcess_type *spt) {
   static const char *id = FILEID "isSubProcess";
 
   int max_fd;                   // largest file descriptor
@@ -66,22 +67,27 @@ int isSubProcess(const char *cid, isSubProcessType *spt) {
   struct pollfd *polllist;      // list of fd's to send to poll
   int npoll;                    // number of active fd's in polllist
   int i;                        // loop index
-  isSubProcessFD_type *spfdp, *first_spfdp;
-  
+  int status;                   // return value from waitpid
+  isSubProcessFD_type *fd_servers;      // Lookup table of isSubProcessFD's
+  isSubProcessFD_type *spfdp;   // pointo into the fd_server array
+  char tmp[256];                // temporary buffer to read data into
+  int bytes_read;               // number of bytes read in the read statement
 
   //
   // Set up pipes.  Automatically close the new fds in the child after
   // execve.  All this activity here should make things simpler in the
   // polling loop.
   //
-  first_spfdp = spt->fds[spt->nfds - 1];
   max_fd = 0;
   for (i=0; i < spt->nfds; i++) {
-    spt->fds[i]._buf = NULL;
+    //
+    // make sure at least we have a valid pointer to an empty string
+    //
+    spt->fds[i]._buf = realloc(NULL,1);
+    spt->fds[i]._buf[0] = 0;
     spt->fds[i]._buf_size = 0;
 
-    spt->_next = (i == 0 ? NULL : spt->nfds[i-1]);      // set up linked list
-    pipe2(spt->nfds[i]._pipe, O_CLOEXEC);               // auto close parent end of pipe in child
+    pipe2(spt->fds[i]._pipe, O_CLOEXEC);               // auto close parent end of pipe in child
     if (spt->fds[i].is_out) {
       dup2(spt->fds[i]._pipe[1], spt->fds[i].fd);       // duplicate the child's fd to read from
       spt->fds[i]._piped_fd = spt->fds[i]._pipe[1];     // copy to ease polling loop logic
@@ -92,7 +98,7 @@ int isSubProcess(const char *cid, isSubProcessType *spt) {
       spt->fds[i]._event = POLLOUT;                     // the event we'll be polling for
     }
     if (spt->fds[i]._piped_fd > max_fd) {
-      max_fd = spt->fds[i];
+      max_fd = spt->fds[i]._piped_fd;
     }
   }
 
@@ -127,24 +133,18 @@ int isSubProcess(const char *cid, isSubProcessType *spt) {
   }  
 
   polllist = calloc(spt->nfds, sizeof (*polllist));
-  if (pollist == NULL) {
+  if (polllist == NULL) {
     isLogging_crit("%s->%s: Out of memory (pollist)", cid, id);
     _exit(-1);
   }
   
   for (npoll=0; npoll < spt->nfds; npoll++) {
-    fd_servers[spt->fds[i]._piped_fd] = spt->fds + npoll;  // find fds structure from file descriptor
+    fd_servers[spt->fds[npoll]._piped_fd] = spt->fds[npoll];  // find fds structure from file descriptor
+    polllist[npoll].fd     = spt->fds[npoll]._piped_fd;
+    polllist[npoll].events = spt->fds[npoll]._event;
   }
 
   keep_on_truckin = 1;
-  
-  for (npoll=0, spfdp=first_spfdp; spfdp=spfdp->next; spfdp != NULL) {
-    if (spfdp->_piped_fd >= 0) {
-      pollist[npoll].fd = spfd->_piped_fd;
-      pollist[npoll].event = spfd->_event;
-      npoll++;
-    }
-  }                       
 
   do {
     pollstat = poll(polllist, npoll, 100);
@@ -160,7 +160,7 @@ int isSubProcess(const char *cid, isSubProcessType *spt) {
       err = waitpid(c, &status, WNOHANG);
       if (err == c) {
         if (WIFEXITED(status)) {
-          set_json_object_integer(id, rtn_json, "status", WEXITSTATUS(status));
+          spt->rtn = WEXITSTATUS(status);
         }
 
         keep_on_truckin = 0;
@@ -180,48 +180,148 @@ int isSubProcess(const char *cid, isSubProcessType *spt) {
         isLogging_info("%s->%s: Error or hangup on fd %d\n", cid, id, polllist[i].fd);
 
         close(polllist[i].fd);
-        pollist[i].fd = (pollist[i].fd < 0 ? pollist[i].fd : -pollist[i].fd);  // ignore this fd in the future
+        polllist[i].fd = (polllist[i].fd < 0 ? polllist[i].fd : -polllist[i].fd);  // ignore this fd in the future
       }
 
       // we are reading something
       // 
       if (polllist[i].revents & POLLIN) {
-        spfdp = fd_servers[polllist[i].fd];
+        spfdp = &fd_servers[abs(polllist[i].fd)];
         do {
-          char tmp[256];
-          int bytes_read;
-
-          bytes_read = read(polllist[i].fd, tmp, sizeof(tmp));
+          bytes_read = read(polllist[i].fd, tmp, sizeof(tmp)-1);
+          if (bytes_read == -1) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+              break;
+            }
+            isLogging_err("%s->%s: error reading fd=%d  (child fd=%d): %s", cid, id, spfdp->_piped_fd, spfdp->fd, strerror(errno));
+            //
+            // Probably this is a programming error with no recovery.
+            break;
+          }
+          //
+          // Nulls are good.
+          tmp[sizeof(tmp)-1] = 0;       // Just good form
 
           if (bytes_read > 0) {
+            tmp[bytes_read] = 0;          // Really all the nullification that's needed
+
             //
             // Make room for incomming bytes
             //
-            spfdp->_buf = realloc(spfdp->_buf, spfdp->_buf_size + bytes_read);
+            // New size includes temporary null byte
+            //
+            errno = 0;
+            spfdp->_buf = realloc(spfdp->_buf, spfdp->_buf_size + bytes_read + 1);
+            if (spfdp->_buf == NULL) {
+              isLogging_err("%s->%s: Out of memory (realloc %d bytes): %s", cid, id, spfdp->_buf_size+bytes_read+1, strerror(errno));
+              exit(-1);
+            }
             //
             // point to next location to write to
             //
             spfdp->_buf_end = spfdp->_buf + spfdp->_buf_size;
             //
-            // and write there
+            // and write there (include our stray null)
             //
-            memcpy(spfdp->_buf_end, tmp, bytes_read);
+            memcpy(spfdp->_buf_end, tmp, bytes_read + 1);
             //
             // finally fix up size of buffer
+            // 
+            // Note we ignore our artifically added null so that it
+            // will get overwritten next time we get a string
             //
             spfdp->_buf_size += bytes_read;
           }
         } while(0);     // shouldn't we be able to do this while nbytes > 0 if we set non-blocking?
+
+        if (bytes_read > 0 && spfdp->progressReporter) {
+          if (spfdp->read_lines == 0) {
+            // Easy as π
+            spfdp->progressReporter(spfdp->_buf);
+            spfdp->_buf_size = 0;
+          } else {
+            //
+            // line mode: parse out each line and send them one at a
+            // time.  Save the residue (non \r or \n endings) for next
+            // time around or for the very end when we clean things
+            // up.
+            //
+            // strtok_r is mostly what we want except we need to know
+            // when the last string has come our way.
+            //
+            char *saveptr;
+            char *next;
+            char *lastc;
+            char *lasts;
+            int save_last_string;
+
+            // If the last char is \r or \n then we save the last
+            // string from strtok_r for next time.
+            //
+            save_last_string = 1;
+            if (strlen(spfdp->_buf) > 0) {
+              lastc = spfdp->_buf + strlen(spfdp->_buf) - 1;
+              if (*lastc == '\n' || *lastc == '\r') {
+                save_last_string = 0;
+              }
+            }
+            saveptr = NULL;     // style, saveptr is ignored on first strtok_r call
+            lasts   = NULL;
+            next = strtok_r(spfdp->_buf, "\r\n", &saveptr);
+            while (next != NULL) {
+              if (lasts != NULL) {
+                spfdp->progressReporter(lasts);
+                lasts = next;
+              }
+              next = strtok_r(NULL, "\r\n", &saveptr);
+            }
+            if (lasts) {
+              if (save_last_string) {
+                memcpy(spfdp->_buf, lasts, strlen(lasts)+1);
+                spfdp->_buf_size = strlen(lasts);
+              } else {
+                spfdp->progressReporter(lasts);
+                spfdp->_buf_size = 0;
+              }
+            }
+          }
+        }
       }
 
       if (polllist[i].revents & POLLOUT) {
         // Note that we do not have a use case for this yet.  Once we
         // do then this section can get filled out.
       }
+    }
+  } while (keep_on_truckin);
 
-    } while (keep_on_truckin);
+  //
+  // Send our results
+  //
+  for (i=0; i<npoll; i++) {
+    if (polllist[i].fd > 0) {
+      close(polllist[i].fd);
+      polllist[i].fd = -polllist[i].fd;
+    }
+    spfdp = &fd_servers[abs(polllist[i].fd)];
+    if (spfdp->progressReporter) {
+      spfdp->progressReporter(spfdp->_buf);
+    }
+    if (spfdp->done) {
+      spfdp->done(spfdp->_buf);
+    }
+    free(spfdp->_buf);
+    spfdp->_buf_size = 0;
+  }
 
-    
-  
+  //
+  // Return memory allocations
 
+  free(polllist);
+  polllist = NULL;
+
+  free(fd_servers);
+  fd_servers = NULL;
+
+  return 0;
 }
