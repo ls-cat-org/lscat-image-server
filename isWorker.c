@@ -138,7 +138,7 @@ void *isWorker(void *voidp) {
       } else if (strcasecmp("rsync_host_test", job_type) == 0) {
         isRsyncHostTest(wctx, &tc, job);
       } else if (strcasecmp("rsync_connection_test", job_type) == 0) {
-        isRsyncConnectionTest(wctx, &tc, job);
+        isRsyncConnectionTest2(wctx, &tc, job);
       } else if (strcasecmp("local_dir_stats", job_type) == 0) {
         isRsyncLocalDirStats(wctx, &tc, job);
       } else {

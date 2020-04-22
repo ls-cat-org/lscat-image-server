@@ -13,37 +13,6 @@
  */
 #include "is.h"
 
-//
-// File descriptor to handle
-//
-// We currently do not have a use case for handling stdin beyond
-// making a provision via is_out: writing to the child stdin is
-// unsupported until we know what we want to do.
-//
-typedef struct isSubProcessFD_struct {
-  int fd;                               // child's file descriptor we want to pipe
-  int is_out;                           // 0 = we write to (like stdin), 1 = we read from (like stdout)
-  void (*progressReporter)(char *);     // if not null this function handles the progress updates
-  int read_lines;                       // 1 = send full lines only to progressReporter, 0 = whatever we have
-  void (*done)(char *);                 // if not null this function handles the final result
-  int _piped_fd;                        // (private) parent's version of fd
-  int _event;                           // (private) our poll event (POLLIN or POLLOUT)
-  int _pipe[2];                         // (private) pipe between parent and child
-  char *_buf;                           // our reading buffer
-  char *_buf_end;                       // end of _s
-  int _buf_size;                        // current number of buffer bytes
-} isSubProcessFD_type;
-
-typedef struct isSubProcess_struct {
-  char *cmd;                            // name of executable to run
-  char **envp;                          // null terminated list of environment variables
-  char **argv;                          // null terminated list of arguments
-  isSubProcessFD_type *fds;             // list of fds we are asked to manage
-  int nfds;                             // number of fds in list
-  int rtn;                              // return value of sub process
-} isSubProcess_type;
-
-
 /** isSubProcess
  **
  ** returns
@@ -89,12 +58,10 @@ int isSubProcess(const char *cid, isSubProcess_type *spt) {
 
     pipe2(spt->fds[i]._pipe, O_CLOEXEC);               // auto close parent end of pipe in child
     if (spt->fds[i].is_out) {
-      dup2(spt->fds[i]._pipe[1], spt->fds[i].fd);       // duplicate the child's fd to read from
-      spt->fds[i]._piped_fd = spt->fds[i]._pipe[1];     // copy to ease polling loop logic
+      spt->fds[i]._piped_fd = spt->fds[i]._pipe[0];     // copy to ease polling loop logic
       spt->fds[i]._event = POLLIN;                      // the event we'll be polling for
     } else {
-      dup2(spt->fds[i]._pipe[0], spt->fds[i].fd);       // duplicate the child's fd to write to
-      spt->fds[i]._piped_fd = spt->fds[i]._pipe[0];     // copy to ease polling loop logic
+      spt->fds[i]._piped_fd = spt->fds[i]._pipe[1];     // copy to ease polling loop logic
       spt->fds[i]._event = POLLOUT;                     // the event we'll be polling for
     }
     if (spt->fds[i]._piped_fd > max_fd) {
@@ -110,13 +77,33 @@ int isSubProcess(const char *cid, isSubProcess_type *spt) {
   }
 
   if (c == 0) {
+    int ii;
+
+    isLogging_debug("%s->%s: cmd: '%s'", cid, id, spt->cmd);
+
+    isLogging_debug("%s->%s: argv dump", cid, id);
+    for (ii=0; spt->argv[ii] != NULL; ii++) {
+      isLogging_debug("%s->%s: %d  %s", cid, id, ii, spt->argv[ii]);
+    }
+
+    isLogging_debug("%s->%s: env dump", cid, id);
+    for (ii=0; spt->envp[ii] != NULL; ii++) {
+      isLogging_debug("%s->%s: %d  %s", cid, id, ii, spt->envp[ii]);
+    }
+
     // In child
-    
+    for (i=0; i < spt->nfds; i++) {
+      if (spt->fds[i].is_out) {
+        dup2(spt->fds[i]._pipe[1], spt->fds[i].fd);       // duplicate the child's fd to read from
+      } else {
+        dup2(spt->fds[i]._pipe[0], spt->fds[i].fd);       // duplicate the child's fd to write to
+      }
+    }
+
     execve( spt->cmd, spt->argv, spt->envp);
     //
     // execve never returns except on error
     //
-
     isLogging_err("%s->%s: execve failed: %s\n", cid, id, strerror(errno));
     //
     // None of the reasons for getting here are recoverable
@@ -126,6 +113,8 @@ int isSubProcess(const char *cid, isSubProcess_type *spt) {
 
   // In parent
   
+  isLogging_debug("%s->%s: max_fd=%d", cid, id, max_fd);
+
   fd_servers = calloc(max_fd+1, sizeof(*fd_servers));
   if (fd_servers == NULL) {
     isLogging_crit("%s->%s: Out of memory (fd_servers)", cid, id);
@@ -139,6 +128,7 @@ int isSubProcess(const char *cid, isSubProcess_type *spt) {
   }
   
   for (npoll=0; npoll < spt->nfds; npoll++) {
+    isLogging_debug("%s->%s: event=%d  piped_fd=%d  child_fd=%d", cid, id, spt->fds[npoll]._event, spt->fds[npoll]._piped_fd, spt->fds[npoll].fd);
     fd_servers[spt->fds[npoll]._piped_fd] = spt->fds[npoll];  // find fds structure from file descriptor
     polllist[npoll].fd     = spt->fds[npoll]._piped_fd;
     polllist[npoll].events = spt->fds[npoll]._event;
@@ -162,15 +152,13 @@ int isSubProcess(const char *cid, isSubProcess_type *spt) {
         if (WIFEXITED(status)) {
           spt->rtn = WEXITSTATUS(status);
         }
-
         keep_on_truckin = 0;
-        break;
       }
       if (err == -1) {
         isLogging_info("%s: waitpid 2 failed: %s\n", id, strerror(errno));
         keep_on_truckin = 0;
-        break;
       }
+      isLogging_debug("%s->%s: waitpid status %0x  keep_on_truckin: %d", cid, id, status, keep_on_truckin);
       continue;
     }
 
@@ -186,9 +174,14 @@ int isSubProcess(const char *cid, isSubProcess_type *spt) {
       // we are reading something
       // 
       if (polllist[i].revents & POLLIN) {
+        isLogging_debug("%s->%s: POLLIN on fd=%d", cid, id, polllist[i].fd);
+
         spfdp = &fd_servers[abs(polllist[i].fd)];
         do {
           bytes_read = read(polllist[i].fd, tmp, sizeof(tmp)-1);
+
+          isLogging_debug("%s->%s: fd=%d read %d bytes: '%.*s'", cid, id, polllist[i].fd, bytes_read, bytes_read, tmp);
+
           if (bytes_read == -1) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
               break;
@@ -301,6 +294,13 @@ int isSubProcess(const char *cid, isSubProcess_type *spt) {
   for (i=0; i<npoll; i++) {
     if (polllist[i].fd > 0) {
       close(polllist[i].fd);
+      //
+      // Practically fd is never zero since it comes from dup2 and
+      // fd=0 is taken (stdin) hence anything returned by dup2 likely
+      // starts at 3.  We can always subtract max_fd+1 to ensure a
+      // negative number here if for some reasone dup2 starts
+      // returning 0 fd's.
+      //
       polllist[i].fd = -polllist[i].fd;
     }
     spfdp = &fd_servers[abs(polllist[i].fd)];

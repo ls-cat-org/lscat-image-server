@@ -196,6 +196,47 @@ typedef struct isProcessListStruct {
 } isProcessListType;
 
 
+/** The world according to isSubProcess.                                                                */
+//
+// isSubProcess info per managed file descriptor
+//
+// Members starting with an underscore are "private".  The
+// non-underscored members are intended for use by the isSubProcess
+// calling routines.
+//
+// We currently do not have a use case for handling stdin beyond
+// making a provision via is_out: writing to the child stdin is
+// unsupported until we know what we want to do.
+//
+typedef struct isSubProcessFD_struct {
+  int fd;                               // child's file descriptor we want to pipe
+  int is_out;                           // 0 = we write to (like stdin), 1 = we read from (like stdout)
+  void (*progressReporter)(char *);     // if not null this function handles the progress updates
+  int read_lines;                       // 1 = send full lines only to progressReporter, 0 = whatever we have
+  void (*done)(char *);                 // if not null this function handles the final result
+  int _piped_fd;                        // (private) parent's version of fd
+  int _event;                           // (private) our poll event (POLLIN or POLLOUT)
+  int _pipe[2];                         // (private) pipe between parent and child
+  char *_buf;                           // our reading buffer
+  char *_buf_end;                       // end of _s
+  int _buf_size;                        // current number of buffer bytes
+} isSubProcessFD_type;
+
+/*
+** Everything needed to start up a subprocess and to get something
+** back afterwards.
+*/
+
+typedef struct isSubProcess_struct {
+  char *cmd;                            // name of executable to run
+  char **envp;                          // null terminated list of environment variables
+  char **argv;                          // null terminated list of arguments
+  isSubProcessFD_type *fds;             // list of fds we are asked to manage
+  int nfds;                             // number of fds in list
+  int rtn;                              // return value of sub process
+} isSubProcess_type;
+
+
 extern char *file_name_component(const char *parent_id, const char *path);
 extern double get_double_from_json_object(const char *cid,  const json_t *j, const char *key);
 extern image_access_type isFindFile(const char *fn);
@@ -206,6 +247,7 @@ extern int isH5GetData(isWorkerContext_t *wctx, const char *fn, isImageBufType *
 extern int isNProcesses();
 extern int isRayonixGetData(isWorkerContext_t *wctx, const char *fn, isImageBufType **imbp);
 extern int is_h5_error_handler(hid_t estack_id, void *dummy);
+extern int isSubProcess(const char *cid, isSubProcess_type *spt);
 extern int verifyIsAuth( char *isAuth, char *isAuthSig_str);
 extern isImageBufType *isGetImageBufFromKey(isWorkerContext_t *ibctx, redisContext *rc, char *key);
 extern isImageBufType *isGetRawImageBuf(isWorkerContext_t *ibctx, redisContext *rc, json_t *job);
@@ -221,6 +263,7 @@ extern void isIndex( isWorkerContext_t *ibctx, isThreadContextType *tcp, json_t 
 extern void isInit(int dev_mode);
 extern void isJpeg( isWorkerContext_t *ibctx, isThreadContextType *tcp, json_t *job);
 extern void isRsyncLocalDirStats(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job);
+extern void isRsyncConnectionTest2(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job);
 extern void isLogging_alert(char *fmt, ...);
 extern void isLogging_crit(char *fmt, ...);
 extern void isLogging_debug(char *fmt, ...);

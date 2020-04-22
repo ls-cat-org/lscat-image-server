@@ -659,3 +659,184 @@ void isRsyncConnectionTest(isWorkerContext_t *wctx, isThreadContextType *tcp, js
     }
   } while(0);
 }
+
+
+/**
+ ** Test for valid connection
+ **
+ ** @param wctx Worker context
+ **   @li @c wctx->ctxMutex  Keeps the worker threads in line
+ **
+ ** @param tcp Thread data
+ **   *li *c tcp->rep  ZMQ Response socket into which to throw our response
+ **
+ ** @param job
+ */
+
+void isRsyncConnectionTest2(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
+  static const char *id = FILEID "isRsyncConnectionTest2";
+  const char *hostName;         // host name to look up
+  const char *userName;
+  //  const char *localDir;
+  const char *destDir;
+  char userAtHost[256];
+  char *dfCmd;
+  int dfCmdSize;
+  isSubProcess_type sp;
+  isSubProcessFD_type fds[2];
+  int err;
+  int zerr;
+  zmq_msg_t err_msg;            // error message to send via zmq
+  zmq_msg_t job_msg;            // send back the object that we are operating on
+  zmq_msg_t rtn_msg;            // the job message
+  json_t *rtn_json;             // Object to return
+  char *rtn_str;                // string version of our object
+  char *job_str;                // string version of job
+  char *envp[] = {
+    NULL                                // -- Required NULL at end of list
+  };
+  char *argv[] = {
+    "ssh",                              // 0
+    "-v",                               // 1
+    "-o",                               // 2
+    "StrictHostKeyChecking=no",         // 3
+    "-o",                               // 4
+    "PasswordAuthentication=no",        // 5
+    "-o",                               // 6
+    "KbdInteractiveDevices=none",       // 7
+    "-o",                               // 8
+    "ConnectTimeout=5",                 // 9
+    NULL,                               // 10 userAtHost
+    NULL,                               // 11 dfCmd
+    NULL                                // -- Required NULL end of list
+  };
+
+  // Todo: add regexp tests
+  //
+  hostName = json_string_value(json_object_get(job, "remoteHostName"));
+  userName = json_string_value(json_object_get(job, "remoteUserName"));
+  destDir  = json_string_value(json_object_get(job, "remoteDirName"));
+
+  snprintf(userAtHost, sizeof(userAtHost)-1, "%s@%s", userName, hostName);
+  userAtHost[sizeof(userAtHost)-1] = 0;
+  argv[10] = userAtHost;
+
+  dfCmdSize = 2*strlen(destDir) + 65;
+  dfCmd = calloc(dfCmdSize, 1);
+  if (dfCmd == NULL) {
+    isLogging_crit("%s: Out of memory (isRsync dfCmd)", id);
+    exit(-1);
+  }
+
+  snprintf(dfCmd, dfCmdSize-1, "sh -c \"mkdir -p %s && df -h %s\"", destDir, destDir);
+  dfCmd[dfCmdSize-1] = 0;
+  argv[11] = dfCmd;
+
+
+  isLogging_info("%s: request to check connection to %s", id, hostName);
+
+  //
+  // Really we just send a blank error message: actual errors are
+  // signaled by is_zmq_error_reply
+  //
+  zmq_msg_init(&err_msg);
+
+
+  // Job message part
+  job_str = NULL;
+  if (job != NULL) {
+    pthread_mutex_lock(&wctx->metaMutex);
+    job_str = json_dumps(job, JSON_SORT_KEYS | JSON_INDENT(0) | JSON_COMPACT);
+    pthread_mutex_unlock(&wctx->metaMutex);
+  } else {
+    job_str = strdup("");
+  }
+
+  zerr = zmq_msg_init_data(&job_msg, job_str, strlen(job_str), is_zmq_free_fn, NULL);
+  if (zerr == -1) {
+    isLogging_err("%s: sending rsync test result failed: %s\n", id, zmq_strerror(errno));
+    is_zmq_error_reply(NULL, 0, tcp->rep, "%s: Could not initialize reply message (job_str)", id);
+    pthread_exit(NULL);
+  }
+
+  rtn_json = json_object();
+
+  void stdoutReader(char *s) {
+    isLogging_info("%s: Receiving stdout\n%s", id, s);
+    json_object_set_new(rtn_json, "stdout", json_string(s));
+  }
+  void stderrReader(char *s) {
+    isLogging_info("%s: Receiving stderr\n%s", id, s);
+    json_object_set_new(rtn_json, "stderr", json_string(s));
+  }
+
+  sp.cmd  = "/usr/bin/ssh";
+  sp.envp = envp;
+  sp.argv = argv;
+  sp.nfds = 2;
+  sp.fds  = fds;
+
+  // Set up stdout
+  // This will be the result of "sh -c mkdir destDir | df -h dstDir"
+  fds[0].fd     = 1;                    // child process's stdout
+  fds[0].is_out = 1;                    // flag indicating we'll be reading this
+  fds[0].read_lines = 0;                // Just accumulate the entire ouput
+  fds[0].progressReporter = NULL;       // No progress reports
+  fds[0].done = stdoutReader;           // routine to receive stdout result
+
+  // Set up stderr
+  // This will be the result mainly of the -v switch on ssh
+  fds[1].fd     = 2;                    // child process's stderr
+  fds[1].is_out = 1;                    // flag indicating we'll be reading this
+  fds[1].read_lines = 0;                // Just accumulate the entire ouput
+  fds[1].progressReporter = NULL;       // No progress reports
+  fds[1].done = stderrReader;           // routine to receive stdout result
+  
+  err = isSubProcess(id, &sp);
+  if (err) {
+    isLogging_err("%s: isSubProcess failed", id);
+  }
+
+  set_json_object_integer(id, rtn_json, "status", sp.rtn);
+
+  // Return message
+  rtn_str = NULL;
+  if (rtn_json != NULL) {
+    pthread_mutex_lock(&wctx->metaMutex);
+    rtn_str = json_dumps(rtn_json, JSON_SORT_KEYS | JSON_INDENT(0) | JSON_COMPACT);
+    json_decref(rtn_json);
+    pthread_mutex_unlock(&wctx->metaMutex);
+  } else {
+    rtn_str = strdup("");
+  }
+
+  zerr = zmq_msg_init_data(&rtn_msg, rtn_str, strlen(rtn_str), is_zmq_free_fn, NULL);
+  if (zerr == -1) {
+    isLogging_err("%s: zmq_msg_init failed (rtn_str): %s\n", id, zmq_strerror(errno));
+    is_zmq_error_reply(NULL, 0, tcp->rep, "%s: Could not initialize reply message (rtn_str)", id);
+    pthread_exit (NULL);
+  }
+  
+  do {
+    // Error Message
+    zerr = zmq_msg_send(&err_msg, tcp->rep, ZMQ_SNDMORE);
+    if (zerr == -1) {
+      isLogging_err("%s: Could not send rsync test: %s\n", id, zmq_strerror(errno));
+      break;
+    }
+
+    // Job 
+    zerr = zmq_msg_send(&job_msg, tcp->rep, ZMQ_SNDMORE);
+    if (zerr < 0) {
+      isLogging_err("%s: sending job_str failed: %s\n", id, zmq_strerror(errno));
+      break;
+    }
+
+    // Results
+    zerr = zmq_msg_send(&rtn_msg, tcp->rep, 0);
+    if (zerr < 0) {
+      isLogging_err("%s: sending rtn_str failed: %s\n", id, zmq_strerror(errno));
+      break;
+    }
+  } while(0);
+}
