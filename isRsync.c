@@ -840,3 +840,202 @@ void isRsyncConnectionTest2(isWorkerContext_t *wctx, isThreadContextType *tcp, j
     }
   } while(0);
 }
+
+void isRsyncTransfer(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
+  static const char *id = FILEID "isRsyncTransfer";
+  const char *hostName;         // host name to look up
+  const char *userName;
+  const char *localDir;
+  const char *destDir;
+  const char *progressPublisher;
+  const char *progressAddress;
+  const char *progressPort;
+  const char *tag;
+  redisContext *remote_redis;
+  char *src;
+  int src_size;
+  char *dfCmd;
+  int dfCmdSize;
+  isSubProcess_type sp;
+  isSubProcessFD_type fds[2];
+  int err;
+  int zerr;
+  zmq_msg_t err_msg;            // error message to send via zmq
+  zmq_msg_t job_msg;            // send back the object that we are operating on
+  zmq_msg_t rtn_msg;            // the job message
+  json_t *rtn_json;             // Object to return
+  char *rtn_str;                // string version of our object
+  char *job_str;                // string version of job
+
+  char *envp[] = {              // Environment (if any) for the process
+    NULL;                       // -- Required NULL at end of list
+  };
+
+
+  char *argv[] = {              // Argument list
+    "rsync",                            // 0
+    "-v",                               // 1
+    "-rt",                              // 2
+    "--progress",                       // 3
+    "--partial",                        // 4
+    "--partial-dir=.rsync_partial",     // 5
+    "-e",                               // 6
+    "''ssh -o StrictHostKeyChecking=no -o PasswordAuthentication=no -o KbdInteractiveDevices=none''", // 7
+    NULL,                               // 8 src
+    NULL,                               // 9 dst
+    NULL                                // -- Required NULL end of list
+  };
+
+
+  // Todo: add regexp tests
+  //
+  hostName = json_string_value(json_object_get(job, "remoteHostName"));
+  userName = json_string_value(json_object_get(job, "remoteUserName"));
+  destDir  = json_string_value(json_object_get(job, "remoteDirName"));
+  localDir = json_string_value(json_object_get(job, "localDir"));
+
+  tag               = json_string_value(json_object_get(job,  "tag"));
+  progressPublisher = json_string_value(json_object_get(job,  "progressPublisher"));
+  progressAddress   = json_string_value(json_object_get(job,  "progressAddress"));
+  progressPort      = json_integer_value(json_object_get(job, "progressPort"));
+
+  // full source length         @                      : 
+  src_size = strlen(userName) + 1 + strlen(hostName) + 1 + strlen(localDir) + 2;
+  src = calloc(src_size, sizeof(*src));
+  if (src == NULL) {
+    isLogging_crit("%s: Out of memory (src)", id);
+    exit (-1);
+  }
+
+  snprintf(src, src_size-1, "%s@%s:%s", userName, hostName, localDir);
+  src[src_size-1] =0;
+  argv[8] = src;
+
+  argv[9] = destDir;
+  //
+  // Really we just send a blank error message: actual errors are
+  // signaled by is_zmq_error_reply
+  //
+  zmq_msg_init(&err_msg);
+
+
+  // Job message part
+  job_str = NULL;
+  if (job != NULL) {
+    pthread_mutex_lock(&wctx->metaMutex);
+    job_str = json_dumps(job, JSON_SORT_KEYS | JSON_INDENT(0) | JSON_COMPACT);
+    pthread_mutex_unlock(&wctx->metaMutex);
+  } else {
+    job_str = strdup("");
+  }
+
+  zerr = zmq_msg_init_data(&job_msg, job_str, strlen(job_str), is_zmq_free_fn, NULL);
+  if (zerr == -1) {
+    isLogging_err("%s: sending rsync test result failed: %s\n", id, zmq_strerror(errno));
+    is_zmq_error_reply(NULL, 0, tcp->rep, "%s: Could not initialize reply message (job_str)", id);
+    pthread_exit(NULL);
+  }
+
+  rtn_json = json_object();
+
+  remote_redis = NULL;
+  if (progressPublisher != NULL && progressAddress != NULL && progressPort > 0) {
+    remote_redis = redisConnect(progressAddress, progressPort);
+    if (remote_redis == NULL || remote_redis->err) {
+      if (remote_redis) {
+        isLogging_info("%s: Failed to connect to remote redis %s:%d: %s", id, progressAddress, progressPort, remote_redis->err);
+      } else {
+        isLogging_info("%s: Failed to connect to remote redis %s:%d", id, progressAddress, progressPort);
+      }
+    }
+  }
+
+  void progress(char *s) {
+    if (remote_redis && progressPublisher) {
+      reply = redisCommand(remote_redis, "PUBLISH %s {\"progress\":\"%s\",\"done\":false,\"tag\":\"%s\"}", progressPublisher, s, tag);
+      if (reply == NULL) {
+        isLogging_info("%s: redis progress publisher %s returned error %s when publishing \"%*s\"", id, progressPublisher, rrc->errstr, strlen(s), s);
+      } else {
+        freeReplyObject(reply);
+      }
+    }
+  }
+
+  void stderrReader(char *s) {
+    isLogging_info("%s: Receiving stderr\n%s", id, s);
+    json_object_set_new(rtn_json, "stderr", json_string(s));
+  }
+
+  sp.cmd  = "/usr/bin/rsync";
+  sp.envp = envp;
+  sp.argv = argv;
+  sp.nfds = 2;
+  sp.fds  = fds;
+  sp.rtn  = 505911;     // Flag indicating the sub process failed to run
+
+  // Set up stdout
+  // This will be mainly the result of the --progress switch
+  //
+  fds[0].fd     = 1;                    // child process's stdout
+  fds[0].is_out = 1;                    // flag indicating we'll be reading this
+  fds[0].read_lines = 0;                // Just accumulate the entire ouput
+  fds[0].progressReporter = progress;   // No progress reports
+  fds[0].done = NULL;                   // routine to receive stdout result
+
+  // Set up stderr
+  // This will be the result mainly of the -v switch
+  fds[1].fd     = 2;                    // child process's stderr
+  fds[1].is_out = 1;                    // flag indicating we'll be reading this
+  fds[1].read_lines = 0;                // Just accumulate the entire ouput
+  fds[1].progressReporter = NULL;       // No progress reports
+  fds[1].done = stderrReader;           // routine to receive stdout result
+  
+  err = isSubProcess(id, &sp);
+  if (err) {
+    isLogging_err("%s: isSubProcess failed", id);
+  }
+
+  set_json_object_integer(id, rtn_json, "status", sp.rtn);
+
+  // Return message
+  rtn_str = NULL;
+  if (rtn_json != NULL) {
+    pthread_mutex_lock(&wctx->metaMutex);
+    rtn_str = json_dumps(rtn_json, JSON_SORT_KEYS | JSON_INDENT(0) | JSON_COMPACT);
+    json_decref(rtn_json);
+    pthread_mutex_unlock(&wctx->metaMutex);
+  } else {
+    rtn_str = strdup("");
+  }
+
+  zerr = zmq_msg_init_data(&rtn_msg, rtn_str, strlen(rtn_str), is_zmq_free_fn, NULL);
+  if (zerr == -1) {
+    isLogging_err("%s: zmq_msg_init failed (rtn_str): %s\n", id, zmq_strerror(errno));
+    is_zmq_error_reply(NULL, 0, tcp->rep, "%s: Could not initialize reply message (rtn_str)", id);
+    pthread_exit (NULL);
+  }
+  
+  do {
+    // Error Message
+    zerr = zmq_msg_send(&err_msg, tcp->rep, ZMQ_SNDMORE);
+    if (zerr == -1) {
+      isLogging_err("%s: Could not send rsync test: %s\n", id, zmq_strerror(errno));
+      break;
+    }
+
+    // Job 
+    zerr = zmq_msg_send(&job_msg, tcp->rep, ZMQ_SNDMORE);
+    if (zerr < 0) {
+      isLogging_err("%s: sending job_str failed: %s\n", id, zmq_strerror(errno));
+      break;
+    }
+
+    // Results
+    zerr = zmq_msg_send(&rtn_msg, tcp->rep, 0);
+    if (zerr < 0) {
+      isLogging_err("%s: sending rtn_str failed: %s\n", id, zmq_strerror(errno));
+      break;
+    }
+  } while(0);
+}
+
