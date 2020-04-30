@@ -13,11 +13,14 @@
  */
 #include "is.h"
 
+
+
+
+
+
+
+
 /** isSubProcess
- **
- ** returns
- **     0 on success
- **     1 on failure
  **
  **     Fatal errors kill program
  **
@@ -25,13 +28,16 @@
  **
  ** 
  */
-int isSubProcess(const char *cid, isSubProcess_type *spt) {
+void isSubProcess(const char *cid, isSubProcess_type *spt) {
   static const char *id = FILEID "isSubProcess";
-
+  static redisAsyncContext *subac;  
+  static struct pollfd subfd;
+  static int c;                 // process id of child process
+  
   int max_fd;                   // largest file descriptor
   int err;                      // return value
-  int c;                        // process id of child process
   int keep_on_truckin;          // flag to stay in the poll loop
+  int redis_running;            // Stay in poll loop until lowered
   int pollstat;                 // result of poll command
   struct pollfd *polllist;      // list of fd's to send to poll
   int npoll;                    // number of active fd's in polllist
@@ -41,6 +47,137 @@ int isSubProcess(const char *cid, isSubProcess_type *spt) {
   isSubProcessFD_type *spfdp;   // pointo into the fd_server array
   char tmp[256];                // temporary buffer to read data into
   int bytes_read;               // number of bytes read in the read statement
+
+  /** call back in case a redis server becomes disconnected
+   *  TODO: reconnect
+   */
+  void disconnectCB(const redisAsyncContext *ac, int status) {
+    if( status != REDIS_OK) {
+      isLogging_err( "%s: Disconnected with status %d: %s", id, status, ac->errstr);
+    }
+    redis_running = 0;
+  }
+
+  /** hook to mange read events
+   */
+  void addRead( void *data) {
+    struct pollfd *pfd;
+    pfd = (struct pollfd *)data;
+
+    if( (pfd->events & POLLIN) == 0) {
+      pfd->events |= POLLIN;
+    }
+  }
+
+  /** hook to manage "don't need to read" events
+   */
+  void delRead( void *data) {
+    struct pollfd *pfd;
+    pfd = (struct pollfd *)data;
+
+    if( (pfd->events & POLLIN) != 0) {
+      pfd->events &= ~POLLIN;
+    }
+  }
+
+  /** hook to manage write events
+   */
+  void addWrite( void *data) {
+    struct pollfd *pfd;
+    pfd = (struct pollfd *)data;
+
+    if( (pfd->events & POLLOUT) == 0) {
+      pfd->events |= POLLOUT;
+    }
+  }
+
+  /** hook to manage "don't need to write anymore" events 
+   */
+  void delWrite( void *data) {
+    struct pollfd *pfd;
+    pfd = (struct pollfd *)data;
+
+    if( (pfd->events & POLLOUT) != 0) {
+      pfd->events &= ~POLLOUT;
+    }
+  }
+  /** hook to clean up
+   * TODO: figure out what we are supposed to do here and do it
+   */
+  void cleanup( void *data) {
+    struct pollfd *pfd;
+
+    pfd = (struct pollfd *)data;
+
+    pfd->fd = -1;
+
+    if( (pfd->events & (POLLOUT | POLLIN)) != 0) {
+      pfd->events &= ~(POLLOUT | POLLIN);
+    }
+  }
+
+  /** Use the publication to request the new value
+   */
+  void subCB(redisAsyncContext *ac, void *reply, void *privdata) {
+    static const char *id = FILEID "isSubProcess->subCB";
+    json_t *msg;
+    json_t *jsig;
+    json_error_t loads_err;
+    int sig;
+
+    redisReply *r;
+    //lsredis_obj_t *p;
+    char *k;
+
+    isLogging_debug("%s: start of cb", id);
+
+    r = (redisReply *)reply;
+
+    // Ignore our subscribe reply
+    //
+    if( r->type == REDIS_REPLY_ARRAY && r->elements == 3 && r->element[0]->type == REDIS_REPLY_STRING && strcmp( r->element[0]->str, "subscribe")==0) {
+      isLogging_debug("%s: Ignoring subscribe message: %s", id, r->element[0]->str);
+      return;
+    }
+
+    // Log stuff we don't understand
+    //
+    if( r->type != REDIS_REPLY_ARRAY ||
+        r->elements != 3 ||
+        r->element[1]->type != REDIS_REPLY_STRING ||
+        r->element[2]->type != REDIS_REPLY_STRING) {
+
+      isLogging_debug( "%s: lsredis_subCB: unexpected reply", id);
+      return;
+    }
+
+    //
+    // Ignore obvious junk
+    //
+    k = r->element[2]->str;
+
+    if( k == NULL || *k == 0) {
+      return;
+    }
+
+    msg = json_loads(r->element[2]->str, 0, &loads_err); 
+    if (msg == NULL) {
+      isLogging_err("%s: bad json message: %s from %s", id, loads_err.text, r->element[2]->str);
+      return;
+    }
+
+    if (c > 0) {
+      jsig = json_object_get(msg, "sig");
+      if (jsig) {
+        sig = json_integer_value(jsig);
+        if( sig > 0) {
+          kill(c, sig);
+        }
+      }
+    }
+    json_decref(msg);
+  }
+
 
   //
   // Set up pipes.  Automatically close the new fds in the child after
@@ -73,11 +210,19 @@ int isSubProcess(const char *cid, isSubProcess_type *spt) {
   if (c == -1) {
     // fork failed
     isLogging_err( "%s->%s: Fork failed", cid, id);
-    return (1);
+    if (spt->onLaunch) {
+      spt->rtn = 1;
+      spt->onLaunch(strerror(errno));
+    }
+    return;
   }
 
   if (c == 0) {
+    //
+    // In Child
+    //
     int ii;
+    int old_errno;
 
     isLogging_debug("%s->%s: cmd: '%s'", cid, id, spt->cmd);
 
@@ -91,7 +236,6 @@ int isSubProcess(const char *cid, isSubProcess_type *spt) {
       isLogging_debug("%s->%s: %d  %s", cid, id, ii, spt->envp[ii]);
     }
 
-    // In child
     for (i=0; i < spt->nfds; i++) {
       if (spt->fds[i].is_out) {
         dup2(spt->fds[i]._pipe[1], spt->fds[i].fd);       // duplicate the child's fd to read from
@@ -104,15 +248,54 @@ int isSubProcess(const char *cid, isSubProcess_type *spt) {
     //
     // execve never returns except on error
     //
-    isLogging_err("%s->%s: execve failed: %s\n", cid, id, strerror(errno));
+    old_errno = errno;
+    isLogging_err("%s->%s: execve failed for %s: %s\n", cid, id, spt->cmd, strerror(errno));
+
+    //
+    // If we are listening to stderr then we can send a message to the parent
+    //
+    fprintf(stderr, "Execve failed for %s: %s\n", spt->cmd, strerror(old_errno));
+
     //
     // None of the reasons for getting here are recoverable
     //
-    exit (-1);
+    _exit (-1);
   }
 
   // In parent
   
+  //
+  // No way to tell here if execve was (or will be) successful.
+  // Caller should have asked to listen to stderr so we can at least
+  // learn why things failed (if the did in fact fail)
+  //
+  if (spt->onLaunch) {
+    spt->rtn = 0;
+    spt->onLaunch(NULL);
+  }
+
+  isLogging_debug("%s->%s: about to connect to redis", cid, id);
+
+  redis_running = 1;
+  subac = redisAsyncConnect("127.0.0.1", 6379);
+  if( subac->err) {
+    isLogging_err( "%s: redisAsyncConnect Error: %s", id, subac->errstr);
+    exit(-1);
+  }
+  subfd.fd           = subac->c.fd;
+  subfd.events       = 0;
+  subac->ev.data     = &subfd;
+  subac->ev.addRead  = addRead;
+  subac->ev.delRead  = delRead;
+  subac->ev.addWrite = addWrite;
+  subac->ev.delWrite = delWrite;
+  subac->ev.cleanup  = cleanup;
+  
+  redisAsyncSetDisconnectCallback(subac, disconnectCB);
+  // Set up redis subscriber
+
+  redisAsyncCommand(subac, subCB, NULL, "SUBSCRIBE isSubInput");
+
   isLogging_debug("%s->%s: max_fd=%d", cid, id, max_fd);
 
   fd_servers = calloc(max_fd+1, sizeof(*fd_servers));
@@ -121,29 +304,43 @@ int isSubProcess(const char *cid, isSubProcess_type *spt) {
     _exit(-1);
   }  
 
-  polllist = calloc(spt->nfds, sizeof (*polllist));
+  polllist = calloc(spt->nfds+1, sizeof (*polllist));
   if (polllist == NULL) {
     isLogging_crit("%s->%s: Out of memory (pollist)", cid, id);
     _exit(-1);
   }
   
-  for (npoll=0; npoll < spt->nfds; npoll++) {
+  polllist[0].fd     = subfd.fd;
+  for (npoll=1; npoll <= spt->nfds; npoll++) {
     isLogging_debug("%s->%s: event=%d  piped_fd=%d  child_fd=%d", cid, id, spt->fds[npoll]._event, spt->fds[npoll]._piped_fd, spt->fds[npoll].fd);
-    fd_servers[spt->fds[npoll]._piped_fd] = spt->fds[npoll];  // find fds structure from file descriptor
-    polllist[npoll].fd     = spt->fds[npoll]._piped_fd;
-    polllist[npoll].events = spt->fds[npoll]._event;
+    fd_servers[spt->fds[npoll-1]._piped_fd] = spt->fds[npoll-1];  // find fds structure from file descriptor
+    polllist[npoll].fd     = spt->fds[npoll-1]._piped_fd;
+    polllist[npoll].events = spt->fds[npoll-1]._event;
   }
+  isLogging_debug("%s->%s: npoll=%d", cid, id, npoll);
+
+  //
+  // Verify that our child is not prematurely dead
+  //
 
   keep_on_truckin = 1;
 
-  do {
+  isLogging_debug("%s->%s: starting poll loop", cid, id);
+
+  while(keep_on_truckin || redis_running) {
+    // set redis events
+    polllist[0].events = subfd.events;
+
     pollstat = poll(polllist, npoll, 100);
     if (pollstat == -1) {
       isLogging_err("%s->%s: poll failed: %s", cid, id, strerror(errno));
       exit (-1);
     }
     
-    if (pollstat == 0) {
+    //
+    // Don't check on child if it's alread done for
+    //
+    if (keep_on_truckin && (pollstat == 0)) {
       //
       // Check to see if our process is still running
       //
@@ -153,16 +350,36 @@ int isSubProcess(const char *cid, isSubProcess_type *spt) {
           spt->rtn = WEXITSTATUS(status);
         }
         keep_on_truckin = 0;
+        redisAsyncDisconnect(subac);    // Don't need to listen to redis after sub process has ended
       }
       if (err == -1) {
         isLogging_info("%s: waitpid 2 failed: %s\n", id, strerror(errno));
         keep_on_truckin = 0;
+        redisAsyncDisconnect(subac);    // Don't need to listen to redis after sub process has ended
       }
       isLogging_debug("%s->%s: waitpid status %0x  keep_on_truckin: %d", cid, id, status, keep_on_truckin);
       continue;
     }
+    
+    // polllist[0] is the redis subscriber
+    
+    if (pollstat && polllist[0].revents) {
+      isLogging_debug("%s->%s: redis subscriber event(s) %d", cid, id, polllist[0].revents);
+      pollstat--;
+      if (polllist[0].revents & POLLIN) {
+        redisAsyncHandleRead(subac);
+      }
+      if (polllist[0].revents & POLLOUT) {
+        redisAsyncHandleWrite(subac);
+      }
+    }
 
-    for (i=0; i<npoll; i++) {
+    for (i=1; pollstat && i<npoll; i++) {
+      if (polllist[i].revents) {
+        isLogging_debug("%s->%s: fd: %d  revent: %d", cid, id, polllist[i].fd, polllist[i].revents);
+        pollstat--;
+      }
+
       // check for errors
       if (polllist[i].revents & (POLLERR | POLLHUP)) {
         isLogging_info("%s->%s: Error or hangup on fd %d\n", cid, id, polllist[i].fd);
@@ -227,10 +444,10 @@ int isSubProcess(const char *cid, isSubProcess_type *spt) {
           }
         } while(0);     // shouldn't we be able to do this while nbytes > 0 if we set non-blocking?
 
-        if (bytes_read > 0 && spfdp->progressReporter) {
+        if (bytes_read > 0 && spfdp->onProgress) {
           if (spfdp->read_lines == 0) {
             // Easy as π
-            spfdp->progressReporter(spfdp->_buf);
+            spfdp->onProgress(spfdp->_buf);
             spfdp->_buf_size = 0;
           } else {
             //
@@ -263,7 +480,7 @@ int isSubProcess(const char *cid, isSubProcess_type *spt) {
             next = strtok_r(spfdp->_buf, "\r\n", &saveptr);
             while (next != NULL) {
               if (lasts != NULL) {
-                spfdp->progressReporter(lasts);
+                spfdp->onProgress(lasts);
                 lasts = next;
               }
               next = strtok_r(NULL, "\r\n", &saveptr);
@@ -273,7 +490,7 @@ int isSubProcess(const char *cid, isSubProcess_type *spt) {
                 memcpy(spfdp->_buf, lasts, strlen(lasts)+1);
                 spfdp->_buf_size = strlen(lasts);
               } else {
-                spfdp->progressReporter(lasts);
+                spfdp->onProgress(lasts);
                 spfdp->_buf_size = 0;
               }
             }
@@ -286,14 +503,18 @@ int isSubProcess(const char *cid, isSubProcess_type *spt) {
         // do then this section can get filled out.
       }
     }
-  } while (keep_on_truckin);
+  }
+
+  isLogging_debug("%s->%s: End of polling", cid, id);
 
   //
   // Send our results
   //
-  for (i=0; i<npoll; i++) {
+  for (i=1; i<npoll; i++) {
     if (polllist[i].fd > 0) {
       close(polllist[i].fd);
+      //
+      // set fd negative to get poll to ignore this one
       //
       // Practically fd is never zero since it comes from dup2 and
       // fd=0 is taken (stdin) hence anything returned by dup2 likely
@@ -304,11 +525,11 @@ int isSubProcess(const char *cid, isSubProcess_type *spt) {
       polllist[i].fd = -polllist[i].fd;
     }
     spfdp = &fd_servers[abs(polllist[i].fd)];
-    if (spfdp->progressReporter) {
-      spfdp->progressReporter(spfdp->_buf);
+    if (spfdp->onProgress) {
+      spfdp->onProgress(spfdp->_buf);
     }
-    if (spfdp->done) {
-      spfdp->done(spfdp->_buf);
+    if (spfdp->onDone) {
+      spfdp->onDone(spfdp->_buf);
     }
     free(spfdp->_buf);
     spfdp->_buf_size = 0;
@@ -323,5 +544,5 @@ int isSubProcess(const char *cid, isSubProcess_type *spt) {
   free(fd_servers);
   fd_servers = NULL;
 
-  return 0;
+  return;
 }

@@ -14,6 +14,7 @@
 #include <fts.h>
 #include <hdf5.h>
 #include <hiredis/hiredis.h>
+#include <hiredis/async.h>
 #include <jansson.h>
 #include <jpeglib.h>
 #include <math.h>
@@ -209,17 +210,17 @@ typedef struct isProcessListStruct {
 // unsupported until we know what we want to do.
 //
 typedef struct isSubProcessFD_struct {
-  int fd;                               // child's file descriptor we want to pipe
-  int is_out;                           // 0 = we write to (like stdin), 1 = we read from (like stdout)
-  void (*progressReporter)(char *);     // if not null this function handles the progress updates
-  int read_lines;                       // 1 = send full lines only to progressReporter, 0 = whatever we have
-  void (*done)(char *);                 // if not null this function handles the final result
-  int _piped_fd;                        // (private) parent's version of fd
-  int _event;                           // (private) our poll event (POLLIN or POLLOUT)
-  int _pipe[2];                         // (private) pipe between parent and child
-  char *_buf;                           // our reading buffer
-  char *_buf_end;                       // end of _s
-  int _buf_size;                        // current number of buffer bytes
+  int fd;                                 // child's file descriptor we want to pipe
+  int is_out;                             // 0 = we write to (like stdin), 1 = we read from (like stdout)
+  int read_lines;                         // 1 = send full lines only to onProgress, 0 = whatever we have
+  void (*onProgress)(char *);             // if not null this function handles the progress updates
+  void (*onDone)(char *);                 // if not null this function handles the final result
+  int _piped_fd;                          // (private) parent's version of fd
+  int _event;                             // (private) our poll event (POLLIN or POLLOUT)
+  int _pipe[2];                           // (private) pipe between parent and child
+  char *_buf;                             // our reading buffer
+  char *_buf_end;                         // end of _s
+  int _buf_size;                          // current number of buffer bytes
 } isSubProcessFD_type;
 
 /*
@@ -233,6 +234,7 @@ typedef struct isSubProcess_struct {
   char **argv;                          // null terminated list of arguments
   isSubProcessFD_type *fds;             // list of fds we are asked to manage
   int nfds;                             // number of fds in list
+  void (*onLaunch)(char *msg);          // Launch CB: rtn 0=OK, 1=fork failed, msg=failed reason
   int rtn;                              // return value of sub process
 } isSubProcess_type;
 
@@ -247,7 +249,6 @@ extern int isH5GetData(isWorkerContext_t *wctx, const char *fn, isImageBufType *
 extern int isNProcesses();
 extern int isRayonixGetData(isWorkerContext_t *wctx, const char *fn, isImageBufType **imbp);
 extern int is_h5_error_handler(hid_t estack_id, void *dummy);
-extern int isSubProcess(const char *cid, isSubProcess_type *spt);
 extern int verifyIsAuth( char *isAuth, char *isAuthSig_str);
 extern isImageBufType *isGetImageBufFromKey(isWorkerContext_t *ibctx, redisContext *rc, char *key);
 extern isImageBufType *isGetRawImageBuf(isWorkerContext_t *ibctx, redisContext *rc, json_t *job);
@@ -262,8 +263,6 @@ extern void isDataDestroy(isWorkerContext_t *c);
 extern void isIndex( isWorkerContext_t *ibctx, isThreadContextType *tcp, json_t *job);
 extern void isInit(int dev_mode);
 extern void isJpeg( isWorkerContext_t *ibctx, isThreadContextType *tcp, json_t *job);
-extern void isRsyncLocalDirStats(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job);
-extern void isRsyncConnectionTest2(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job);
 extern void isLogging_alert(char *fmt, ...);
 extern void isLogging_crit(char *fmt, ...);
 extern void isLogging_debug(char *fmt, ...);
@@ -275,8 +274,12 @@ extern void isLogging_notice(char *fmt, ...);
 extern void isLogging_warning(char *fmt, ...);
 extern void isProcessListInit();
 extern void isRsyncConnectionTest(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job);
+extern void isRsyncConnectionTest2(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job);
 extern void isRsyncHostTest(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job);
+extern void isRsyncLocalDirStats(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job);
+extern void isRsyncTransfer(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job);
 extern void isSpots( isWorkerContext_t *ibctx, isThreadContextType *tcp, json_t *job);
+extern void isSubProcess(const char *cid, isSubProcess_type *spt);
 extern void isSupervisor(const char *key);
 extern void isWriteImageBufToRedis(isWorkerContext_t *wctx, isImageBufType *imb, redisContext *rc);
 extern void is_zmq_error_reply(zmq_msg_t *msgs, int n_msgs, void *err_dealer, char *fmt, ...);

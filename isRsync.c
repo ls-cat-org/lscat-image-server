@@ -675,16 +675,16 @@ void isRsyncConnectionTest(isWorkerContext_t *wctx, isThreadContextType *tcp, js
 
 void isRsyncConnectionTest2(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
   static const char *id = FILEID "isRsyncConnectionTest2";
-  const char *hostName;         // host name to look up
-  const char *userName;
-  //  const char *localDir;
-  const char *destDir;
-  char userAtHost[256];
-  char *dfCmd;
-  int dfCmdSize;
-  isSubProcess_type sp;
-  isSubProcessFD_type fds[2];
-  int err;
+  static const char *hostName;         // host name to look up
+  static const char *userName;
+  //  static const char *localDir;
+  static const char *destDir;
+  static char userAtHost[256];
+  static char *dfCmd;
+  static int dfCmdSize;
+  static isSubProcess_type sp;          // static to ensure uninitialized fields are null
+  static isSubProcessFD_type fds[2];    // static to ensure uninitialized fields are null
+  int launch_failed;
   int zerr;
   zmq_msg_t err_msg;            // error message to send via zmq
   zmq_msg_t job_msg;            // send back the object that we are operating on
@@ -692,10 +692,10 @@ void isRsyncConnectionTest2(isWorkerContext_t *wctx, isThreadContextType *tcp, j
   json_t *rtn_json;             // Object to return
   char *rtn_str;                // string version of our object
   char *job_str;                // string version of job
-  char *envp[] = {
-    NULL                                // -- Required NULL at end of list
+  const char *envp[] = {
+    NULL                        // -- Required NULL at end of list
   };
-  char *argv[] = {
+  const char *argv[] = {
     "ssh",                              // 0
     "-v",                               // 1
     "-o",                               // 2
@@ -741,7 +741,6 @@ void isRsyncConnectionTest2(isWorkerContext_t *wctx, isThreadContextType *tcp, j
   //
   zmq_msg_init(&err_msg);
 
-
   // Job message part
   job_str = NULL;
   if (job != NULL) {
@@ -761,18 +760,18 @@ void isRsyncConnectionTest2(isWorkerContext_t *wctx, isThreadContextType *tcp, j
 
   rtn_json = json_object();
 
-  void stdoutReader(char *s) {
+  void onDoneStdout(char *s) {
     isLogging_info("%s: Receiving stdout\n%s", id, s);
     json_object_set_new(rtn_json, "stdout", json_string(s));
   }
-  void stderrReader(char *s) {
+  void onDoneStderr(char *s) {
     isLogging_info("%s: Receiving stderr\n%s", id, s);
     json_object_set_new(rtn_json, "stderr", json_string(s));
   }
 
   sp.cmd  = "/usr/bin/ssh";
-  sp.envp = envp;
-  sp.argv = argv;
+  sp.envp = (char **)envp;
+  sp.argv = (char **)argv;
   sp.nfds = 2;
   sp.fds  = fds;
 
@@ -781,22 +780,38 @@ void isRsyncConnectionTest2(isWorkerContext_t *wctx, isThreadContextType *tcp, j
   fds[0].fd     = 1;                    // child process's stdout
   fds[0].is_out = 1;                    // flag indicating we'll be reading this
   fds[0].read_lines = 0;                // Just accumulate the entire ouput
-  fds[0].progressReporter = NULL;       // No progress reports
-  fds[0].done = stdoutReader;           // routine to receive stdout result
+  fds[0].onProgress = NULL;             // No progress reports
+  fds[0].onDone = onDoneStdout;         // routine to receive stdout result
 
   // Set up stderr
   // This will be the result mainly of the -v switch on ssh
   fds[1].fd     = 2;                    // child process's stderr
   fds[1].is_out = 1;                    // flag indicating we'll be reading this
   fds[1].read_lines = 0;                // Just accumulate the entire ouput
-  fds[1].progressReporter = NULL;       // No progress reports
-  fds[1].done = stderrReader;           // routine to receive stdout result
+  fds[1].onProgress = NULL;             // No progress reports
+  fds[1].onDone = onDoneStderr;         // routine to receive stdout result
   
-  err = isSubProcess(id, &sp);
-  if (err) {
-    isLogging_err("%s: isSubProcess failed", id);
+  launch_failed = 0;
+  void onLaunch(char *msg) {
+    isLogging_debug("%s: onLaunch with status %d", id, sp.rtn);
+    if (sp.rtn) {
+      launch_failed = 1;
+      isLogging_err("%s: launch failed %s: %s", id, sp.rtn==1 ? "at fork" : "at execve", msg==NULL ? "No message" : msg);
+      is_zmq_error_reply(NULL, 0, tcp->rep, "%s: Process failed to start: %s: %s", id, sp.rtn==1 ? "at fork" : "at execve", msg==NULL ? "No message" : msg);
+      json_decref(rtn_json);
+    }
   }
+  sp.onLaunch = onLaunch;
 
+  isSubProcess(id, &sp);
+  if (launch_failed) {
+    //
+    // If we get here an error response has already been sent from
+    // onLaunch, Nothing more for us to do.
+    //
+    return;
+  }
+  
   set_json_object_integer(id, rtn_json, "status", sp.rtn);
 
   // Return message
@@ -843,22 +858,19 @@ void isRsyncConnectionTest2(isWorkerContext_t *wctx, isThreadContextType *tcp, j
 
 void isRsyncTransfer(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
   static const char *id = FILEID "isRsyncTransfer";
-  const char *hostName;         // host name to look up
-  const char *userName;
-  const char *localDir;
-  const char *destDir;
-  const char *progressPublisher;
-  const char *progressAddress;
-  const char *progressPort;
-  const char *tag;
+  const char   *hostName;         // host name to look up
+  const char   *userName;
+  const char   *localDir;
+  const char   *destDir;
+  const char   *progressPublisher;
+  const char   *progressAddress;
+  int           progressPort;
+  const char   *tag;
   redisContext *remote_redis;
   char *src;
   int src_size;
-  char *dfCmd;
-  int dfCmdSize;
   isSubProcess_type sp;
   isSubProcessFD_type fds[2];
-  int err;
   int zerr;
   zmq_msg_t err_msg;            // error message to send via zmq
   zmq_msg_t job_msg;            // send back the object that we are operating on
@@ -867,12 +879,12 @@ void isRsyncTransfer(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *
   char *rtn_str;                // string version of our object
   char *job_str;                // string version of job
 
-  char *envp[] = {              // Environment (if any) for the process
-    NULL;                       // -- Required NULL at end of list
+  const char *envp[] = {        // Environment (if any) for the process
+    NULL                        // -- Required NULL at end of list
   };
 
 
-  char *argv[] = {              // Argument list
+  const char *argv[] = {              // Argument list
     "rsync",                            // 0
     "-v",                               // 1
     "-rt",                              // 2
@@ -950,25 +962,61 @@ void isRsyncTransfer(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *
     }
   }
 
-  void progress(char *s) {
+  void onStdoutProgress(char *s) {
+    redisReply *reply;
+
     if (remote_redis && progressPublisher) {
-      reply = redisCommand(remote_redis, "PUBLISH %s {\"progress\":\"%s\",\"done\":false,\"tag\":\"%s\"}", progressPublisher, s, tag);
+      reply = redisCommand(remote_redis, "PUBLISH %s {\"stdout\":\"%s\",\"done\":false,\"tag\":\"%s\"}", progressPublisher, s, tag);
       if (reply == NULL) {
-        isLogging_info("%s: redis progress publisher %s returned error %s when publishing \"%*s\"", id, progressPublisher, rrc->errstr, strlen(s), s);
+        isLogging_info("%s: redis progress publisher %s returned error %s when publishing \"%.*s\"", id, progressPublisher, remote_redis->errstr, strlen(s), s);
       } else {
         freeReplyObject(reply);
       }
     }
   }
 
-  void stderrReader(char *s) {
-    isLogging_info("%s: Receiving stderr\n%s", id, s);
-    json_object_set_new(rtn_json, "stderr", json_string(s));
+  void onStdoutDone(char *s) {
+    redisReply *reply;
+
+    if (remote_redis && progressPublisher) {
+      reply = redisCommand(remote_redis, "PUBLISH %s {\"done\":true,\"tag\":\"%s\"}", progressPublisher, tag);
+      if (reply == NULL) {
+        isLogging_info("%s: redis progress publisher %s returned error %s when done", id, progressPublisher, remote_redis->errstr);
+      } else {
+        freeReplyObject(reply);
+      }
+    }
+  }
+
+  void onStderrProgress(char *s) {
+    redisReply *reply;
+
+    if (remote_redis && progressPublisher) {
+      reply = redisCommand(remote_redis, "PUBLISH %s {\"stderr\":\"%s\",\"done\":false,\"tag\":\"%s\"}", progressPublisher, s, tag);
+      if (reply == NULL) {
+        isLogging_info("%s: redis stderr publisher %s returned error %s when publishing \"%.*s\"", id, progressPublisher, remote_redis->errstr, strlen(s), s);
+      } else {
+        freeReplyObject(reply);
+      }
+    }
+  }
+
+   void onStderrDone(char *s) {
+    redisReply *reply;
+
+    if (remote_redis && progressPublisher) {
+      reply = redisCommand(remote_redis, "PUBLISH %s {\"done\":true,\"tag\":\"%s\"}", progressPublisher, tag);
+      if (reply == NULL) {
+        isLogging_info("%s: redis stderr publisher %s returned error %s when publishing done", id, progressPublisher, remote_redis->errstr);
+      } else {
+        freeReplyObject(reply);
+      }
+    }
   }
 
   sp.cmd  = "/usr/bin/rsync";
-  sp.envp = envp;
-  sp.argv = argv;
+  sp.envp = (char **)envp;
+  sp.argv = (char **)argv;
   sp.nfds = 2;
   sp.fds  = fds;
   sp.rtn  = 505911;     // Flag indicating the sub process failed to run
@@ -976,66 +1024,81 @@ void isRsyncTransfer(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *
   // Set up stdout
   // This will be mainly the result of the --progress switch
   //
-  fds[0].fd     = 1;                    // child process's stdout
-  fds[0].is_out = 1;                    // flag indicating we'll be reading this
-  fds[0].read_lines = 0;                // Just accumulate the entire ouput
-  fds[0].progressReporter = progress;   // No progress reports
-  fds[0].done = NULL;                   // routine to receive stdout result
+  fds[0].fd         = 1;                // child process's stdout
+  fds[0].is_out     = 1;                // (read from pipe[0])
+  fds[0].read_lines = 0;                // Send as is
+  fds[0].onProgress = onStdoutProgress; // Progress reports
+  fds[0].onDone     = onStdoutDone;     // routine to receive stdout result
 
   // Set up stderr
   // This will be the result mainly of the -v switch
-  fds[1].fd     = 2;                    // child process's stderr
-  fds[1].is_out = 1;                    // flag indicating we'll be reading this
-  fds[1].read_lines = 0;                // Just accumulate the entire ouput
-  fds[1].progressReporter = NULL;       // No progress reports
-  fds[1].done = stderrReader;           // routine to receive stdout result
+  fds[1].fd         = 2;                // child process's stderr
+  fds[1].is_out     = 1;                // flag for reading (listen to pipe[0])
+  fds[1].read_lines = 0;                // Send it as you get it
+  fds[1].onProgress = onStderrProgress; // "Realtime" debug output
+  fds[1].onDone     = onStderrDone;     // routine to receive stdout result
   
-  err = isSubProcess(id, &sp);
-  if (err) {
-    isLogging_err("%s: isSubProcess failed", id);
-  }
 
-  set_json_object_integer(id, rtn_json, "status", sp.rtn);
+  //
+  // Since we expect rsync to run a while we'll return from our zmq
+  // call with the status of the launched sub process
+  //
+  void onLaunch(char *msg) {
+    // sp.rtn = 0 on success
+    //        = 1 on fork failure
+    // mg     = reason
+    if (sp.rtn) {
+      isLogging_err("%s: Subproccess Failed %s: %s", id, sp.rtn==1 ? "at fork" : "at execve", msg==NULL ? "unknown reason" : msg);
+      is_zmq_error_reply(NULL, 0, tcp->rep, "%s: Process failed to start: %s: %s", id, sp.rtn==1 ? "at fork" : "at execve", msg==NULL ? "No message" : msg);
+      json_decref(rtn_json);
+      return;
+    }
 
-  // Return message
-  rtn_str = NULL;
-  if (rtn_json != NULL) {
-    pthread_mutex_lock(&wctx->metaMutex);
-    rtn_str = json_dumps(rtn_json, JSON_SORT_KEYS | JSON_INDENT(0) | JSON_COMPACT);
-    json_decref(rtn_json);
-    pthread_mutex_unlock(&wctx->metaMutex);
-  } else {
-    rtn_str = strdup("");
-  }
+    set_json_object_integer(id, rtn_json, "status", sp.rtn);  // sp.rtn is always 0 here
 
-  zerr = zmq_msg_init_data(&rtn_msg, rtn_str, strlen(rtn_str), is_zmq_free_fn, NULL);
-  if (zerr == -1) {
-    isLogging_err("%s: zmq_msg_init failed (rtn_str): %s\n", id, zmq_strerror(errno));
-    is_zmq_error_reply(NULL, 0, tcp->rep, "%s: Could not initialize reply message (rtn_str)", id);
-    pthread_exit (NULL);
-  }
-  
-  do {
-    // Error Message
-    zerr = zmq_msg_send(&err_msg, tcp->rep, ZMQ_SNDMORE);
+    // Return message
+    rtn_str = NULL;
+    if (rtn_json != NULL) {
+      pthread_mutex_lock(&wctx->metaMutex);
+      rtn_str = json_dumps(rtn_json, JSON_SORT_KEYS | JSON_INDENT(0) | JSON_COMPACT);
+      json_decref(rtn_json);
+      pthread_mutex_unlock(&wctx->metaMutex);
+    } else {
+      rtn_str = strdup("");
+    }
+
+    zerr = zmq_msg_init_data(&rtn_msg, rtn_str, strlen(rtn_str), is_zmq_free_fn, NULL);
     if (zerr == -1) {
-      isLogging_err("%s: Could not send rsync test: %s\n", id, zmq_strerror(errno));
-      break;
+      isLogging_err("%s: zmq_msg_init failed (rtn_str): %s\n", id, zmq_strerror(errno));
+      is_zmq_error_reply(NULL, 0, tcp->rep, "%s: Could not initialize reply message (rtn_str)", id);
+      pthread_exit (NULL);
     }
+  
+    do {
+      // Error Message
+      zerr = zmq_msg_send(&err_msg, tcp->rep, ZMQ_SNDMORE);
+      if (zerr == -1) {
+        isLogging_err("%s: Could not send rsync test: %s\n", id, zmq_strerror(errno));
+        break;
+      }
 
-    // Job 
-    zerr = zmq_msg_send(&job_msg, tcp->rep, ZMQ_SNDMORE);
-    if (zerr < 0) {
-      isLogging_err("%s: sending job_str failed: %s\n", id, zmq_strerror(errno));
-      break;
-    }
+      // Job 
+      zerr = zmq_msg_send(&job_msg, tcp->rep, ZMQ_SNDMORE);
+      if (zerr < 0) {
+        isLogging_err("%s: sending job_str failed: %s\n", id, zmq_strerror(errno));
+        break;
+      }
 
-    // Results
-    zerr = zmq_msg_send(&rtn_msg, tcp->rep, 0);
-    if (zerr < 0) {
-      isLogging_err("%s: sending rtn_str failed: %s\n", id, zmq_strerror(errno));
-      break;
-    }
-  } while(0);
+      // Results
+      zerr = zmq_msg_send(&rtn_msg, tcp->rep, 0);
+      if (zerr < 0) {
+        isLogging_err("%s: sending rtn_str failed: %s\n", id, zmq_strerror(errno));
+        break;
+      }
+    } while(0);
+  }
+  sp.onLaunch = onLaunch;
+
+  isSubProcess(id, &sp);
 }
 

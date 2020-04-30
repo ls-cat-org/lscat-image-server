@@ -141,6 +141,8 @@ void *isWorker(void *voidp) {
         isRsyncConnectionTest2(wctx, &tc, job);
       } else if (strcasecmp("local_dir_stats", job_type) == 0) {
         isRsyncLocalDirStats(wctx, &tc, job);
+      } else if (strcasecmp("rsync_transfer", job_type) == 0) {
+        isRsyncTransfer(wctx, &tc, job);
       } else {
         isLogging_err("%s: Unknown job type '%s' in job '%s'\n", id, job_type, jobstr);
         is_zmq_error_reply(NULL, 0, tc.rep, "%s: Unknown job type '%s' in job '%s'", id, job_type, jobstr);
