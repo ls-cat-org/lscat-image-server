@@ -48,13 +48,21 @@ void isSubProcess(const char *cid, isSubProcess_type *spt) {
   char tmp[256];                // temporary buffer to read data into
   int bytes_read;               // number of bytes read in the read statement
 
+  void connectCB(const redisAsyncContext *ac, int status) {
+    static const char *id = FILEID "isSubProcess->connectCB";
+    isLogging_debug( "%s: status=%d", id, status);
+  }
+
+
   /** call back in case a redis server becomes disconnected
    *  TODO: reconnect
    */
   void disconnectCB(const redisAsyncContext *ac, int status) {
+    static const char *id = FILEID "isSubProcess->disconnectCB";
     if( status != REDIS_OK) {
       isLogging_err( "%s: Disconnected with status %d: %s", id, status, ac->errstr);
     }
+    isLogging_debug( "%s: redis disconnected status %d", id, status);
     redis_running = 0;
   }
 
@@ -116,6 +124,16 @@ void isSubProcess(const char *cid, isSubProcess_type *spt) {
     }
   }
 
+  //
+  // Currently hiredis does not call this callback.  Instead an
+  // unsubscribe message is sent to subCB.
+  //
+  void unSubCB(redisAsyncContext *ac, void *reply, void *privdata) {
+    static const char *id = FILEID "isSubProcess->unSubDB";
+
+    isLogging_debug("%s: unsubscribed", id);
+  }
+
   /** Use the publication to request the new value
    */
   void subCB(redisAsyncContext *ac, void *reply, void *privdata) {
@@ -129,9 +147,18 @@ void isSubProcess(const char *cid, isSubProcess_type *spt) {
     //lsredis_obj_t *p;
     char *k;
 
-    isLogging_debug("%s: start of cb", id);
+    isLogging_debug("%s: start of cb  keep_on_truckin=%d", id, keep_on_truckin);
+
+    if (reply == NULL) {
+      // 
+      // we're called with a null reply on disconnect.  Nothing for us to do.
+      //
+      return;
+    }
 
     r = (redisReply *)reply;
+
+    isLogging_debug("%s: got reply type %d", id, r->type);
 
     // Ignore our subscribe reply
     //
@@ -147,9 +174,11 @@ void isSubProcess(const char *cid, isSubProcess_type *spt) {
         r->element[1]->type != REDIS_REPLY_STRING ||
         r->element[2]->type != REDIS_REPLY_STRING) {
 
-      isLogging_debug( "%s: lsredis_subCB: unexpected reply", id);
+      isLogging_debug( "%s: unexpected reply", id);
       return;
     }
+
+    isLogging_debug("%s: got reply string", id, r->element[2]->str);
 
     //
     // Ignore obvious junk
@@ -160,9 +189,11 @@ void isSubProcess(const char *cid, isSubProcess_type *spt) {
       return;
     }
 
+    isLogging_debug("%s: message received: \"%s\"", id, k);
+
     msg = json_loads(r->element[2]->str, 0, &loads_err); 
     if (msg == NULL) {
-      isLogging_err("%s: bad json message: %s from %s", id, loads_err.text, r->element[2]->str);
+      isLogging_err("%s: bad json message: %s from %s", id, loads_err.text, k);
       return;
     }
 
@@ -291,6 +322,7 @@ void isSubProcess(const char *cid, isSubProcess_type *spt) {
   subac->ev.delWrite = delWrite;
   subac->ev.cleanup  = cleanup;
   
+  redisAsyncSetConnectCallback(subac, connectCB);
   redisAsyncSetDisconnectCallback(subac, disconnectCB);
   // Set up redis subscriber
 
@@ -337,6 +369,8 @@ void isSubProcess(const char *cid, isSubProcess_type *spt) {
       exit (-1);
     }
     
+    //isLogging_debug("%s->%s: pollstat=%d", cid, id, pollstat);
+
     //
     // Don't check on child if it's alread done for
     //
@@ -346,18 +380,29 @@ void isSubProcess(const char *cid, isSubProcess_type *spt) {
       //
       err = waitpid(c, &status, WNOHANG);
       if (err == c) {
+        //
+        // Normal way we expect to exit
+        //
         if (WIFEXITED(status)) {
           spt->rtn = WEXITSTATUS(status);
         }
         keep_on_truckin = 0;
+        isLogging_debug("%s: child exited, disconnecting redis", id);
+        //
+        redisAsyncCommand(subac, unSubCB, NULL, "UNSUBSCRIBE");
         redisAsyncDisconnect(subac);    // Don't need to listen to redis after sub process has ended
       }
       if (err == -1) {
+        //
+        // Likely our command was not found.  Sounds like one of those
+        // very rare programming errors.
+        //
         isLogging_info("%s: waitpid 2 failed: %s\n", id, strerror(errno));
         keep_on_truckin = 0;
+        redisAsyncCommand(subac, unSubCB, NULL, "UNSUBSCRIBE");
         redisAsyncDisconnect(subac);    // Don't need to listen to redis after sub process has ended
       }
-      isLogging_debug("%s->%s: waitpid status %0x  keep_on_truckin: %d", cid, id, status, keep_on_truckin);
+      //isLogging_debug("%s->%s: waitpid status %0x  keep_on_truckin: %d", cid, id, status, keep_on_truckin);
       continue;
     }
     
@@ -376,7 +421,7 @@ void isSubProcess(const char *cid, isSubProcess_type *spt) {
 
     for (i=1; pollstat && i<npoll; i++) {
       if (polllist[i].revents) {
-        isLogging_debug("%s->%s: fd: %d  revent: %d", cid, id, polllist[i].fd, polllist[i].revents);
+        //isLogging_debug("%s->%s: fd: %d  revent: %d", cid, id, polllist[i].fd, polllist[i].revents);
         pollstat--;
       }
 
@@ -391,13 +436,13 @@ void isSubProcess(const char *cid, isSubProcess_type *spt) {
       // we are reading something
       // 
       if (polllist[i].revents & POLLIN) {
-        isLogging_debug("%s->%s: POLLIN on fd=%d", cid, id, polllist[i].fd);
+        //isLogging_debug("%s->%s: POLLIN on fd=%d", cid, id, polllist[i].fd);
 
         spfdp = &fd_servers[abs(polllist[i].fd)];
         do {
           bytes_read = read(polllist[i].fd, tmp, sizeof(tmp)-1);
 
-          isLogging_debug("%s->%s: fd=%d read %d bytes: '%.*s'", cid, id, polllist[i].fd, bytes_read, bytes_read, tmp);
+          //isLogging_debug("%s->%s: fd=%d read %d bytes: '%.*s'", cid, id, polllist[i].fd, bytes_read, bytes_read, tmp);
 
           if (bytes_read == -1) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
