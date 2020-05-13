@@ -583,11 +583,9 @@ int main(int argc, char **argv) {
       if (reply->integer != 1) {
         isLogging_err("%s: Process %s is no longer active\n", id, pid);
         is_zmq_error_reply(envelope_msgs, n_envelope_msgs, err_dealer, "%s: Process %s is not authorized (7)", id, pid);
-
         //
         // TODO: We need to periodically purge our process list of inactive processes
         //
-
         freeReplyObject(reply);
         json_decref(isRequest);
         continue;
