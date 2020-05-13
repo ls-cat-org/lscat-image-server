@@ -861,6 +861,7 @@ void isRsyncTransfer(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *
   const char   *hostName;         // host name to look up
   const char   *userName;
   const char   *localDir;
+  //int           esaf;
   const char   *destDir;
   const char   *progressPublisher;
   const char   *progressAddress;
@@ -869,6 +870,8 @@ void isRsyncTransfer(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *
   redisContext *remote_redis;
   char *src;
   int src_size;
+  char *dst;
+  int dst_size;
   isSubProcess_type sp;
   isSubProcessFD_type fds[2];
   int zerr;
@@ -904,32 +907,50 @@ void isRsyncTransfer(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *
   hostName = json_string_value(json_object_get(job, "remoteHostName"));
   userName = json_string_value(json_object_get(job, "remoteUserName"));
   destDir  = json_string_value(json_object_get(job, "remoteDirName"));
-  localDir = json_string_value(json_object_get(job, "localDir"));
+  localDir = json_string_value(json_object_get(job, "localDirName"));
+  //esaf     = json_integer_value(json_object_get(job, "esaf"));
 
   tag               = json_string_value(json_object_get(job,  "tag"));
   progressPublisher = json_string_value(json_object_get(job,  "progressPublisher"));
   progressAddress   = json_string_value(json_object_get(job,  "progressAddress"));
   progressPort      = json_integer_value(json_object_get(job, "progressPort"));
 
-  // full source length         @                      : 
-  src_size = strlen(userName) + 1 + strlen(hostName) + 1 + strlen(localDir) + 2;
+  isLogging_debug("%s: hostName=%s  userName=%s destDir=%s localDir=%s  tag=%s progressPublisher=%s progressAddress=%s  progressPort=%d",
+                 id, hostName, userName, destDir, localDir, tag, progressPublisher, progressAddress, progressPort);
+
+
+  // src    ~e [esaf] /                      nulls
+  //              
+  src_size = 2 + 12 + 1 + strlen(localDir) + 2;
   src = calloc(src_size, sizeof(*src));
   if (src == NULL) {
     isLogging_crit("%s: Out of memory (src)", id);
     exit (-1);
   }
 
-  snprintf(src, src_size-1, "%s@%s:%s", userName, hostName, localDir);
-  src[src_size-1] =0;
+  snprintf(src, src_size-1, "%s", localDir);
+  src[src_size-1] = 0;
   argv[8] = src;
 
-  argv[9] = destDir;
+  //                            @                      :
+  dst_size = strlen(userName) + 1 + strlen(hostName) + 1 + strlen(destDir) + 2;
+  dst = calloc(dst_size, sizeof(*dst));
+  if (dst == NULL) {
+    isLogging_crit("%s: Out of memory (dst)", id);
+    exit(-1);
+  }
+
+  snprintf(dst, dst_size-1, "%s@%s:%s", userName, hostName, destDir);
+  dst[dst_size-1] = 0;
+  argv[9] = dst;
+
+  isLogging_debug("%s: src='%s'  dst='%s'", id, src, dst);
+
   //
   // Really we just send a blank error message: actual errors are
   // signaled by is_zmq_error_reply
   //
   zmq_msg_init(&err_msg);
-
 
   // Job message part
   job_str = NULL;
@@ -1044,9 +1065,11 @@ void isRsyncTransfer(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *
   // call with the status of the launched sub process
   //
   void onLaunch(char *msg) {
+    //
     // sp.rtn = 0 on success
     //        = 1 on fork failure
-    // mg     = reason
+    // msg    = reason
+    //
     if (sp.rtn) {
       isLogging_err("%s: Subproccess Failed %s: %s", id, sp.rtn==1 ? "at fork" : "at execve", msg==NULL ? "unknown reason" : msg);
       is_zmq_error_reply(NULL, 0, tcp->rep, "%s: Process failed to start: %s: %s", id, sp.rtn==1 ? "at fork" : "at execve", msg==NULL ? "No message" : msg);
@@ -1100,5 +1123,15 @@ void isRsyncTransfer(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *
   sp.onLaunch = onLaunch;
 
   isSubProcess(id, &sp);
+
+  if (src) {
+    free(src);
+    src = NULL;
+  }
+
+  if (dst) {
+    free(dst);
+    dst = NULL;
+  }
 }
 
