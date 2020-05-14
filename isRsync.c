@@ -677,7 +677,10 @@ void isRsyncConnectionTest2(isWorkerContext_t *wctx, isThreadContextType *tcp, j
   static const char *id = FILEID "isRsyncConnectionTest2";
   static const char *hostName;         // host name to look up
   static const char *userName;
-  //  static const char *localDir;
+  static const char *controlPublisher;
+  static const char *controlAddress;
+  int controlPort;
+//  static const char *localDir;
   static const char *destDir;
   static char userAtHost[256];
   static char *dfCmd;
@@ -713,9 +716,13 @@ void isRsyncConnectionTest2(isWorkerContext_t *wctx, isThreadContextType *tcp, j
 
   // Todo: add regexp tests
   //
-  hostName = json_string_value(json_object_get(job, "remoteHostName"));
-  userName = json_string_value(json_object_get(job, "remoteUserName"));
-  destDir  = json_string_value(json_object_get(job, "remoteDirName"));
+  hostName          = json_string_value(json_object_get(job, "remoteHostName"));
+  userName          = json_string_value(json_object_get(job, "remoteUserName"));
+  destDir           = json_string_value(json_object_get(job, "remoteDirName"));
+
+  controlPublisher  = json_string_value(json_object_get(job,  "controlPublisher"));
+  controlAddress    = json_string_value(json_object_get(job,  "controlAddress"));
+  controlPort       = json_integer_value(json_object_get(job, "controlPort"));
 
   snprintf(userAtHost, sizeof(userAtHost)-1, "%s@%s", userName, hostName);
   userAtHost[sizeof(userAtHost)-1] = 0;
@@ -774,6 +781,9 @@ void isRsyncConnectionTest2(isWorkerContext_t *wctx, isThreadContextType *tcp, j
   sp.argv = (char **)argv;
   sp.nfds = 2;
   sp.fds  = fds;
+  sp.controlPublisher = controlPublisher;
+  sp.controlAddress   = controlAddress;
+  sp.controlPort      = controlPort;
 
   // Set up stdout
   // This will be the result of "sh -c mkdir destDir | df -h dstDir"
@@ -866,6 +876,9 @@ void isRsyncTransfer(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *
   const char   *progressPublisher;
   const char   *progressAddress;
   int           progressPort;
+  const char   *controlPublisher;
+  const char   *controlAddress;
+  int           controlPort;
   const char   *tag;
   redisContext *remote_redis;
   char *src;
@@ -915,8 +928,12 @@ void isRsyncTransfer(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *
   progressAddress   = json_string_value(json_object_get(job,  "progressAddress"));
   progressPort      = json_integer_value(json_object_get(job, "progressPort"));
 
-  isLogging_debug("%s: hostName=%s  userName=%s destDir=%s localDir=%s  tag=%s progressPublisher=%s progressAddress=%s  progressPort=%d",
-                 id, hostName, userName, destDir, localDir, tag, progressPublisher, progressAddress, progressPort);
+  controlPublisher  = json_string_value(json_object_get(job,  "controlPublisher"));
+  controlAddress    = json_string_value(json_object_get(job,  "controlAddress"));
+  controlPort       = json_integer_value(json_object_get(job, "controlPort"));
+
+  isLogging_debug("%s: hostName=%s  userName=%s destDir=%s localDir=%s  tag=%s progressPublisher=%s progressAddress=%s  progressPort=%d, controlPublisher=%s controlAddress=%s  controlPort=%d",
+                  id, hostName, userName, destDir, localDir, tag, progressPublisher, progressAddress, progressPort, controlPublisher, controlAddress, controlPort);
 
 
   // src    ~e [esaf] /                      nulls
@@ -1035,11 +1052,15 @@ void isRsyncTransfer(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *
     }
   }
 
-  sp.cmd  = "/usr/bin/rsync";
-  sp.envp = (char **)envp;
-  sp.argv = (char **)argv;
-  sp.nfds = 2;
-  sp.fds  = fds;
+  sp.cmd              = "/usr/bin/rsync";
+  sp.envp             = (char **)envp;
+  sp.argv             = (char **)argv;
+  sp.nfds             = 2;
+  sp.fds              = fds;
+  sp.controlAddress   = controlAddress;
+  sp.controlPort      = controlPort;
+  sp.controlPublisher = controlPublisher;
+
   sp.rtn  = 505911;     // Flag indicating the sub process failed to run
 
   // Set up stdout
