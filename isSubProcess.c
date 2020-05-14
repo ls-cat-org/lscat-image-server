@@ -31,13 +31,14 @@
 void isSubProcess(const char *cid, isSubProcess_type *spt) {
   static const char *id = FILEID "isSubProcess";
   static redisAsyncContext *subac;  
+  static redisAsyncContext *statac;
   static struct pollfd subfd;
+  static struct pollfd statfd;
   static int c;                 // process id of child process
   
   int max_fd;                   // largest file descriptor
   int err;                      // return value
   int keep_on_truckin;          // flag to stay in the poll loop
-  int redis_running;            // Stay in poll loop until lowered
   int pollstat;                 // result of poll command
   struct pollfd *polllist;      // list of fd's to send to poll
   int npoll;                    // number of active fd's in polllist
@@ -47,6 +48,9 @@ void isSubProcess(const char *cid, isSubProcess_type *spt) {
   isSubProcessFD_type *spfdp;   // pointo into the fd_server array
   char tmp[256];                // temporary buffer to read data into
   int bytes_read;               // number of bytes read in the read statement
+  time_t status_refresh_timer;  // Reminds us to update the redis status key
+
+
 
   void connectCB(const redisAsyncContext *ac, int status) {
     static const char *id = FILEID "isSubProcess->connectCB";
@@ -55,15 +59,33 @@ void isSubProcess(const char *cid, isSubProcess_type *spt) {
 
 
   /** call back in case a redis server becomes disconnected
-   *  TODO: reconnect
+   *  TODO: maybe reconnect
    */
   void disconnectCB(const redisAsyncContext *ac, int status) {
     static const char *id = FILEID "isSubProcess->disconnectCB";
-    if( status != REDIS_OK) {
-      isLogging_err( "%s: Disconnected with status %d: %s", id, status, ac->errstr);
+    char *whoiam;
+
+    if (ac == subac) {
+      whoiam = "subac";
+    } else {
+      whoiam = "statac";
     }
-    isLogging_debug( "%s: redis disconnected status %d", id, status);
-    redis_running = 0;
+
+    if( status != REDIS_OK) {
+      isLogging_err( "%s: Disconnected %s with status %d: %s", id, whoiam, status, ac->errstr);
+    } else {
+      isLogging_debug( "%s: redis disconnected %s with status %d", id, whoiam, status);
+    }
+    //
+    // Indicate to the rest of the routine that we are not talking to
+    // redis anymore
+    if (ac == subac) {
+      subac = NULL;
+    }
+
+    if (ac == statac) {
+      statac = NULL;
+    }
   }
 
   /** hook to mange read events
@@ -134,6 +156,23 @@ void isSubProcess(const char *cid, isSubProcess_type *spt) {
     isLogging_debug("%s: unsubscribed", id);
   }
 
+  void statCB(redisAsyncContext *ac, void *reply, void *privedata) {
+    static const char *id = FILEID "isSubProcess->statCB";
+    redisReply *r;
+
+    if (reply == NULL) {
+      return;
+    }
+
+    r = reply;
+    if (r->type == REDIS_REPLY_ERROR) {
+      isLogging_debug("%s: error: %s", id, r->str);
+    } else {
+      isLogging_debug("%s: got reply type %d", id, r->type);
+    }
+  }
+
+
   /** Use the publication to request the new value
    */
   void subCB(redisAsyncContext *ac, void *reply, void *privdata) {
@@ -151,7 +190,7 @@ void isSubProcess(const char *cid, isSubProcess_type *spt) {
 
     if (reply == NULL) {
       // 
-      // we're called with a null reply on disconnect.  Nothing for us to do.
+      // we're called with a null reply ondis connect.  Nothing for us to do.
       //
       return;
     }
@@ -307,47 +346,80 @@ void isSubProcess(const char *cid, isSubProcess_type *spt) {
 
   isLogging_debug("%s->%s: about to connect to redis", cid, id);
 
-  redis_running = 1;
-  subac = redisAsyncConnect("127.0.0.1", 6379);
+  subac = redisAsyncConnect(spt->controlAddress, spt->controlPort);
   if( subac->err) {
+    //
+    // This is not an indication that the connection failed since we
+    // haven't actually tried to connect yet
+    //
     isLogging_err( "%s: redisAsyncConnect Error: %s", id, subac->errstr);
-    exit(-1);
+    subac = NULL;
   }
-  subfd.fd           = subac->c.fd;
-  subfd.events       = 0;
-  subac->ev.data     = &subfd;
-  subac->ev.addRead  = addRead;
-  subac->ev.delRead  = delRead;
-  subac->ev.addWrite = addWrite;
-  subac->ev.delWrite = delWrite;
-  subac->ev.cleanup  = cleanup;
+  if (subac != NULL) {
+    subfd.fd           = subac->c.fd;
+    subfd.events       = 0;
+    subac->ev.data     = &subfd;
+    subac->ev.addRead  = addRead;
+    subac->ev.delRead  = delRead;
+    subac->ev.addWrite = addWrite;
+    subac->ev.delWrite = delWrite;
+    subac->ev.cleanup  = cleanup;
   
-  redisAsyncSetConnectCallback(subac, connectCB);
-  redisAsyncSetDisconnectCallback(subac, disconnectCB);
-  // Set up redis subscriber
+    redisAsyncSetConnectCallback(subac, connectCB);
+    redisAsyncSetDisconnectCallback(subac, disconnectCB);
+    // Set up redis subscriber
+    
+    redisAsyncCommand(subac, subCB, NULL, "SUBSCRIBE %s", spt->controlPublisher);
+  }    
 
-  redisAsyncCommand(subac, subCB, NULL, "SUBSCRIBE isSubInput");
+
+  statac = redisAsyncConnect(spt->controlAddress, spt->controlPort);
+  if( statac->err) {
+    //
+    // This is not an indication that the connection failed since we
+    // haven't actually tried to connect yet
+    //
+    isLogging_err( "%s: redisAsyncConnect (stat) Error: %s", id, statac->errstr);
+    statac = NULL;
+  }
+  if (statac != NULL) {
+    statfd.fd          = statac->c.fd;
+    statfd.events       = 0;
+    statac->ev.data     = &statfd;
+    statac->ev.addRead  = addRead;
+    statac->ev.delRead  = delRead;
+    statac->ev.addWrite = addWrite;
+    statac->ev.delWrite = delWrite;
+    statac->ev.cleanup  = cleanup;
+  
+    redisAsyncSetConnectCallback(statac, connectCB);
+    redisAsyncSetDisconnectCallback(statac, disconnectCB);
+
+    redisAsyncCommand(statac, statCB, NULL, "HSET %s STATUS {\"status\":\"Running\"}", spt->controlPublisher);
+    redisAsyncCommand(statac, statCB, NULL, "EXPIRE %s 100", spt->controlPublisher);
+  }
 
   isLogging_debug("%s->%s: max_fd=%d", cid, id, max_fd);
 
-  fd_servers = calloc(max_fd+1, sizeof(*fd_servers));
+  fd_servers = calloc(max_fd+2, sizeof(*fd_servers));
   if (fd_servers == NULL) {
     isLogging_crit("%s->%s: Out of memory (fd_servers)", cid, id);
     _exit(-1);
   }  
 
-  polllist = calloc(spt->nfds+1, sizeof (*polllist));
+  polllist = calloc(spt->nfds+2, sizeof (*polllist));
   if (polllist == NULL) {
     isLogging_crit("%s->%s: Out of memory (pollist)", cid, id);
     _exit(-1);
   }
   
   polllist[0].fd     = subfd.fd;
-  for (npoll=1; npoll <= spt->nfds; npoll++) {
-    isLogging_debug("%s->%s: event=%d  piped_fd=%d  child_fd=%d", cid, id, spt->fds[npoll]._event, spt->fds[npoll]._piped_fd, spt->fds[npoll].fd);
-    fd_servers[spt->fds[npoll-1]._piped_fd] = spt->fds[npoll-1];  // find fds structure from file descriptor
-    polllist[npoll].fd     = spt->fds[npoll-1]._piped_fd;
-    polllist[npoll].events = spt->fds[npoll-1]._event;
+  polllist[1].fd     = statfd.fd;
+  for (npoll=2; npoll < spt->nfds + 2; npoll++) {
+    isLogging_debug("%s->%s: event=%d  piped_fd=%d  child_fd=%d", cid, id, spt->fds[npoll-2]._event, spt->fds[npoll-2]._piped_fd, spt->fds[npoll-2].fd);
+    fd_servers[spt->fds[npoll-2]._piped_fd] = spt->fds[npoll-2];  // find fds structure from file descriptor
+    polllist[npoll].fd     = spt->fds[npoll-2]._piped_fd;
+    polllist[npoll].events = spt->fds[npoll-2]._event;
   }
   isLogging_debug("%s->%s: npoll=%d", cid, id, npoll);
 
@@ -356,12 +428,23 @@ void isSubProcess(const char *cid, isSubProcess_type *spt) {
   //
 
   keep_on_truckin = 1;
+  status_refresh_timer = time(NULL);
 
   isLogging_debug("%s->%s: starting poll loop", cid, id);
 
-  while(keep_on_truckin || redis_running) {
+  while(keep_on_truckin || subac != NULL || statac != NULL) {
     // set redis events
-    polllist[0].events = subfd.events;
+    if (subac != NULL) {
+      polllist[0].events = subfd.events;
+    } else {
+      polllist[0].events = 0;
+    }
+
+    if (statac != NULL) {
+      polllist[1].events = statfd.events;
+    } else {
+      polllist[1].events = 0;
+    }
 
     pollstat = poll(polllist, npoll, 100);
     if (pollstat == -1) {
@@ -389,8 +472,16 @@ void isSubProcess(const char *cid, isSubProcess_type *spt) {
         keep_on_truckin = 0;
         isLogging_debug("%s: child exited, disconnecting redis", id);
         //
-        redisAsyncCommand(subac, unSubCB, NULL, "UNSUBSCRIBE");
-        redisAsyncDisconnect(subac);    // Don't need to listen to redis after sub process has ended
+        if (statac != NULL) {
+          redisAsyncCommand(statac, statCB, NULL, "HSET %s STATUS {\"status\":\"%s\"}", spt->controlPublisher, spt->rtn ? "Killed" : "Done");
+          redisAsyncCommand(statac, statCB, NULL, "PERSIST %s", spt->controlPublisher);
+          redisAsyncDisconnect(statac);    // Don't need to talk to redis after sub process has ended
+        }
+
+        if (subac != NULL) {
+          redisAsyncCommand(subac, unSubCB, NULL, "UNSUBSCRIBE");
+          redisAsyncDisconnect(subac);    // Don't need to listen to redis after sub process has ended
+        }
       }
       if (err == -1) {
         //
@@ -399,27 +490,58 @@ void isSubProcess(const char *cid, isSubProcess_type *spt) {
         //
         isLogging_info("%s: waitpid 2 failed: %s\n", id, strerror(errno));
         keep_on_truckin = 0;
-        redisAsyncCommand(subac, unSubCB, NULL, "UNSUBSCRIBE");
-        redisAsyncDisconnect(subac);    // Don't need to listen to redis after sub process has ended
+        
+        if (statac != NULL) {
+          redisAsyncCommand(statac, statCB, NULL, "HSET %s STATUS {\"status\":\"Error\"}", spt->controlPublisher);
+          redisAsyncCommand(statac, statCB, NULL, "PERSIST %s", spt->controlPublisher);
+          redisAsyncDisconnect(statac);    // Don't need to talk to redis after sub process has ended
+        }
+
+        if (subac != NULL) {
+          redisAsyncCommand(subac, unSubCB, NULL, "UNSUBSCRIBE");
+          redisAsyncDisconnect(subac);    // Don't need to listen to redis after sub process has ended
+        }
       }
       //isLogging_debug("%s->%s: waitpid status %0x  keep_on_truckin: %d", cid, id, status, keep_on_truckin);
       continue;
     }
     
+    if (statac != NULL && (status_refresh_timer + 60  <= time(NULL))) {
+      redisAsyncCommand(statac, statCB, NULL, "EXPIRE %s 100", spt->controlPublisher);
+      status_refresh_timer = time(NULL);
+    }
+
+
     // polllist[0] is the redis subscriber
     
-    if (pollstat && polllist[0].revents) {
-      isLogging_debug("%s->%s: redis subscriber event(s) %d", cid, id, polllist[0].revents);
-      pollstat--;
-      if (polllist[0].revents & POLLIN) {
-        redisAsyncHandleRead(subac);
+    if (subac != NULL) {
+      if (pollstat && polllist[0].revents) {
+        isLogging_debug("%s->%s: redis subscriber event(s) %d", cid, id, polllist[0].revents);
+        pollstat--;
+        if (polllist[0].revents & POLLIN) {
+          redisAsyncHandleRead(subac);
+        }
+        if (polllist[0].revents & POLLOUT) {
+          redisAsyncHandleWrite(subac);
+        }
       }
-      if (polllist[0].revents & POLLOUT) {
-        redisAsyncHandleWrite(subac);
+    }
+    // polllist[1] is the redis writer
+    
+    if (statac != NULL) {
+      if (pollstat && polllist[1].revents) {
+        isLogging_debug("%s->%s: redis status event(s) %d", cid, id, polllist[0].revents);
+        pollstat--;
+        if (polllist[1].revents & POLLIN) {
+          redisAsyncHandleRead(statac);
+        }
+        if (polllist[1].revents & POLLOUT) {
+          redisAsyncHandleWrite(statac);
+        }
       }
     }
 
-    for (i=1; pollstat && i<npoll; i++) {
+    for (i=2; pollstat && i<npoll; i++) {
       if (polllist[i].revents) {
         //isLogging_debug("%s->%s: fd: %d  revent: %d", cid, id, polllist[i].fd, polllist[i].revents);
         pollstat--;
@@ -555,7 +677,7 @@ void isSubProcess(const char *cid, isSubProcess_type *spt) {
   //
   // Send our results
   //
-  for (i=1; i<npoll; i++) {
+  for (i=2; i<npoll; i++) {
     if (polllist[i].fd > 0) {
       close(polllist[i].fd);
       //
