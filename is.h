@@ -38,6 +38,7 @@
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <tiffio.h>
+#include <time.h>
 #include <turbojpeg.h>
 #include <unistd.h>
 #include <zmq.h>
@@ -232,6 +233,9 @@ typedef struct isSubProcess_struct {
   char *cmd;                            // name of executable to run
   char **envp;                          // null terminated list of environment variables
   char **argv;                          // null terminated list of arguments
+  const char *controlAddress;           // host that publishes signals and input via redis
+  int   controlPort;                    // redis port
+  const char *controlPublisher;         // Name of publisher to subscribe to
   isSubProcessFD_type *fds;             // list of fds we are asked to manage
   int nfds;                             // number of fds in list
   void (*onLaunch)(char *msg);          // Launch CB: rtn 0=OK, 1=fork failed, msg=failed reason
