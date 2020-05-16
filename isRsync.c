@@ -1002,53 +1002,87 @@ void isRsyncTransfer(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *
 
   void onStdoutProgress(char *s) {
     redisReply *reply;
+    json_t *jmsg;
+    char *msg;
 
+    
     if (remote_redis && progressPublisher) {
-      reply = redisCommand(remote_redis, "PUBLISH %s {\"stdout\":\"%s\",\"done\":false,\"tag\":\"%s\"}", progressPublisher, s, tag);
+      jmsg = json_object();
+      json_object_set_new(jmsg, "stdout", json_string(s));
+      json_object_set_new(jmsg, "done", json_false());
+      json_object_set_new(jmsg, "tag", json_string(tag));
+      msg = json_dumps(jmsg, JSON_SORT_KEYS | JSON_INDENT(0) | JSON_COMPACT);
+
+      reply = redisCommand(remote_redis, "PUBLISH %s %s", progressPublisher, msg);
       if (reply == NULL) {
         isLogging_info("%s: redis progress publisher %s returned error %s when publishing \"%.*s\"", id, progressPublisher, remote_redis->errstr, strlen(s), s);
       } else {
         freeReplyObject(reply);
       }
+      free(msg);
     }
   }
 
   void onStdoutDone(char *s) {
     redisReply *reply;
+    json_t *jmsg;
+    char *msg;
 
     if (remote_redis && progressPublisher) {
-      reply = redisCommand(remote_redis, "PUBLISH %s {\"done\":true,\"tag\":\"%s\"}", progressPublisher, tag);
+      jmsg = json_object();
+      json_object_set_new(jmsg, "stdout", json_string(s));
+      json_object_set_new(jmsg, "done", json_true());
+      json_object_set_new(jmsg, "tag", json_string(tag));
+      msg = json_dumps(jmsg, JSON_SORT_KEYS | JSON_INDENT(0) | JSON_COMPACT);
+      reply = redisCommand(remote_redis, "PUBLISH %s %s", progressPublisher, msg);
       if (reply == NULL) {
         isLogging_info("%s: redis progress publisher %s returned error %s when done", id, progressPublisher, remote_redis->errstr);
       } else {
         freeReplyObject(reply);
       }
+      free(msg);
     }
   }
 
   void onStderrProgress(char *s) {
     redisReply *reply;
+    json_t *jmsg;
+    char *msg;
 
     if (remote_redis && progressPublisher) {
-      reply = redisCommand(remote_redis, "PUBLISH %s {\"stderr\":\"%s\",\"done\":false,\"tag\":\"%s\"}", progressPublisher, s, tag);
+      jmsg = json_object();
+      json_object_set_new(jmsg, "stderr", json_string(s));
+      json_object_set_new(jmsg, "done", json_false());
+      json_object_set_new(jmsg, "tag", json_string(tag));
+      msg = json_dumps(jmsg, JSON_SORT_KEYS | JSON_INDENT(0) | JSON_COMPACT);
+      reply = redisCommand(remote_redis, "PUBLISH %s %s", progressPublisher, msg);
       if (reply == NULL) {
         isLogging_info("%s: redis stderr publisher %s returned error %s when publishing \"%.*s\"", id, progressPublisher, remote_redis->errstr, strlen(s), s);
       } else {
         freeReplyObject(reply);
       }
+      free(msg);
     }
   }
 
    void onStderrDone(char *s) {
     redisReply *reply;
+    json_t *jmsg;
+    char *msg;
 
     if (remote_redis && progressPublisher) {
-      reply = redisCommand(remote_redis, "PUBLISH %s {\"done\":true,\"tag\":\"%s\"}", progressPublisher, tag);
+      jmsg = json_object();
+      json_object_set_new(jmsg, "stderr", json_string(s));
+      json_object_set_new(jmsg, "done", json_false());
+      json_object_set_new(jmsg, "tag", json_string(tag));
+      msg = json_dumps(jmsg, JSON_SORT_KEYS | JSON_INDENT(0) | JSON_COMPACT);
+      reply = redisCommand(remote_redis, "PUBLISH %s %s", progressPublisher, msg);
       if (reply == NULL) {
         isLogging_info("%s: redis stderr publisher %s returned error %s when publishing done", id, progressPublisher, remote_redis->errstr);
       } else {
         freeReplyObject(reply);
       }
+      free(msg);
     }
   }
 
