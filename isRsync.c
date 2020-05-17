@@ -904,13 +904,14 @@ void isRsyncTransfer(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *
     "rsync",                            // 0
     "-v",                               // 1
     "-rt",                              // 2
-    "--progress",                       // 3
-    "--partial",                        // 4
-    "--partial-dir=.rsync_partial",     // 5
-    "-e",                               // 6
-    "''ssh -o StrictHostKeyChecking=no -o PasswordAuthentication=no -o KbdInteractiveDevices=none''", // 7
-    NULL,                               // 8 src
-    NULL,                               // 9 dst
+    "--info=progress2",                 // 3
+    "--info=name0",                     // 4
+    "--partial",                        // 5
+    "--partial-dir=.rsync_partial",     // 6
+    "-e",                               // 7
+    "''ssh -o StrictHostKeyChecking=no -o PasswordAuthentication=no -o KbdInteractiveDevices=none''", // 8
+    NULL,                               // 9 src
+    NULL,                               // 10 dst
     NULL                                // -- Required NULL end of list
   };
 
@@ -947,7 +948,7 @@ void isRsyncTransfer(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *
 
   snprintf(src, src_size-1, "%s", localDir);
   src[src_size-1] = 0;
-  argv[8] = src;
+  argv[9] = src;
 
   //                            @                      :
   dst_size = strlen(userName) + 1 + strlen(hostName) + 1 + strlen(destDir) + 2;
@@ -959,7 +960,7 @@ void isRsyncTransfer(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *
 
   snprintf(dst, dst_size-1, "%s@%s:%s", userName, hostName, destDir);
   dst[dst_size-1] = 0;
-  argv[9] = dst;
+  argv[10] = dst;
 
   isLogging_debug("%s: src='%s'  dst='%s'", id, src, dst);
 
