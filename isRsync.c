@@ -868,7 +868,7 @@ void isRsyncTransfer(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *
   regex_t rec;
   regex_t rec2;
   int progress2;
-
+  redisReply *reply;                    // used to deal with local job storage
   char *src;
   int src_size;
   char *dst;
@@ -1178,6 +1178,30 @@ void isRsyncTransfer(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *
   // call with the status of the launched sub process
   //
   void onLaunch(char *msg) {
+    char *job_str2;             // note that the previous job_str is own by zmq and will be freed wnenever zmq is ready
+
+    job_str2 = NULL;
+    if (job != NULL) {
+      job_str2 = json_dumps(job, JSON_SORT_KEYS | JSON_INDENT(0) | JSON_COMPACT);
+
+      //
+      // Set an indication that we are running a rsync job so we can restart it when the image server is restarted
+      //
+      //  TODO: report an error if this command failes
+      reply = redisCommand(tcp->rc, "HSET RSYNCS %s %s", tag, job_str2);
+      if (reply) {
+        freeReplyObject(reply);
+      }
+      free(job_str2);
+    } 
+
+    //
+    // The rest is all zmq messaging.  If we are recovering from a restart then there is no zmq messaging to perform so just leave now.
+    //
+    if (tcp->rep == NULL) {
+      return;
+    }
+
     //
     // sp.rtn = 0 on success
     //        = 1 on fork failure
@@ -1231,9 +1255,16 @@ void isRsyncTransfer(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *
       }
     } while(0);
   }
+
+
   sp.onLaunch = onLaunch;
 
   isSubProcess(id, &sp, &wctx->metaMutex);
+
+  reply = redisCommand(tcp->rc, "HDEL RSYNCS %s", tag);
+  if (reply) {
+    freeReplyObject(reply);
+  }
 
   if (src) {
     free(src);
