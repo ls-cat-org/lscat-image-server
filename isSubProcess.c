@@ -13,13 +13,6 @@
  */
 #include "is.h"
 
-
-
-
-
-
-
-
 /** isSubProcess
  **
  **     Fatal errors kill program
@@ -28,13 +21,13 @@
  **
  ** 
  */
-void isSubProcess(const char *cid, isSubProcess_type *spt) {
+void isSubProcess(const char *cid, isSubProcess_type *spt, pthread_mutex_t *mutex) {
   static const char *id = FILEID "isSubProcess";
-  static redisAsyncContext *subac;  
-  static redisAsyncContext *statac;
-  static struct pollfd subfd;
-  static struct pollfd statfd;
-  static int c;                 // process id of child process
+  redisAsyncContext *subac;  
+  redisAsyncContext *statac;
+  struct pollfd subfd;
+  struct pollfd statfd;
+  int c;                 // process id of child process
   
   int max_fd;                   // largest file descriptor
   int err;                      // return value
@@ -49,7 +42,7 @@ void isSubProcess(const char *cid, isSubProcess_type *spt) {
   char tmp[256];                // temporary buffer to read data into
   int bytes_read;               // number of bytes read in the read statement
   time_t status_refresh_timer;  // Reminds us to update the redis status key
-
+  int progress;
 
 
   void connectCB(const redisAsyncContext *ac, int status) {
@@ -181,7 +174,6 @@ void isSubProcess(const char *cid, isSubProcess_type *spt) {
     json_t *jsig;
     json_error_t loads_err;
     int sig;
-
     redisReply *r;
     //lsredis_obj_t *p;
     char *k;
@@ -432,6 +424,7 @@ void isSubProcess(const char *cid, isSubProcess_type *spt) {
 
   isLogging_debug("%s->%s: starting poll loop", cid, id);
 
+  pthread_mutex_lock(mutex);
   while(keep_on_truckin || subac != NULL || statac != NULL) {
     // set redis events
     if (subac != NULL) {
@@ -446,7 +439,9 @@ void isSubProcess(const char *cid, isSubProcess_type *spt) {
       polllist[1].events = 0;
     }
 
+    pthread_mutex_unlock(mutex);
     pollstat = poll(polllist, npoll, 100);
+    pthread_mutex_lock(mutex);
     if (pollstat == -1) {
       isLogging_err("%s->%s: poll failed: %s", cid, id, strerror(errno));
       exit (-1);
@@ -473,7 +468,11 @@ void isSubProcess(const char *cid, isSubProcess_type *spt) {
         isLogging_debug("%s: child exited, disconnecting redis", id);
         //
         if (statac != NULL) {
-          redisAsyncCommand(statac, statCB, NULL, "HSET %s STATUS {\"status\":\"%s\"}", spt->controlPublisher, spt->rtn ? "Killed" : "Done");
+          if (spt->rtn) {
+            redisAsyncCommand(statac, statCB, NULL, "HSET %s STATUS {\"status\":\"Done\"}", spt->controlPublisher);
+          } else {
+            redisAsyncCommand(statac, statCB, NULL, "HMSET %s STATUS {\"status\":\"Done\"} PROGRESS {\"progress\":100}", spt->controlPublisher);
+          }
           redisAsyncCommand(statac, statCB, NULL, "PERSIST %s", spt->controlPublisher);
           redisAsyncDisconnect(statac);    // Don't need to talk to redis after sub process has ended
         }
@@ -614,7 +613,10 @@ void isSubProcess(const char *cid, isSubProcess_type *spt) {
         if (bytes_read > 0 && spfdp->onProgress) {
           if (spfdp->read_lines == 0) {
             // Easy as π
-            spfdp->onProgress(spfdp->_buf);
+            progress = spfdp->onProgress(spfdp->_buf);
+            if (progress >= 0) {
+              redisAsyncCommand(statac, statCB, NULL, "HSET %s PROGRESS {\"progress\":%d}", spt->controlPublisher, progress);
+            }
             spfdp->_buf_size = 0;
           } else {
             //
@@ -643,21 +645,27 @@ void isSubProcess(const char *cid, isSubProcess_type *spt) {
               }
             }
             saveptr = NULL;     // style, saveptr is ignored on first strtok_r call
-            lasts   = NULL;
+            lasts   = spfdp->_buf_size == 0 ? NULL : spfdp->_buf;
             next = strtok_r(spfdp->_buf, "\r\n", &saveptr);
             while (next != NULL) {
               if (lasts != NULL) {
-                spfdp->onProgress(lasts);
-                lasts = next;
+                progress=spfdp->onProgress(lasts);
+                if (progress >= 0) {
+                  redisAsyncCommand(statac, statCB, NULL, "HSET %s PROGRESS {\"progress\":%d}", spt->controlPublisher, progress);
+                }
               }
-              next = strtok_r(NULL, "\r\n", &saveptr);
+              lasts = next;
+              next  = strtok_r(NULL, "\r\n", &saveptr);
             }
             if (lasts) {
               if (save_last_string) {
                 memcpy(spfdp->_buf, lasts, strlen(lasts)+1);
                 spfdp->_buf_size = strlen(lasts);
               } else {
-                spfdp->onProgress(lasts);
+                progress = spfdp->onProgress(lasts);
+                if (progress >= 0) {
+                  redisAsyncCommand(statac, statCB, NULL, "HSET %s PROGRESS {\"progress\":%d}", spt->controlPublisher, progress);
+                }
                 spfdp->_buf_size = 0;
               }
             }
@@ -671,6 +679,7 @@ void isSubProcess(const char *cid, isSubProcess_type *spt) {
       }
     }
   }
+  pthread_mutex_unlock(mutex);
 
   isLogging_debug("%s->%s: End of polling", cid, id);
 

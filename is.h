@@ -26,6 +26,7 @@
 #include <pwd.h>
 #include <pthread.h>
 #include <poll.h>
+#include <regex.h>
 #include <search.h>
 #include <setjmp.h>
 #include <stdarg.h>
@@ -173,7 +174,7 @@ typedef struct isWorkerContextStruct {
   int n_buffers;                        //!< The number of buffers in the list (so we know when to remake the hash table
   int max_buffers;                      //!< Maximum number of buffers allowed in the hash table
   pthread_mutex_t ctxMutex;             //!< Lock access to the image buffers
-  pthread_mutex_t metaMutex;             //!< control access to json functions, particularly dumps
+  pthread_mutex_t metaMutex;            //!< control access to json functions, particularly dumps
   struct hsearch_data bufTable;         //!< Hash table to find the correct buffer quickly
   void *zctx;                           //!< zmq context to transmit data hither and yon
   void *router;                         //!< zmq socket to talk to our parent process
@@ -214,7 +215,7 @@ typedef struct isSubProcessFD_struct {
   int fd;                                 // child's file descriptor we want to pipe
   int is_out;                             // 0 = we write to (like stdin), 1 = we read from (like stdout)
   int read_lines;                         // 1 = send full lines only to onProgress, 0 = whatever we have
-  void (*onProgress)(char *);             // if not null this function handles the progress updates
+  int (*onProgress)(char *);              // if not null this function handles the progress updates.  Returns progress in percent from 0 to 100 or -1 if none present
   void (*onDone)(char *);                 // if not null this function handles the final result
   int _piped_fd;                          // (private) parent's version of fd
   int _event;                             // (private) our poll event (POLLIN or POLLOUT)
@@ -283,7 +284,7 @@ extern void isRsyncHostTest(isWorkerContext_t *wctx, isThreadContextType *tcp, j
 extern void isRsyncLocalDirStats(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job);
 extern void isRsyncTransfer(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job);
 extern void isSpots( isWorkerContext_t *ibctx, isThreadContextType *tcp, json_t *job);
-extern void isSubProcess(const char *cid, isSubProcess_type *spt);
+extern void isSubProcess(const char *cid, isSubProcess_type *spt, pthread_mutex_t *mutex);
 extern void isSupervisor(const char *key);
 extern void isWriteImageBufToRedis(isWorkerContext_t *wctx, isImageBufType *imb, redisContext *rc);
 extern void is_zmq_error_reply(zmq_msg_t *msgs, int n_msgs, void *err_dealer, char *fmt, ...);

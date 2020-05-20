@@ -109,7 +109,6 @@ void *isWorker(void *voidp) {
     job = json_loadb(zmq_msg_data(&zmsg), zmq_msg_size(&zmsg), 0, &jerr);
     pthread_mutex_unlock(&wctx->metaMutex);
 
-
     zmq_msg_close(&zmsg);
 
     if (job == NULL) {

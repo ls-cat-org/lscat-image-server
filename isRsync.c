@@ -50,9 +50,7 @@ void isRsyncLocalDirStats(isWorkerContext_t *wctx, isThreadContextType *tcp, jso
   // Job message part
   job_str = NULL;
   if (job != NULL) {
-    pthread_mutex_lock(&wctx->metaMutex);
     job_str = json_dumps(job, JSON_SORT_KEYS | JSON_INDENT(0) | JSON_COMPACT);
-    pthread_mutex_unlock(&wctx->metaMutex);
   } else {
     job_str = strdup("");
   }
@@ -124,9 +122,7 @@ void isRsyncLocalDirStats(isWorkerContext_t *wctx, isThreadContextType *tcp, jso
   json_object_set_new(rtn_json, "nSymLinks",    json_integer(nsymlinks));
   json_object_set_new(rtn_json, "nBadSymLinks", json_integer(nbadsymlinks));
   
-  pthread_mutex_lock(&wctx->metaMutex);
   rtn_str = json_dumps(rtn_json, JSON_SORT_KEYS | JSON_INDENT(0) | JSON_COMPACT);
-  pthread_mutex_unlock(&wctx->metaMutex);
     
   json_decref(rtn_json);
 
@@ -207,9 +203,7 @@ void isRsyncHostTest(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *
   // Job message part
   job_str = NULL;
   if (job != NULL) {
-    pthread_mutex_lock(&wctx->metaMutex);
     job_str = json_dumps(job, JSON_SORT_KEYS | JSON_INDENT(0) | JSON_COMPACT);
-    pthread_mutex_unlock(&wctx->metaMutex);
   } else {
     job_str = strdup("");
   }
@@ -262,9 +256,7 @@ void isRsyncHostTest(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *
     //
     // Send our test result
     //
-    pthread_mutex_lock(&wctx->metaMutex);
     rtn_str = json_dumps(rtn_json, JSON_SORT_KEYS | JSON_INDENT(0) | JSON_COMPACT);
-    pthread_mutex_unlock(&wctx->metaMutex);
     
     json_decref(rtn_json);
     
@@ -376,9 +368,7 @@ void isRsyncConnectionTest(isWorkerContext_t *wctx, isThreadContextType *tcp, js
   // Job message part
   job_str = NULL;
   if (job != NULL) {
-    pthread_mutex_lock(&wctx->metaMutex);
     job_str = json_dumps(job, JSON_SORT_KEYS | JSON_INDENT(0) | JSON_COMPACT);
-    pthread_mutex_unlock(&wctx->metaMutex);
   } else {
     job_str = strdup("");
   }
@@ -621,10 +611,8 @@ void isRsyncConnectionTest(isWorkerContext_t *wctx, isThreadContextType *tcp, js
   // Return message
   rtn_str = NULL;
   if (rtn_json != NULL) {
-    pthread_mutex_lock(&wctx->metaMutex);
     rtn_str = json_dumps(rtn_json, JSON_SORT_KEYS | JSON_INDENT(0) | JSON_COMPACT);
     json_decref(rtn_json);
-    pthread_mutex_unlock(&wctx->metaMutex);
   } else {
     rtn_str = strdup("");
   }
@@ -751,9 +739,7 @@ void isRsyncConnectionTest2(isWorkerContext_t *wctx, isThreadContextType *tcp, j
   // Job message part
   job_str = NULL;
   if (job != NULL) {
-    pthread_mutex_lock(&wctx->metaMutex);
     job_str = json_dumps(job, JSON_SORT_KEYS | JSON_INDENT(0) | JSON_COMPACT);
-    pthread_mutex_unlock(&wctx->metaMutex);
   } else {
     job_str = strdup("");
   }
@@ -813,7 +799,7 @@ void isRsyncConnectionTest2(isWorkerContext_t *wctx, isThreadContextType *tcp, j
   }
   sp.onLaunch = onLaunch;
 
-  isSubProcess(id, &sp);
+  isSubProcess(id, &sp, &wctx->metaMutex);
   if (launch_failed) {
     //
     // If we get here an error response has already been sent from
@@ -827,10 +813,8 @@ void isRsyncConnectionTest2(isWorkerContext_t *wctx, isThreadContextType *tcp, j
   // Return message
   rtn_str = NULL;
   if (rtn_json != NULL) {
-    pthread_mutex_lock(&wctx->metaMutex);
     rtn_str = json_dumps(rtn_json, JSON_SORT_KEYS | JSON_INDENT(0) | JSON_COMPACT);
     json_decref(rtn_json);
-    pthread_mutex_unlock(&wctx->metaMutex);
   } else {
     rtn_str = strdup("");
   }
@@ -881,6 +865,10 @@ void isRsyncTransfer(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *
   int           controlPort;
   const char   *tag;
   redisContext *remote_redis;
+  regex_t rec;
+  regex_t rec2;
+  int progress2;
+
   char *src;
   int src_size;
   char *dst;
@@ -915,6 +903,13 @@ void isRsyncTransfer(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *
     NULL                                // -- Required NULL end of list
   };
 
+
+  //
+  // Compile regular expressions for using progress reports
+  //
+  regcomp(&rec,  "([0-9]+)%.*to-chk([0-9]+)/([0-9]+)", REG_EXTENDED);
+  regcomp(&rec2, "([0-9]+)%", REG_EXTENDED);
+  progress2 = -1;
 
   // Todo: add regexp tests
   //
@@ -973,9 +968,7 @@ void isRsyncTransfer(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *
   // Job message part
   job_str = NULL;
   if (job != NULL) {
-    pthread_mutex_lock(&wctx->metaMutex);
     job_str = json_dumps(job, JSON_SORT_KEYS | JSON_INDENT(0) | JSON_COMPACT);
-    pthread_mutex_unlock(&wctx->metaMutex);
   } else {
     job_str = strdup("");
   }
@@ -1001,18 +994,75 @@ void isRsyncTransfer(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *
     }
   }
 
-  void onStdoutProgress(char *s) {
+  int onStdoutProgress(char *s) {
     redisReply *reply;
     json_t *jmsg;
     char *msg;
+    int progress;
+    regmatch_t pmatch[4];
+    int err;
+    float n, d;
+    int files_total;
+    int files_remaining;
 
-    
+    files_total      = -1;
+    files_remaining = -1;
+
+    progress  = -1;
+
+    err = regexec(&rec, s, 4, pmatch, 0);
+    if (!err) {
+      //
+      // we have the file counts
+      //
+      progress = strtol(s+pmatch[1].rm_so, NULL, 10);
+      files_remaining = strtol(s+pmatch[2].rm_so, NULL, 10);
+      files_total     = strtol(s+pmatch[3].rm_so, NULL, 10);
+      n = strtol(s+pmatch[2].rm_so, NULL, 10);
+      d = strtol(s+pmatch[3].rm_so, NULL, 10);
+      if (d > 0.0) {
+        progress2 = floor((1.0 - n/d) * 100. + 0.5);
+        if (progress2 > 100) {
+          progress2 = 100;
+        }
+        if (progress2 < 0) {
+          progress2 = 0;
+        }
+        if (progress2 > progress) {
+          progress = progress2;
+        }
+      }
+    } else {
+      //
+      // We do not have the file counts
+      //
+      err = regexec(&rec2, s, 2, pmatch, 0);
+      if (!err) {
+        progress = strtol(s+pmatch[1].rm_so, NULL, 10);
+        if (progress2 > progress) {
+          progress = progress2;
+        }
+      }
+    }
+
     if (remote_redis && progressPublisher) {
       jmsg = json_object();
       json_object_set_new(jmsg, "stdout", json_string(s));
       json_object_set_new(jmsg, "done", json_false());
       json_object_set_new(jmsg, "tag", json_string(tag));
+      if (progress > 0) {
+        json_object_set_new(jmsg, "progress", json_integer(progress));
+      }
+      if (files_remaining > 0) {
+        json_object_set_new(jmsg, "files_remaining", json_integer(files_remaining));
+      }
+
+      if (files_total > 0) {
+        json_object_set_new(jmsg, "files_total", json_integer(files_remaining));
+      }
+
       msg = json_dumps(jmsg, JSON_SORT_KEYS | JSON_INDENT(0) | JSON_COMPACT);
+      json_decref(jmsg);
 
       reply = redisCommand(remote_redis, "PUBLISH %s %s", progressPublisher, msg);
       if (reply == NULL) {
@@ -1022,6 +1072,8 @@ void isRsyncTransfer(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *
       }
       free(msg);
     }
+
+    return progress;
   }
 
   void onStdoutDone(char *s) {
@@ -1031,10 +1083,12 @@ void isRsyncTransfer(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *
 
     if (remote_redis && progressPublisher) {
       jmsg = json_object();
-      json_object_set_new(jmsg, "stdout", json_string(s));
+      //      json_object_set_new(jmsg, "stdout", json_string(s));
       json_object_set_new(jmsg, "done", json_true());
       json_object_set_new(jmsg, "tag", json_string(tag));
       msg = json_dumps(jmsg, JSON_SORT_KEYS | JSON_INDENT(0) | JSON_COMPACT);
+      json_decref(jmsg);
+
       reply = redisCommand(remote_redis, "PUBLISH %s %s", progressPublisher, msg);
       if (reply == NULL) {
         isLogging_info("%s: redis progress publisher %s returned error %s when done", id, progressPublisher, remote_redis->errstr);
@@ -1045,7 +1099,7 @@ void isRsyncTransfer(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *
     }
   }
 
-  void onStderrProgress(char *s) {
+  int onStderrProgress(char *s) {
     redisReply *reply;
     json_t *jmsg;
     char *msg;
@@ -1053,9 +1107,10 @@ void isRsyncTransfer(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *
     if (remote_redis && progressPublisher) {
       jmsg = json_object();
       json_object_set_new(jmsg, "stderr", json_string(s));
-      json_object_set_new(jmsg, "done", json_false());
+      json_object_set_new(jmsg, "done", json_true());
       json_object_set_new(jmsg, "tag", json_string(tag));
       msg = json_dumps(jmsg, JSON_SORT_KEYS | JSON_INDENT(0) | JSON_COMPACT);
+      json_decref(jmsg);
       reply = redisCommand(remote_redis, "PUBLISH %s %s", progressPublisher, msg);
       if (reply == NULL) {
         isLogging_info("%s: redis stderr publisher %s returned error %s when publishing \"%.*s\"", id, progressPublisher, remote_redis->errstr, strlen(s), s);
@@ -1064,6 +1119,7 @@ void isRsyncTransfer(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *
       }
       free(msg);
     }
+    return -1;
   }
 
    void onStderrDone(char *s) {
@@ -1073,10 +1129,11 @@ void isRsyncTransfer(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *
 
     if (remote_redis && progressPublisher) {
       jmsg = json_object();
-      json_object_set_new(jmsg, "stderr", json_string(s));
-      json_object_set_new(jmsg, "done", json_false());
+      //json_object_set_new(jmsg, "stderr", json_string(s));
+      json_object_set_new(jmsg, "done", json_true());
       json_object_set_new(jmsg, "tag", json_string(tag));
       msg = json_dumps(jmsg, JSON_SORT_KEYS | JSON_INDENT(0) | JSON_COMPACT);
+      json_decref(jmsg);
       reply = redisCommand(remote_redis, "PUBLISH %s %s", progressPublisher, msg);
       if (reply == NULL) {
         isLogging_info("%s: redis stderr publisher %s returned error %s when publishing done", id, progressPublisher, remote_redis->errstr);
@@ -1103,7 +1160,7 @@ void isRsyncTransfer(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *
   //
   fds[0].fd         = 1;                // child process's stdout
   fds[0].is_out     = 1;                // (read from pipe[0])
-  fds[0].read_lines = 0;                // Send as is
+  fds[0].read_lines = 1;                // Send as is
   fds[0].onProgress = onStdoutProgress; // Progress reports
   fds[0].onDone     = onStdoutDone;     // routine to receive stdout result
 
@@ -1111,7 +1168,7 @@ void isRsyncTransfer(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *
   // This will be the result mainly of the -v switch
   fds[1].fd         = 2;                // child process's stderr
   fds[1].is_out     = 1;                // flag for reading (listen to pipe[0])
-  fds[1].read_lines = 0;                // Send it as you get it
+  fds[1].read_lines = 1;                // Send it as you get it
   fds[1].onProgress = onStderrProgress; // "Realtime" debug output
   fds[1].onDone     = onStderrDone;     // routine to receive stdout result
   
@@ -1138,10 +1195,8 @@ void isRsyncTransfer(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *
     // Return message
     rtn_str = NULL;
     if (rtn_json != NULL) {
-      pthread_mutex_lock(&wctx->metaMutex);
       rtn_str = json_dumps(rtn_json, JSON_SORT_KEYS | JSON_INDENT(0) | JSON_COMPACT);
       json_decref(rtn_json);
-      pthread_mutex_unlock(&wctx->metaMutex);
     } else {
       rtn_str = strdup("");
     }
@@ -1178,7 +1233,7 @@ void isRsyncTransfer(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *
   }
   sp.onLaunch = onLaunch;
 
-  isSubProcess(id, &sp);
+  isSubProcess(id, &sp, &wctx->metaMutex);
 
   if (src) {
     free(src);
