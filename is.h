@@ -239,7 +239,7 @@ typedef struct isSubProcess_struct {
   const char *controlPublisher;         // Name of publisher to subscribe to
   isSubProcessFD_type *fds;             // list of fds we are asked to manage
   int nfds;                             // number of fds in list
-  void (*onLaunch)(char *msg);          // Launch CB: rtn 0=OK, 1=fork failed, msg=failed reason
+  void (*onLaunch)(char *msg, int pid); // Launch CB: msg error messessage for failed launch (or NULL if OK), pid of child process
   int rtn;                              // return value of sub process
 } isSubProcess_type;
 
@@ -282,7 +282,9 @@ extern void isRsyncConnectionTest(isWorkerContext_t *wctx, isThreadContextType *
 extern void isRsyncConnectionTest2(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job);
 extern void isRsyncHostTest(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job);
 extern void isRsyncLocalDirStats(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job);
+extern void isRsyncRecover();
 extern void isRsyncTransfer(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job);
+extern void isRsyncWaitpid();
 extern void isSpots( isWorkerContext_t *ibctx, isThreadContextType *tcp, json_t *job);
 extern void isSubProcess(const char *cid, isSubProcess_type *spt, pthread_mutex_t *mutex);
 extern void isSupervisor(const char *key);

@@ -297,6 +297,12 @@ int main(int argc, char **argv) {
     exit (-1);
   }
 
+  //
+  // Restart any rsync processes that have been abandoned
+  //
+  isRsyncRecover();
+
+
   // No envelope messages to close yet
   //
   n_envelope_msgs = 0;
@@ -306,6 +312,11 @@ int main(int argc, char **argv) {
   //
   sigaction(SIGINT, &sa, NULL);
   while (1) {
+    //
+    // see if any restarted rsync processes have finished
+    //
+    isRsyncWaitpid();
+
     //
     // We are really just about servicing ZMQ sockets.  Similar to the
     // poll function for unix file descriptors we have a zmq poll
@@ -477,7 +488,7 @@ int main(int argc, char **argv) {
       }
 
       if (reply->type != REDIS_REPLY_ARRAY) {
-        if (subreply->type == REDIS_REPLY_NIL) {
+        if (reply->type == REDIS_REPLY_NIL) {
           isLogging_err("%s: Process %s is not active\n", id, pid);
           is_zmq_error_reply(envelope_msgs, n_envelope_msgs, err_dealer, "%s: Process %s is not active", id, pid);
         } else {
@@ -596,7 +607,7 @@ int main(int argc, char **argv) {
     json_decref(isRequest);
 
     //
-    // Send our evelope messages to the supervisor (through parent_dealer)
+    // Send our envelope messages to the supervisor (through parent_dealer)
     //
     for (i=0; i<n_envelope_msgs; i++) {
       zmq_msg_send(&envelope_msgs[i], pli->parent_dealer, ZMQ_SNDMORE);

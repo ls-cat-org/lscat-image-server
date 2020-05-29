@@ -274,7 +274,7 @@ void isSubProcess(const char *cid, isSubProcess_type *spt, pthread_mutex_t *mute
     isLogging_err( "%s->%s: Fork failed", cid, id);
     if (spt->onLaunch) {
       spt->rtn = 1;
-      spt->onLaunch(strerror(errno));
+      spt->onLaunch(strerror(errno), c);
     }
     return;
   }
@@ -333,7 +333,7 @@ void isSubProcess(const char *cid, isSubProcess_type *spt, pthread_mutex_t *mute
   //
   if (spt->onLaunch) {
     spt->rtn = 0;
-    spt->onLaunch(NULL);
+    spt->onLaunch(NULL, c);
   }
 
   isLogging_debug("%s->%s: about to connect to redis", cid, id);
@@ -599,7 +599,7 @@ void isSubProcess(const char *cid, isSubProcess_type *spt, pthread_mutex_t *mute
             //
             // and write there (include our stray null)
             //
-            memcpy(spfdp->_buf_end, tmp, bytes_read + 1);
+            memmove(spfdp->_buf_end, tmp, bytes_read + 1);
             //
             // finally fix up size of buffer
             // 
@@ -625,50 +625,25 @@ void isSubProcess(const char *cid, isSubProcess_type *spt, pthread_mutex_t *mute
             // time around or for the very end when we clean things
             // up.
             //
-            // strtok_r is mostly what we want except we need to know
-            // when the last string has come our way.
-            //
-            char *saveptr;
-            char *next;
-            char *lastc;
-            char *lasts;
-            int save_last_string;
+            int i;
+            char *sp1, *sp2;
 
-            // If the last char is \r or \n then we save the last
-            // string from strtok_r for next time.
-            //
-            save_last_string = 1;
-            if (strlen(spfdp->_buf) > 0) {
-              lastc = spfdp->_buf + strlen(spfdp->_buf) - 1;
-              if (*lastc == '\n' || *lastc == '\r') {
-                save_last_string = 0;
-              }
-            }
-            saveptr = NULL;     // style, saveptr is ignored on first strtok_r call
-            lasts   = spfdp->_buf_size == 0 ? NULL : spfdp->_buf;
-            next = strtok_r(spfdp->_buf, "\r\n", &saveptr);
-            while (next != NULL) {
-              if (lasts != NULL) {
-                progress=spfdp->onProgress(lasts);
-                if (progress >= 0) {
-                  redisAsyncCommand(statac, statCB, NULL, "HSET %s PROGRESS {\"progress\":%d}", spt->controlPublisher, progress);
+            sp1 = sp2 = spfdp->_buf;
+            for (i=0; i<spfdp->_buf_size; i++, sp2++) {
+              if (*sp2 == '\r' || *sp2 == '\n') {
+                *sp2 = 0;
+                if (strlen(sp1)) {
+                  progress=spfdp->onProgress(sp1);
+                  if (progress >= 0) {
+                    redisAsyncCommand(statac, statCB, NULL, "HSET %s PROGRESS {\"progress\":%d}", spt->controlPublisher, progress);
+                  }
                 }
-              }
-              lasts = next;
-              next  = strtok_r(NULL, "\r\n", &saveptr);
-            }
-            if (lasts) {
-              if (save_last_string) {
-                memcpy(spfdp->_buf, lasts, strlen(lasts)+1);
-                spfdp->_buf_size = strlen(lasts);
-              } else {
-                progress = spfdp->onProgress(lasts);
-                if (progress >= 0) {
-                  redisAsyncCommand(statac, statCB, NULL, "HSET %s PROGRESS {\"progress\":%d}", spt->controlPublisher, progress);
-                }
-                spfdp->_buf_size = 0;
+                sp1 = sp2 + 1;
               }
             }
+            memmove(spfdp->_buf, sp1, strlen(sp1)+1);
+            spfdp->_buf_size = strlen(spfdp->_buf);
+
           }
         }
       }

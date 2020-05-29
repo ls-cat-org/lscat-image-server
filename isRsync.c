@@ -5,6 +5,14 @@
  */
 #include "is.h"
 
+//
+// Tracks rsync recovery processes so that we periodically do a
+// waitpid to prevent zombies
+//
+static int nRecoveryProcesses;
+static int *recoveryProcesses;
+
+
 /**
  ** Return size of local directory
  **
@@ -441,6 +449,7 @@ void isRsyncConnectionTest(isWorkerContext_t *wctx, isThreadContextType *tcp, js
 
   //
   // In parent
+  // == ======
   //
 
   if (dfCmd) {
@@ -788,8 +797,8 @@ void isRsyncConnectionTest2(isWorkerContext_t *wctx, isThreadContextType *tcp, j
   fds[1].onDone = onDoneStderr;         // routine to receive stdout result
   
   launch_failed = 0;
-  void onLaunch(char *msg) {
-    isLogging_debug("%s: onLaunch with status %d", id, sp.rtn);
+  void onLaunch(char *msg, int child_pid) {
+    isLogging_debug("%s: onLaunch with status %d, child_pid: %d", id, sp.rtn, child_pid);
     if (sp.rtn) {
       launch_failed = 1;
       isLogging_err("%s: launch failed %s: %s", id, sp.rtn==1 ? "at fork" : "at execve", msg==NULL ? "No message" : msg);
@@ -1177,11 +1186,15 @@ void isRsyncTransfer(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *
   // Since we expect rsync to run a while we'll return from our zmq
   // call with the status of the launched sub process
   //
-  void onLaunch(char *msg) {
+  void onLaunch(char *msg, int child_pid) {
     char *job_str2;             // note that the previous job_str is own by zmq and will be freed wnenever zmq is ready
 
     job_str2 = NULL;
     if (job != NULL) {
+      json_object_set_new(job, "uid",      json_integer(geteuid()));
+      json_object_set_new(job, "gid",      json_integer(getegid()));
+      json_object_set_new(job, "childPid", json_integer(child_pid));
+
       job_str2 = json_dumps(job, JSON_SORT_KEYS | JSON_INDENT(0) | JSON_COMPACT);
 
       //
@@ -1276,4 +1289,289 @@ void isRsyncTransfer(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *
     dst = NULL;
   }
 }
+
+/**
+ ** isRsyncRecover
+ **
+ ** Look for rsync jobs that may have been running when the image
+ ** server last ran.  We'll kill any process ids that are still
+ ** running and then restart the jobs.
+ **
+ ** If we just let jobs continue they'll still transfer data (good)
+ ** but wont be updating status (bad).  Of course starting new
+ ** versions of the jobs without first killing the old ones means
+ ** we'll have two rsync processes going after the same files.  This
+ ** is bad always.
+ */
+void isRsyncRecover() {
+  static const char *id = FILEID "isRsyncRecover";
+  redisContext *local_redis;
+  redisReply *reply;
+  redisReply *reply2;
+  redisReply *subreply;
+  int i;
+  json_t *job;
+  json_error_t jerr;
+  int new_child;
+  int pid;
+  int expected_uid;
+  int expected_gid;
+  int err;
+  char p[256];
+  struct stat sbuf;
+  char *key;
+  
+  local_redis = redisConnect("127.0.0.1", 6379);
+  if (local_redis == NULL || local_redis->err) {
+    if (local_redis) {
+      isLogging_info("%s: Failed to connect to local redis %s:%d: %s", id, "127.0.0.1", 6879, local_redis->errstr);
+    } else {
+      isLogging_info("%s: Failed to connect to local redis %s:%d", id, "127.0.0.1", 6879);
+    }
+    return;
+  }
+
+  //
+  // The current rsync jobs are in the local redis hash "RSYNCS" with
+  // the unique identifer (aka: tag) as the hash key
+  //
+  reply = redisCommand( local_redis, "HGETALL RSYNCS");
+  if (reply == NULL) {
+    isLogging_err("%s: Redis error (HGETALL RSYNCS): %s\n", id, local_redis->errstr);
+    exit(-1);
+  }
+
+  if (reply->type == REDIS_REPLY_ERROR) {
+    isLogging_err("%s: Reids HGETALL RSYNCS produced an error: %s\n", id, reply->str);
+    exit(-1);
+  }
+
+  if (reply->type == REDIS_REPLY_NIL) {
+    // Nothing to do
+    freeReplyObject(reply);
+    redisFree(local_redis);
+    return;
+  }
+
+  if (reply->type != REDIS_REPLY_ARRAY) {
+    isLogging_err("%s: unexpected reply type %d", id, reply->type);
+    freeReplyObject(reply);
+    redisFree(local_redis);
+    return;
+  }
+
+  nRecoveryProcesses = reply->elements / 2;
+  recoveryProcesses = calloc(nRecoveryProcesses, sizeof(nRecoveryProcesses));
+  if (recoveryProcesses == NULL) {
+    isLogging_crit("%s: out of membery (recoveryProcesses)");
+    _exit(-1);
+  }
+
+  for(i=0; i<reply->elements; i++) {
+    subreply = reply->element[i];
+    if (subreply->type != REDIS_REPLY_STRING) {
+      isLogging_err("%s: unexpectid reply type in subreply %d", id, subreply->type);
+      continue;
+    }
+
+    if ((i+1) % 2) {
+      // Even elements are the keys
+      key = subreply->str;
+      continue;
+    }
+
+    // we are not multi threaded here
+    job = json_loads(subreply->str, 0, &jerr);
+    if (job == NULL) {
+      isLogging_err("%s: Failed to parse RSYNCS key: %s", id, jerr.text);
+      isLogging_err("%s: Attempting to parse: %s", id, subreply->str);
+      continue;
+    }
+
+    pid = json_integer_value(json_object_get(job, "childPid"));
+    if (pid <= 0) {
+      isLogging_err("%s: childPid %d for RSYNCS hash %s", id, pid, subreply->str);
+      json_decref(job);
+      continue;
+    }
+
+    expected_uid = json_integer_value(json_object_get(job, "uid"));
+    if (expected_uid <= 0) {
+      isLogging_err("%s: bad uid %s for RSYNCS %s: %s", id, expected_uid, key, subreply->str);
+      json_decref(job);
+      continue;
+    }
+
+    expected_gid = json_integer_value(json_object_get(job, "gid"));
+    if (expected_gid <= 0) {
+      isLogging_err("%s: bad gid %d for RSYNCS %s: %s", expected_gid, id, key, subreply->str);
+      json_decref(job);
+      continue;
+    }
+
+    snprintf(p, sizeof(p)-1, "/proc/%d", pid);
+    p[sizeof(p)-1] = 0;
+
+    //
+    // We are going to kill the process if it exists and it has the
+    // ownership we are expecting.  There are lots of reasons that
+    // stat might fail but we are not going to fine tune our response
+    // at this point: err=0 we'll try to kill the proccess, anything
+    // else we wont.
+    //
+    err = stat(p, &sbuf);
+    if (!err) {
+      if (sbuf.st_uid == expected_uid && sbuf.st_gid == expected_gid) {
+        //
+        //  Perhaps we should care about the return statuses of each
+        //  of these calls.
+        //
+        kill(pid, 2);
+        sleep(1);
+        kill(pid, 9);
+      }
+    }
+
+    //
+    // Remove this key from the redis hash.
+    //
+    reply2 = redisCommand(local_redis, "HDEL RSYNCS %s", key);
+    freeReplyObject(reply2);
+
+
+    //
+    // Here we can resonably expect the old process is gone and we can safely set up a new one.
+    //
+    new_child = fork();
+    if (new_child == -1) {
+      isLogging_crit("%s: fork failed: %s", id, strerror(errno));
+      exit(-1);
+    }
+
+    if (new_child > 0) {
+      //
+      // In parernt
+      //
+      recoveryProcesses[i/2] = new_child;
+    }
+
+    if (new_child == 0) {
+      //
+      // In child
+      //
+      isWorkerContext_t wc;
+      pthread_mutexattr_t matt;
+      isThreadContextType tc;
+      struct passwd *esaf_pwds;
+      const char *homeDirectory;            // ESAF user's home directory
+
+      //
+      // This should be the esaf account info
+      //
+      errno = 0;
+      esaf_pwds = getpwuid(expected_gid);
+      if (esaf_pwds == NULL) {
+        isLogging_err("%s: getpwuid failed: %s", id, strerror(errno));
+        _exit(1);
+      }
+
+      homeDirectory = esaf_pwds->pw_dir;
+      if(chdir(homeDirectory)) {
+        isLogging_err("%s: could not change to directory %s: %s",
+                       id, homeDirectory, strerror(errno));
+        _exit(1);
+      }
+
+      setgid(expected_gid);
+      setuid(expected_uid);
+
+      //
+      // Worker context pointers and ints.
+      //
+      // We do not use much for rsync support and we are not using zmq
+      // as our status will be reported via redis.
+      //
+      wc.key          = NULL;
+      wc.n_buffers   = 0;
+      wc.max_buffers = 0;
+      wc.zctx        = NULL;
+      wc.router      = NULL;
+      wc.dealer      = NULL;
+
+      //
+      // ctxMutex is not currently used by isRsync.  However,we
+      // initialize it since we'd otherwise have nonsence.
+      //
+      pthread_mutexattr_init(&matt);
+      pthread_mutexattr_settype(&matt, PTHREAD_MUTEX_RECURSIVE);
+      pthread_mutexattr_setpshared(&matt, PTHREAD_PROCESS_SHARED);
+      pthread_mutex_init(&wc.ctxMutex, &matt);
+      pthread_mutexattr_destroy(&matt);
+
+      //
+      // We do use metaMutex, however, we will not actual be multi
+      // threaded.  It's easier to define it than to have a
+      // non-threading flag that we have to carry around.
+      //
+      pthread_mutex_init(&wc.metaMutex, NULL);
+
+      
+      // no zmq communication for us
+      tc.rep = NULL;
+      //
+      // setup redis
+      //
+      tc.rc = redisConnect("127.0.0.1", 6379);
+      if (tc.rc == NULL || tc.rc->err) {
+        if (tc.rc != NULL) {
+          isLogging_err("%s: Failed to connect to redis: %s\n", id, tc.rc->errstr);
+        } else {
+          isLogging_err("%s: Failed to get redis context\n", id);
+        }
+        fflush(stderr);
+        _exit (-1);
+      }
+
+      isRsyncTransfer(&wc, &tc, job);
+
+      json_decref(job);
+      pthread_mutex_destroy(&wc.metaMutex);
+      redisFree(tc.rc);
+
+      _exit(0);
+      //
+      // End of child
+      //
+    }
+  }
+}
+
+void isRsyncWaitpid() {
+  static const char *id = FILEID "isRsyncWaitpid";
+  int i;
+  int status;
+  int err;
+
+  for(i=0; i<nRecoveryProcesses; i++) {
+    if(recoveryProcesses[i] <= 0) {
+      continue;
+    }
+    err = waitpid(recoveryProcesses[i], &status, WNOHANG);
+    if (err == recoveryProcesses[i]) {
+      //
+      //
+      if(WIFEXITED(status)) {
+        isLogging_info("%s: process %d exited normally with status %d",
+                       id, recoveryProcesses[i], WEXITSTATUS(status));
+      } else if(WIFSIGNALED(status)) {
+        isLogging_info("%s: process %d exited  with due to signal %d",
+                       id, recoveryProcesses[i], WTERMSIG(status));
+      } else {
+        isLogging_info("%s: process %d terminated", id, recoveryProcesses[i]);
+      }
+      recoveryProcesses[i] = 0;
+    }
+  }
+}
+
 
