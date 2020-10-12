@@ -968,29 +968,40 @@ void isRsyncTransfer(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *
 
   isLogging_debug("%s: src='%s'  dst='%s'", id, src, dst);
 
+  
   //
-  // Really we just send a blank error message: actual errors are
-  // signaled by is_zmq_error_reply
+  // On restart recovery we don't have a zmq connection so we
+  // shouldn't start committing resources here that wont be freed
   //
-  zmq_msg_init(&err_msg);
+  if (tcp->rep) {
+    //
+    // Really we just send a blank error message: actual errors are
+    // signaled by is_zmq_error_reply
+    //
+    zmq_msg_init(&err_msg);
 
-  // Job message part
-  job_str = NULL;
-  if (job != NULL) {
-    job_str = json_dumps(job, JSON_SORT_KEYS | JSON_INDENT(0) | JSON_COMPACT);
-  } else {
-    job_str = strdup("");
+    // Job message part
+    job_str = NULL;
+    if (job != NULL) {
+      job_str = json_dumps(job, JSON_SORT_KEYS | JSON_INDENT(0) | JSON_COMPACT);
+    } else {
+      job_str = strdup("");
+    }
+
+    zerr = zmq_msg_init_data(&job_msg, job_str, strlen(job_str), is_zmq_free_fn, NULL);
+    if (zerr == -1) {
+      isLogging_err("%s: sending rsync test result failed: %s\n", id, zmq_strerror(errno));
+      is_zmq_error_reply(NULL, 0, tcp->rep, "%s: Could not initialize reply message (job_str)", id);
+      pthread_exit(NULL);
+    }
+    rtn_json = json_object();
   }
 
-  zerr = zmq_msg_init_data(&job_msg, job_str, strlen(job_str), is_zmq_free_fn, NULL);
-  if (zerr == -1) {
-    isLogging_err("%s: sending rsync test result failed: %s\n", id, zmq_strerror(errno));
-    is_zmq_error_reply(NULL, 0, tcp->rep, "%s: Could not initialize reply message (job_str)", id);
-    pthread_exit(NULL);
-  }
 
-  rtn_json = json_object();
-
+  //
+  // We'll connect to a local redis so we can save the job info once
+  // se know the process id that has been successfully started
+  //
   remote_redis = NULL;
   if (progressPublisher != NULL && progressAddress != NULL && progressPort > 0) {
     remote_redis = redisConnect(progressAddress, progressPort);
