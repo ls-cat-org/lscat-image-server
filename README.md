@@ -16,9 +16,9 @@ Here are the main parts:
 
 1. Javascript components running on the user's browser as well as on a
    [node server](https://nodejs.org).  Code for these components are
-   found at here https://wwwsvn.ls-cat.org/svn/ls-cat/node.  And while
+   found at here https://github.com/ls-cat-org/node.  And while
    we're on this side of things, the program `is_proxy` (found in the
-   previously linked subversion directory) passes along the user
+   previously linked git repo) passes along the user
    requests to the image server.
 
 1. Directing requests to processes running under the correct UID/GID.
