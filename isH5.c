@@ -36,59 +36,81 @@ typedef struct h5_to_json_struct {
   char type;                            //!< i=int, f=float, s=string, F=float array
 } h5_to_json_t;
 
-/** Our mapping between hdf5 file properties and our metadata object properties
+/** Our mapping between hdf5 file properties and our metadata object properties for 
  */
 h5_to_json_t json_convert_array[] = {
+  /*Params that have been around since the beginning. If it is commented out, it was removed in the Eiger 2X 16M.*/
   { "/entry/instrument/detector/detectorSpecific/auto_summation",                  "auto_summation",                                  'i'},
   { "/entry/instrument/detector/beam_center_x",                                    "beam_center_x",                                   'f'},
   { "/entry/instrument/detector/beam_center_y",                                    "beam_center_y",                                   'f'},
   { "/entry/instrument/detector/bit_depth_readout",                                "bit_depth_readout",                               'i'},
   { "/entry/instrument/detector/bit_depth_image",                                  "bit_depth_image",                                 'i'},
-  { "/entry/instrument/detector/detectorSpecific/calibration_type",                "calibration_type",                                's'},
-  { "/entry/sample/goniometer/chi_increment",                                      "chi_increment",                                   'f'},
-  { "/entry/sample/goniometer/chi_start",                                          "chi_start",                                       'f'},
+  { "/entry/instrument/detector/detectorSpecific/calibration_type",                "calibration_type",                                's'},/* pre-1.8.0 */
+  { "/entry/sample/goniometer/chi_increment",                                      "chi_increment",                                   'f'},/* pre-1.8.0 */
+  { "/entry/sample/goniometer/chi_start",                                          "chi_start",                                       'f'},/* pre-1.8.0 */
   { "/entry/instrument/detector/count_time",                                       "count_time",                                      'f'},
-  { "/entry/instrument/detector/detectorSpecific/countrate_correction_bunch_mode", "countrate_correction_bunch_mode",                 's'},
+  { "/entry/instrument/detector/detectorSpecific/countrate_correction_bunch_mode", "countrate_correction_bunch_mode",                 's'},/* pre-1.8.0 */
   { "/entry/instrument/detector/detectorSpecific/data_collection_date",            "data_collection_date",                            's'},
   { "/entry/instrument/detector/description",                                      "description",                                     's'},
   { "/entry/instrument/detector/detector_distance",                                "detector_distance",                               'f'},
   { "/entry/instrument/detector/detector_number",                                  "detector_number",                                 's'},
   { "/entry/instrument/detector/geometry/orientation/value",                       "detector_orientation",                            'F'},
-  { "/entry/instrument/detector/detectorSpecific/detector_readout_period",         "detector_readout_period",                         'f'},
+  { "/entry/instrument/detector/detectorSpecific/detector_readout_period",         "detector_readout_period",                         'f'},/* pre-1.8.0 */
   { "/entry/instrument/detector/detector_readout_time",                            "detector_readout_time",                           'f'},
   { "/entry/instrument/detector/geometry/translation/distances",                   "detector_translation",                            'F'},
-  { "/entry/instrument/detector/efficiency_correction_applied",                    "efficiency_correction_applied",                   'i'},
+  { "/entry/instrument/detector/efficiency_correction_applied",                    "efficiency_correction_applied",                   'i'},/* pre-1.8.0 */
   { "/entry/instrument/detector/detectorSpecific/element",                         "element",                                         's'},
   { "/entry/instrument/detector/flatfield_correction_applied",                     "flatfield_correction_applied",                    'i'},
   { "/entry/instrument/detector/detectorSpecific/frame_count_time",                "frame_count_time",                                'f'},
   { "/entry/instrument/detector/detectorSpecific/frame_period",                    "frame_period",                                    'f'},
   { "/entry/instrument/detector/frame_time",                                       "frame_time",                                      'f'},
-  { "/entry/sample/goniometer/kappa_increment",                                    "kappa_increment",                                 'f'},
+  { "/entry/sample/goniometer/kappa_increment",                                    "kappa_increment",                                 'f'},/* pre-1.8.0 */
   { "/entry/sample/goniometer/kappa_start",                                        "kappa_start",                                     'f'},
-  { "/entry/instrument/detector/detectorSpecific/nframes_sum",                     "nframes_sum",                                     'i'},
+  { "/entry/instrument/detector/detectorSpecific/nframes_sum",                     "nframes_sum",                                     'i'},/* pre-1.8.0 */
   { "/entry/instrument/detector/detectorSpecific/nimages",                         "nimages",                                         'i'},
   { "/entry/instrument/detector/detectorSpecific/ntrigger",                        "ntrigger",                                        'i'},
   { "/entry/instrument/detector/detectorSpecific/number_of_excluded_pixels",       "number_of_excluded_pixels",                       'i'},
-  { "/entry/sample/goniometer/omega_increment",                                    "omega_increment",                                 'i'},
-  { "/entry/sample/goniometer/omega_start",                                        "omega_start",                                     'f'},
-  { "/entry/sample/goniometer/phi_increment",                                      "phi_increment",                                   'f'},
-  { "/entry/sample/goniometer/phi_start",                                          "phi_start",                                       'f'},
+  { "/entry/sample/goniometer/omega_increment",                                    "omega_increment",                                 'i'},/* pre-1.8.0 */
+  { "/entry/sample/goniometer/omega_start",                                        "omega_start",                                     'f'},/* pre-1.8.0 */
+  { "/entry/sample/goniometer/phi_increment",                                      "phi_increment",                                   'f'},/* pre-1.8.0 */
+  { "/entry/sample/goniometer/phi_start",                                          "phi_start",                                       'f'},/* pre-1.8.0 */
   { "/entry/instrument/detector/detectorSpecific/photon_energy",                   "photon_energy",                                   'f'},
   { "/entry/instrument/detector/pixel_mask_applied",                               "pixel_mask_applied",                              'i'},
   { "/entry/instrument/detector/sensor_material",                                  "sensor_material",                                 's'},
   { "/entry/instrument/detector/sensor_thickness",                                 "sensor_thickness",                                'f'},
   { "/entry/instrument/detector/detectorSpecific/software_version",                "software_version",                                's'},
-  { "/entry/instrument/detector/detectorSpecific/summation_nimages",               "summation_nimages",                               'i'},
+  { "/entry/instrument/detector/detectorSpecific/summation_nimages",               "summation_nimages",                               'i'},/* pre-1.8.0 */
   { "/entry/instrument/detector/threshold_energy",                                 "threshold_energy",                                'f'},
   { "/entry/instrument/detector/detectorSpecific/trigger_mode",                    "trigger_mode",                                    's'},
-  { "/entry/instrument/detector/goniometer/two_theta_increment",                   "two_theta_increment",                             'f'},
+  { "/entry/instrument/detector/goniometer/two_theta_increment",                   "two_theta_increment",                             'f'},/* pre-1.8.0 */
   { "/entry/instrument/detector/goniometer/two_theta_start",                       "two_theta_start",                                 'f'},
   { "/entry/instrument/detector/virtual_pixel_correction_applied",                 "virtual_pixel_correction_applied",                'i'},
   { "/entry/instrument/beam/incident_wavelength",                                  "wavelength",                                      'f'},
   { "/entry/instrument/detector/x_pixel_size",                                     "x_pixel_size",                                    'f'},
   { "/entry/instrument/detector/detectorSpecific/x_pixels_in_detector",            "x_pixels_in_detector",                            'i'},
   { "/entry/instrument/detector/y_pixel_size",                                     "y_pixel_size",                                    'f'},
-  { "/entry/instrument/detector/detectorSpecific/y_pixels_in_detector",            "y_pixels_in_detector",                            'i'}
+  { "/entry/instrument/detector/detectorSpecific/y_pixels_in_detector",            "y_pixels_in_detector",                            'i'},
+
+  /* 
+     Params new to the Eiger2X 16M. If it cannot be described as a string or primitive type, or if it isn't in
+     the nexus format docs (https://manual.nexusformat.org/nxdl-types.html), it's commented out for now.     
+   */
+  {"/entry/definition", "definition", 's'},
+  /*{"/entry/instrument/detector/detectorSpecific/countrate_correction_lookuptable", "countrate_correction_lookuptable", 's'},*/
+  /*{"/entry/instrument/detector/detectorSpecific/countrate_correction_table", "countrate_correction_table", ''},*/
+  /*{"/entry/instrument/detector/detectorSpecific/distance", "distance", ''},*/
+  {"/entry/instrument/detector/detectorSpecific/module/data_origin", "data_origin", 'i'},
+  {"/entry/instrument/detector/detectorSpecific/module/data_size", "data_size", 'i'},
+  /*{"/entry/instrument/detector/detectorSpecific/module/fast_pixel_direction", "fast_pixel_direction", ''},*/
+  /*{"/entry/instrument/detector/detectorSpecific/module/module_index", "module_index", ''},*/
+  /*{"/entry/instrument/detector/detectorSpecific/module/module_offset", "module_offset", ''},*/
+  /*{"/entry/instrument/detector/detectorSpecific/module/slow_pixel_direction", "slow_pixel_direction", ''},*/
+  {"/entry/instrument/detector/detectorSpecific/saturation_value", "saturation_value", 'i'},
+  /*{"/entry/instrument/detector/detectorSpecific/transformations/translation", "translation", ''},*/
+  {"/entry/instrument/detector/detectorSpecific/type", "type", 's'},
+  {"/entry/instrument/detector/detectorSpecific/sample/beam/incident_wavelength", "incident_wavelength", 'f'},
+  /*{"/entry/instrument/detector/detectorSpecific/sample/goniometer", "goniometer", ''},*/
+  /*{"/entry/instrument/detector/detectorSpecific/sample/transformations", "transformations", ''}*/
 };
 
 /** Get a hdf5 property as a JSON object.
@@ -357,9 +379,7 @@ json_t *isH5GetMeta(isWorkerContext_t *wctx, const char *fn) {
     tmp_obj = get_json(fn, master_file, &json_convert_array[i]);
 
     if (!tmp_obj) {
-      json_decref(meta);
-      pthread_mutex_unlock(&wctx->metaMutex);
-      return NULL;
+      continue; // Some variables were added/removed in newer versions, no problem.
     }
 
     err = json_object_update(meta, tmp_obj);
