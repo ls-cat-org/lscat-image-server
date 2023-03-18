@@ -154,7 +154,7 @@ const size_t json_convert_array_1_6_size = sizeof(json_convert_array_1_6)/sizeof
  */
 struct h5_attributes {
   hid_t       dataset;
-  int         is_scalar; // True for primitive types, false for arrays and compound types.
+  bool        is_scalar; // True for primitive types, false for arrays and compound types.
 
   // If the dataset is an array, this is the base type of the individual
   // elements. This is done by calling H5Tget_super().
@@ -181,7 +181,7 @@ static void h5_attributes_dtor(struct h5_attributes* attrs) {
   if (attrs->dataset   >= 0) H5Dclose(attrs->dataset);
 
   attrs->dataset           = -1;
-  attrs->is_scalar         = 0;
+  attrs->is_scalar         = false;
   attrs->datatype          = -1;
   attrs->datatype_size     = 0;
   attrs->datatype_class    = H5T_NO_CLASS;
@@ -198,7 +198,7 @@ static void h5_attributes_ctor(hid_t file, const char* h5_property, struct h5_at
   int         errcode_int = 0;
 
   out->dataset           = -1;
-  out->is_scalar         = 0;
+  out->is_scalar         = false;
   out->datatype          = -1;
   out->datatype_size     = 0;
   out->datatype_class    = H5T_NO_CLASS;
@@ -278,7 +278,7 @@ static void h5_attributes_ctor(hid_t file, const char* h5_property, struct h5_at
     goto error;
   }
 
-  out->is_scalar = out->dataspace_npoints <= 1;
+  out->is_scalar = (out->dataspace_npoints <= 1);
   return;
   
  error:
