@@ -7,6 +7,9 @@
 /** Enable reentrant version of hsearch that is more sensible in a
  ** multi-threaded world.
  */
+#ifndef IS_INCLUDE_H
+#define IS_INCLUDE_H
+
 #define _GNU_SOURCE
 
 #include <errno.h>
@@ -243,6 +246,15 @@ typedef struct isSubProcess_struct {
   int rtn;                              // return value of sub process
 } isSubProcess_type;
 
+/** h5 to json equivalencies.  We read HDF5 properties and convert
+ ** them to json to use and/or transmit back to the user's browser.
+ */
+struct h5_json_property {
+  const char *h5_location;  //!< HDF5 property name
+  const char *json_name;    //!< JSON equivalent
+};
+
+
 
 extern char *file_name_component(const char *parent_id, const char *path);
 extern double get_double_from_json_object(const char *cid,  const json_t *j, const char *key);
@@ -298,3 +310,41 @@ extern void set_json_object_real(const char *cid, json_t *j, const char *key, do
 extern void set_json_object_string(const char *cid, json_t *j, const char *key, const char *fmt, ...);
 extern zmq_pollitem_t *isGetZMQPollItems();
 extern zmq_pollitem_t *isRemakeZMQPollItems(void *parent_router, void *err_rep, void *err_dealer);
+
+// Get the software_version first so we can determine which params we have.
+extern const struct h5_json_property json_convert_software_version;
+
+/**
+ * Our mapping between hdf5 file properties and our metadata object properties for 
+ * datasets produced by the Eiger 2X 16M, and all other v1.8 DCUs.
+ */
+extern const struct h5_json_property json_convert_array_1_8[];
+extern const size_t json_convert_array_1_8_size;
+
+/**
+ * Our mapping between hdf5 file properties and our metadata object properties for 
+ * datasets produced by the Eiger 9M, and all other v1.6 DCUs.
+ */
+extern const struct h5_json_property json_convert_array_1_6[];
+extern const size_t json_convert_array_1_6_size;
+
+/**
+ * Converts an HDF5 Dataset (a single property within a .h5 file) into a JSON object.
+ * @param [in] file An HDF5 file handle created by H5Fopen.
+ * @param [in] property A mapping of an HDF5 dataset to a desired output JSON field name.
+ * @return A jansson library-internal representation of a JSON object. Returns NULL on failure.
+ */
+extern json_t* h5_property_to_json(hid_t file, const struct h5_json_property* property);
+
+/**
+ * Gets the Dectris DCU software version which produced the specified HDF5 archive (i.e. master file).
+ *
+ * @param [in] file An HDF5 archive (.h5 file), i.e. the "master file" containing image metadata.
+ * @return The software version of a Dectris detector DCU. Returns NULL on failure.
+ *
+ * @warning  { This function creates a string using malloc(), but caller is responsible for calling
+ *             free() when no longer needed. }
+ */
+extern json_t* get_dcu_version(hid_t file);
+
+#endif // header guard

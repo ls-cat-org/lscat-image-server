@@ -1,4 +1,8 @@
-all: is
+
+CC=gcc
+CFLAGS=-g -Wall -I /usr/include/hdf5/serial -L /usr/lib/x86_64-linux-gnu/hdf5/serial -L /usr/local/lib64 -L /usr/local/lib -L/usr/lib
+
+all: is isConvertTest
 
 distclean:
 	@rm -f *.o is
@@ -20,46 +24,52 @@ install:
 	install --mode=644 is.logrotate /etc/logrotate.d/is
 
 isLogging.o: isLogging.c is.h Makefile
-	gcc -g -Wall -c isLogging.c
+	$(CC) $(CFLAGS) -c isLogging.c
+
+isConvert.o: isConvert.c is.h Makefile
+	$(CC) $(CFLAGS) -c isConvert.c
 
 isData.o: isData.c is.h Makefile
-	gcc -g -Wall -c isData.c
+	$(CC) $(CFLAGS) -c isData.c
 
 isWorker.o: isWorker.c is.h Makefile
-	gcc -g -Wall -c isWorker.c
+	$(CC) $(CFLAGS) -c isWorker.c
 
 isProcessManagement.o: isProcessManagement.c is.h Makefile
-	gcc -g -Wall -c isProcessManagement.c
+	$(CC) $(CFLAGS) -c isProcessManagement.c
 
 isUtilities.o: isUtilities.c is.h Makefile
-	gcc -g -Wall -c isUtilities.c 
+	$(CC) $(CFLAGS) -c isUtilities.c 
 
 isH5.o: isH5.c is.h Makefile
-	gcc -g -Wall -c isH5.c
+	$(CC) $(CFLAGS) -c isH5.c
 
 isRayonix.o: isRayonix.c is.h Makefile
-	gcc -g -Wall -c isRayonix.c
+	$(CC) $(CFLAGS) -c isRayonix.c
 
 isReduceImage.o: isReduceImage.c is.h Makefile
-	gcc -g -Wall -c isReduceImage.c
+	$(CC) $(CFLAGS) -c isReduceImage.c
 
 isJpeg.o: isJpeg.c is.h Makefile
-	gcc -g -Wall -c isJpeg.c
+	$(CC) $(CFLAGS) -c isJpeg.c
 
 isIndex.o: isIndex.c is.h Makefile
-	gcc -g -Wall -c isIndex.c
+	$(CC) $(CFLAGS) -c isIndex.c
 
 isRsync.o: isRsync.c is.h Makefile
-	gcc -g -Wall -c isRsync.c
+	$(CC) $(CFLAGS) -c isRsync.c
 
 isSpots.o: isSpots.c is.h Makefile
-	gcc -g -Wall -c isSpots.c
+	$(CC) $(CFLAGS) -c isSpots.c
 
 isBitmapFont.o: isBitmapFont.c is.h Makefile
-	gcc -g -Wall -c isBitmapFont.c
+	$(CC) $(CFLAGS) -c isBitmapFont.c
 
 isSubProcess.o: isSubProcess.c is.h Makefile
-	gcc -g -Wall -c isSubProcess.c
+	$(CC) $(CFLAGS) -c isSubProcess.c
 
-is: isMain.c is.h Makefile isUtilities.o isH5.o isRayonix.o isProcessManagement.o isWorker.o isData.o isReduceImage.o isJpeg.o isBitmapFont.o isIndex.o isSpots.o isRsync.o isLogging.o isSubProcess.o
-	gcc -g -Wall isMain.c -L /usr/local/lib64 -L /usr/local/lib -L/usr/lib -o is isLogging.o isUtilities.o isH5.o isRayonix.o isProcessManagement.o isWorker.o isSubProcess.o isData.o isReduceImage.o isJpeg.o isIndex.o isSpots.o isRsync.o isBitmapFont.o -lhiredis -ljansson -lhdf5 -ltiff -lcrypto -ljpeg -lm -lzmq -pthread
+isConvertTest: isConvertTest.c is.h Makefile isConvert.o isUtilities.o isH5.o isRayonix.o isProcessManagement.o isWorker.o isData.o isReduceImage.o isJpeg.o isBitmapFont.o isIndex.o isSpots.o isRsync.o isLogging.o isSubProcess.o
+	$(CC) $(CFLAGS) isConvertTest.c -o isConvertTest isLogging.o isConvert.o isUtilities.o isH5.o isRayonix.o isProcessManagement.o isWorker.o isSubProcess.o isData.o isReduceImage.o isJpeg.o isIndex.o isSpots.o isRsync.o isBitmapFont.o -lhiredis -ljansson -lhdf5 -ltiff -lcrypto -ljpeg -lm -lzmq -pthread
+
+is: isMain.c is.h Makefile isConvert.o isUtilities.o isH5.o isRayonix.o isProcessManagement.o isWorker.o isData.o isReduceImage.o isJpeg.o isBitmapFont.o isIndex.o isSpots.o isRsync.o isLogging.o isSubProcess.o
+	$(CC) $(CFLAGS) isMain.c -o is isLogging.o isConvert.o isUtilities.o isH5.o isRayonix.o isProcessManagement.o isWorker.o isSubProcess.o isData.o isReduceImage.o isJpeg.o isIndex.o isSpots.o isRsync.o isBitmapFont.o -lhiredis -ljansson -lhdf5 -ltiff -lcrypto -ljpeg -lm -lzmq -pthread

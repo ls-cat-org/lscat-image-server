@@ -1,3 +1,5 @@
+#ifndef IS_BITMAP_FONT_H
+#define IS_BITMAP_FONT_H
 /** @file isBitmapFont.h
  ** @copyright 2014-2016 by Northwestern University
  ** @author Keith Brister
@@ -281,3 +283,4 @@ extern const int n_isBitmapFontBitmaps;
 
 /** @endcond
  */
+#endif // header guard

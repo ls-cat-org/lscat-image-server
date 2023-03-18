@@ -90,27 +90,6 @@ h5_to_json_t json_convert_array[] = {
   { "/entry/instrument/detector/detectorSpecific/x_pixels_in_detector",            "x_pixels_in_detector",                            'i'},
   { "/entry/instrument/detector/y_pixel_size",                                     "y_pixel_size",                                    'f'},
   { "/entry/instrument/detector/detectorSpecific/y_pixels_in_detector",            "y_pixels_in_detector",                            'i'},
-
-  /* 
-     Params new to the Eiger2X 16M. If it cannot be described as a string or primitive type, or if it isn't in
-     the nexus format docs (https://manual.nexusformat.org/nxdl-types.html), it's commented out for now.     
-   */
-  {"/entry/definition", "definition", 's'},
-  /*{"/entry/instrument/detector/detectorSpecific/countrate_correction_lookuptable", "countrate_correction_lookuptable", 's'},*/
-  /*{"/entry/instrument/detector/detectorSpecific/countrate_correction_table", "countrate_correction_table", ''},*/
-  /*{"/entry/instrument/detector/detectorSpecific/distance", "distance", ''},*/
-  {"/entry/instrument/detector/detectorSpecific/module/data_origin", "data_origin", 'i'},
-  {"/entry/instrument/detector/detectorSpecific/module/data_size", "data_size", 'i'},
-  /*{"/entry/instrument/detector/detectorSpecific/module/fast_pixel_direction", "fast_pixel_direction", ''},*/
-  /*{"/entry/instrument/detector/detectorSpecific/module/module_index", "module_index", ''},*/
-  /*{"/entry/instrument/detector/detectorSpecific/module/module_offset", "module_offset", ''},*/
-  /*{"/entry/instrument/detector/detectorSpecific/module/slow_pixel_direction", "slow_pixel_direction", ''},*/
-  {"/entry/instrument/detector/detectorSpecific/saturation_value", "saturation_value", 'i'},
-  /*{"/entry/instrument/detector/detectorSpecific/transformations/translation", "translation", ''},*/
-  {"/entry/instrument/detector/detectorSpecific/type", "type", 's'},
-  {"/entry/instrument/detector/detectorSpecific/sample/beam/incident_wavelength", "incident_wavelength", 'f'},
-  /*{"/entry/instrument/detector/detectorSpecific/sample/goniometer", "goniometer", ''},*/
-  /*{"/entry/instrument/detector/detectorSpecific/sample/transformations", "transformations", ''}*/
 };
 
 /** Get a hdf5 property as a JSON object.
@@ -350,7 +329,12 @@ json_t *isH5GetMeta(isWorkerContext_t *wctx, const char *fn) {
   json_t *tmp_obj;              // temporary json object used to create meta
   int i;                        // loop over json conversion array
   int err;                      // error code for procedures that like to return ints.
-
+  
+  json_t* dcu_version;          // Eiger DCU software version
+  const struct h5_json_property* properties = NULL;
+  int n_properties = -1;
+  
+  
   //
   // Open up the master file
   //
@@ -375,9 +359,26 @@ json_t *isH5GetMeta(isWorkerContext_t *wctx, const char *fn) {
   }
 
   pthread_mutex_lock(&wctx->metaMutex);
-  for (i=0; i < sizeof(json_convert_array)/sizeof(json_convert_array[0]); i++) {
-    tmp_obj = get_json(fn, master_file, &json_convert_array[i]);
-
+  //
+  // Get the software version and the associated properties to convert.
+  //
+  dcu_version = get_dcu_version(master_file);
+  if (dcu_version == NULL) {
+    isLogging_err("%s: failed to get DCU version %s\n", id, fn);
+  }
+  
+  const char* dcu_version_str = json_string_value( json_object_get(dcu_version, json_convert_software_version.json_name) );
+  if (strcmp("1.8.0", dcu_version_str) == 0) {
+    properties = json_convert_array_1_8;
+    n_properties = json_convert_array_1_8_size;
+  } else {
+    properties = json_convert_array_1_6;
+    n_properties = json_convert_array_1_6_size;
+  }
+  
+  for (i=0; i < n_properties; i++) {
+    tmp_obj = h5_property_to_json(master_file, &properties[i]);
+    
     if (!tmp_obj) {
       continue; // Some variables were added/removed in newer versions, no problem.
     }
