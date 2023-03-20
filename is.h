@@ -10,8 +10,6 @@
 #ifndef IS_INCLUDE_H
 #define IS_INCLUDE_H
 
-#define _GNU_SOURCE
-
 #include <errno.h>
 #include <fcntl.h>
 #include <fts.h>
