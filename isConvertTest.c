@@ -32,7 +32,7 @@ int main(int argc, char** argv) {
     fprintf(stderr, "failed to get DCU version\n");
   }
   
-  char* dcu_version_str = json_string_value( json_object_get(dcu_version, json_convert_software_version.json_name) );
+  const char* dcu_version_str = json_string_value( json_object_get(dcu_version, json_convert_software_version.json_name) );
   if (strcmp("1.8.0", dcu_version_str) == 0) {
     printf("Testing 1.8 compatibility\n\n");
     for (int i=0; i < json_convert_array_1_8_size; i++) {

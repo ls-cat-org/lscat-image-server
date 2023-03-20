@@ -1,4 +1,7 @@
+#define _GNU_SOURCE
+
 #include <assert.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <jansson.h>
 #include <hdf5.h>
@@ -170,6 +173,12 @@ struct h5_attributes {
   hssize_t    dataspace_npoints; // total number of elements
   
 };
+
+// Forward decls to appease GCC 4.8.5
+static void h5_attributes_dtor(struct h5_attributes* attrs);
+static void h5_attributes_ctor(hid_t file, const char* h5_property, struct h5_attributes* out);
+static json_t* tensor_to_json_helper(bool integer_type, size_t width, int ndims, hsize_t dims[], char* data);
+static json_t* tensor_to_json(const struct h5_attributes* attributes);
 
 static void h5_attributes_dtor(struct h5_attributes* attrs) {
   // No need to check error status on closing descriptors and freeing memory:
