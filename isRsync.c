@@ -3,6 +3,7 @@
  *  @author Keith Brister
  *  @brief Support for Rsync
  */
+#include <inttypes.h>
 #include "is.h"
 
 //
@@ -38,8 +39,8 @@ void isRsyncLocalDirStats(isWorkerContext_t *wctx, isThreadContextType *tcp, jso
   FTSENT *ftsp;                         // structure to walk the directory tree
   FTSENT *ftsep;                        // pointer to linked list of directory contents
   const char *dirList[2];               // fodder for fts_open
-  uint64 nbytes;                           // sum of file sizes
-  uint64 nfiles;                           // number of files found
+  uint64_t nbytes;                           // sum of file sizes
+  uint64_t nfiles;                           // number of files found
   int ndirs;                            // number of directories found
   int ncirculars;                       // number of directories that lead to infinite loops
   int nsymlinks;                        // number of symbolic links
