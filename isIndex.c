@@ -51,7 +51,7 @@ json_t *isIndexImages(redisContext *rrc, const char *progressPublisher, const ch
   // abandoned.
   get_dcu_version_str(f1, dcu_version, sizeof(dcu_version));
   detector_arg = (strcmp(dcu_version, "1.8.0") == 0) ?
-    "--detector lscat_dectris_eiger2_16m" : " ";
+    "lscat_dectris_eiger2_16m" : NULL;
 
   rtn = NULL;
 
@@ -148,8 +148,13 @@ json_t *isIndexImages(redisContext *rrc, const char *progressPublisher, const ch
       exit (-1);
     }
     fprintf(shell_script, "#! /bin/bash\n");
-    fprintf(shell_script, "rapd.index %s --json --json-fd %d --progress-fd %d ",
-	    detector_arg, pipejson[1], pipeprogress[1]);
+    if (detector_arg != NULL) {
+      fprintf(shell_script, "rapd.index --json --json-fd %d --progress-fd %d --detector %s",
+	      pipejson[1], pipeprogress[1], detector_arg);
+    } else {
+      fprintf(shell_script, "rapd.index --json --json-fd %d --progress-fd %d",
+	      pipejson[1], pipeprogress[1]);
+    }
     fflush(shell_script);
 
     // Always need f1 but not always f2
