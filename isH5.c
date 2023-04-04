@@ -330,7 +330,7 @@ json_t *isH5GetMeta(isWorkerContext_t *wctx, const char *fn) {
   int i;                        // loop over json conversion array
   int err;                      // error code for procedures that like to return ints.
   
-  json_t* dcu_version;          // Eiger DCU software version
+  json_t* dcu_version = NULL;   // Eiger DCU software version
   const struct h5_json_property* properties = NULL;
   int n_properties = -1;
   
@@ -368,12 +368,17 @@ json_t *isH5GetMeta(isWorkerContext_t *wctx, const char *fn) {
   }
   
   const char* dcu_version_str = json_string_value( json_object_get(dcu_version, json_convert_software_version.json_name) );
-  if (strcmp("1.8.0", dcu_version_str) == 0) {
+  if (dcu_version_str != NULL && strcmp("1.8.0", dcu_version_str) == 0) {
     properties = json_convert_array_1_8;
     n_properties = json_convert_array_1_8_size;
   } else {
     properties = json_convert_array_1_6;
     n_properties = json_convert_array_1_6_size;
+  }
+  
+  if (dcu_version != NULL) {
+    json_decref(dcu_version); // also frees the memory used by dcu_version_str
+    dcu_version = NULL;
   }
   
   for (i=0; i < n_properties; i++) {

@@ -581,3 +581,47 @@ json_t* h5_property_to_json(hid_t file, const struct h5_json_property* property)
 json_t* get_dcu_version(hid_t file) {
   return h5_property_to_json(file, &json_convert_software_version);
 }
+
+// This hack gets the DCU software version as a string so that isIndexImages in
+// isIndexImages.c can infer which detector made the image(s).
+void get_dcu_version_str(const char* master_file, char* strbuf, size_t strbuf_size) {
+#define ERRLOG(msg) isLogging_err("%s: %s - " msg "\n", log_id, master_file);
+  static const char* log_id = FILEID "get_dcu_version_str";
+
+  hid_t master_file_id = -1;
+  json_t* json_obj     = NULL;
+  const char* value    = NULL;
+
+  if (strbuf == NULL && strbuf_size <= 0) {
+    ERRLOG("bad arguments, strbuf must be non-NULL and nonzero size");
+    goto error;
+  }
+  strbuf[0] = '\0';
+  
+  master_file_id = H5Fopen(master_file, H5F_ACC_RDONLY, H5P_DEFAULT);
+  if (master_file < 0) {
+    ERRLOG("failed to open master file");
+    goto error;
+  }
+
+  json_obj = get_dcu_version(master_file_id);
+  if (json_obj == NULL) {
+    ERRLOG("failed to read/parse DCU version");
+    goto error;
+  }
+  
+  value = json_string_value( json_object_get(json_obj, json_convert_software_version.json_name) );
+  if (value != NULL) {
+    strncpy(strbuf, value, strbuf_size);
+  }
+  
+  json_decref(json_obj);
+  H5Fclose(master_file_id);
+  return;
+  
+ error:
+  if (json_obj != NULL) json_decref(json_obj);
+  if (master_file_id >= 0) H5Fclose(master_file_id);
+  return;
+#undef ERRLOG
+}

@@ -345,4 +345,20 @@ extern json_t* h5_property_to_json(hid_t file, const struct h5_json_property* pr
  */
 extern json_t* get_dcu_version(hid_t file);
 
+/**
+   Gets the DCU version.
+
+   @param [in] master_file The filepath of an HDF5 archive.
+   @param [in,out] strbuf A preallocated string buffer.
+   @param [in] strbuf_size The size of the string buffer in bytes.
+   @return { The value for the "software_version" attribute found in an HDF5 archive 
+   produced by an Eiger or Eiger2 DCU. }
+
+   @precondition strbuf is not NULL, strbuf_size > 0
+
+   @note { This function is a hack to support indexing Eiger2 image sets, and all uses 
+   of it are used to infer which of two detectors are used on-site. }
+ */
+extern void get_dcu_version_str(const char* master_file, char* strbuf, size_t strbuf_size);
+
 #endif // header guard

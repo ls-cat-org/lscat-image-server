@@ -40,7 +40,18 @@ json_t *isIndexImages(redisContext *rrc, const char *progressPublisher, const ch
   struct pollfd polllist[5];    // list of fd's we're polling
   struct pollfd pollout;        // poll for stdout
   struct pollfd pollprogress;   // poll for progress
+  char   dcu_version[16];       // Eiger detector software version, if applicable.
+  char*  detector_arg;          // Optional
 
+  // Infer the detector setup that produced the HDF5-based image set
+  // based on the DCU software version. This is specific to LS-CAT's
+  // setup as of Jan 2023-Apr 2023, but that's ok. There are only 2
+  // detectors in our lab, and both have used and will continue to use
+  // the same software versions they always have until image server is
+  // abandoned.
+  get_dcu_version_str(f1, dcu_version, sizeof(dcu_version));
+  detector_arg = (strcmp(dcu_version, "1.8.0") == 0) ?
+    "--detector lscat_dectris_eiger2_16m" : " ";
 
   rtn = NULL;
 
@@ -104,10 +115,12 @@ json_t *isIndexImages(redisContext *rrc, const char *progressPublisher, const ch
     }
 
     //
-    // Make hard links in tmp directory to data files
+    // Make symlinks in tmp directory to data files in lustre.
     //
-    // (Hardlinks aren't working to /pf/esafs but are from
-    // /pf/esafs-bu, changed to soft links for now.)
+    // Note: Because both locations are in the "same" filesystem, normally we could
+    // use hard links. However, hard links on lustre have given us problems, likely
+    // because it's not a local filesystem, and it's also a filesystem on top of a
+    // filesystem, i.e. lustre -> ext4.
     //
     f1_local = NULL;
     if (f1 && strlen(f1)) {
@@ -135,7 +148,8 @@ json_t *isIndexImages(redisContext *rrc, const char *progressPublisher, const ch
       exit (-1);
     }
     fprintf(shell_script, "#! /bin/bash\n");
-    fprintf(shell_script, "rapd.index --json --json-fd %d --progress-fd %d ", pipejson[1], pipeprogress[1]);
+    fprintf(shell_script, "rapd.index %s --json --json-fd %d --progress-fd %d ",
+	    detector_arg, pipejson[1], pipeprogress[1]);
     fflush(shell_script);
 
     // Always need f1 but not always f2
