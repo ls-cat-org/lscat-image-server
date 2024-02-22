@@ -134,17 +134,23 @@ void *isWorker(void *voidp) {
         isIndex(wctx, &tc, job);
       } else if (strcasecmp("spots", job_type) == 0) {
         isSpots(wctx, &tc, job);
-      } else if (strcasecmp("rsync_host_test", job_type) == 0) {
-        isRsyncHostTest(wctx, &tc, job);
-      } else if (strcasecmp("rsync_connection_test", job_type) == 0) {
-        isRsyncConnectionTest2(wctx, &tc, job);
-      } else if (strcasecmp("local_dir_stats", job_type) == 0) {
-        isRsyncLocalDirStats(wctx, &tc, job);
-      } else if (strcasecmp("rsync_transfer", job_type) == 0) {
-        isRsyncTransfer(wctx, &tc, job);
+      } else if (strcasecmp("rsync_host_test", job_type) == 0 ||
+		 strcasecmp("rsync_connection_test", job_type) == 0 ||
+		 strcasecmp("local_dir_stats", job_type) == 0 ||
+		 strcasecmp("rsync_transfer", job_type) == 0) {
+	// Rsync-related jobs and any other discontinued message types are
+	// caught and handled here.
+	isLogging_err("%s: Obsolete job type '%s' in job '%s'\n",
+		      id, job_type, jobstr);
+        is_zmq_error_reply(NULL, 0, tc.rep,
+			   "%s: Obsolete job type '%s' in job '%s'",
+			   id, job_type, jobstr);
       } else {
-        isLogging_err("%s: Unknown job type '%s' in job '%s'\n", id, job_type, jobstr);
-        is_zmq_error_reply(NULL, 0, tc.rep, "%s: Unknown job type '%s' in job '%s'", id, job_type, jobstr);
+        isLogging_err("%s: Unknown job type '%s' in job '%s'\n",
+		      id, job_type, jobstr);
+        is_zmq_error_reply(NULL, 0, tc.rep,
+			   "%s: Unknown job type '%s' in job '%s'",
+			   id, job_type, jobstr);
       }
     }
     free(jobstr);
