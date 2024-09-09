@@ -1,9 +1,6 @@
 LS-CAT Image Server
 ===================
 
-@copyright 2017-2018 by Northwestern University.  All rights reserved.
-@author Keith Brister
-
 Overview
 --------
 
