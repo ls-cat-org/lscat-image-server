@@ -297,12 +297,6 @@ int main(int argc, char **argv) {
     exit (-1);
   }
 
-  //
-  // Restart any rsync processes that have been abandoned
-  //
-  isRsyncRecover();
-
-
   // No envelope messages to close yet
   //
   n_envelope_msgs = 0;
@@ -312,11 +306,6 @@ int main(int argc, char **argv) {
   //
   sigaction(SIGINT, &sa, NULL);
   while (1) {
-    //
-    // see if any restarted rsync processes have finished
-    //
-    isRsyncWaitpid();
-
     //
     // We are really just about servicing ZMQ sockets.  Similar to the
     // poll function for unix file descriptors we have a zmq poll
