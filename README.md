@@ -1,5 +1,30 @@
-LS-CAT Image Server
-===================
+(DEPRECATED) LS-CAT Image Server
+================================
+
+Quickstart (Ubuntu 22.04)
+-------------------------
+Before installation and deployment, please run the following commands to install and configure the Image Server's dependencies:
+```
+sudo apt install redis-server
+sudo systemctl enable redis-server
+sudo systemctl start redis-server
+sudo apt install libhdf5-dev libjansson-dev libhiredis-dev libzmq3-dev \
+  libbz2-dev libtiff-dev libjpeg-dev libturbojpeg-dev
+```
+
+After starting a local redis server and obtaining all dependencies, please run the following commands to build and install the Image Server:
+```
+git clone <this repo>
+cd <your clone>
+make
+sudo make install
+```
+
+To deploy the Image Server the way most LS-CAT members expect to use it, please run the following commands:
+```
+screen -DRR
+is
+```
 
 Overview
 --------
@@ -18,9 +43,9 @@ Here are the main parts:
    previously linked git repo) passes along the user
    requests to the image server.
 
-1. Directing requests to processes running under the correct UID/GID.
+2. Directing requests to processes running under the correct UID/GID.
 
-1. Performing the action and returning the result back up the chain.
+3. Performing the action and returning the result back up the chain.
 
 
 We'll go through each of these parts in greater deatil in the
