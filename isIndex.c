@@ -147,12 +147,16 @@ json_t *isIndexImages(redisContext *rrc, const char *progressPublisher, const ch
       isLogging_err("%s: could not open indexing_script: %s", id, strerror(errno));
       exit (-1);
     }
-    fprintf(shell_script, "#! /bin/bash\n");
+    fprintf(shell_script,
+	    "#! /bin/bash\n"
+	    "export PATH=/usr/local/rapd/bin:$PATH\n");
     if (detector_arg != NULL) {
-      fprintf(shell_script, "/usr/local/rapd/bin/rapd.index --json --json-fd %d --progress-fd %d --detector %s ",
+      fprintf(shell_script,
+	      "rapd.index --json --json-fd %d --progress-fd %d --detector %s ",
 	      pipejson[1], pipeprogress[1], detector_arg);
     } else {
-      fprintf(shell_script, "/usr/local/rapd/bin/rapd.index --json --json-fd %d --progress-fd %d ",
+      fprintf(shell_script,
+	      "rapd.index --json --json-fd %d --progress-fd %d ",
 	      pipejson[1], pipeprogress[1]);
     }
     fflush(shell_script);
