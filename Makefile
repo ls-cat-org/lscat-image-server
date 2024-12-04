@@ -18,6 +18,7 @@ docs:
 
 install:
 	install --mode=755 is /usr/local/bin
+	install --mode=644 ls-ee-contrabass-pubkey.pem /etc
 	install --mode=644 is.conf /etc/rsyslog.d
 	install --mode=644 is-dev.conf /etc/rsyslog.d
 	systemctl restart rsyslog.service

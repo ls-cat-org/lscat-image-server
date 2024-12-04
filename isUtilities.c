@@ -185,7 +185,7 @@ int verifyIsAuth( char *isAuth, char *isAuthSig_str) {
     return 0;
   }
 
-  fp = fopen("ls-ee-contrabass-pubkey.pem", "r");
+  fp = fopen("/etc/ls-ee-contrabass-pubkey.pem", "r");
   if (fp == NULL) {
     isLogging_err("%s: Could not open public key\n", id);
     exit (-1);
