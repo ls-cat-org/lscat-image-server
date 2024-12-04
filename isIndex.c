@@ -149,7 +149,7 @@ json_t *isIndexImages(redisContext *rrc, const char *progressPublisher, const ch
     }
     fprintf(shell_script,
 	    "#! /bin/bash\n"
-	    "export PATH=/usr/local/rapd/bin:$PATH\n");
+	    "export PATH=/pf/local/rapd/bin:$PATH\n");
     if (detector_arg != NULL) {
       fprintf(shell_script,
 	      "rapd.index --json --json-fd %d --progress-fd %d --detector %s ",
