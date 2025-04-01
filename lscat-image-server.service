@@ -1,0 +1,17 @@
+[Unit]
+Description=Crystallographic image processing for LS-CAT
+After=redis-server.target
+
+[Service]
+ExecStart=/usr/local/bin/is
+ExecStop=/usr/loca/bin/kill-is
+Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Restart=always
+RuntimeMaxSec=2h
+Type=exec
+User=root
+StandardOutput=file:/var/log/lscat/is.log
+StandardError=file:/var/log/lscat/is.log
+
+[Install]
+WantedBy=multi-user.target

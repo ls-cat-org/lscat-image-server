@@ -1,0 +1,25 @@
+#!/bin/bash
+script_pid=$!
+
+cleanup_child_pid() {
+    # Give the child process up to 3 seconds to finish its outstanding work and
+    # then 1 second to peacefully abort. If it still exists after attempting
+    # graceful termination, use SIGKILL.
+    sleep 3 && kill $1 && sleep 3
+    kill -0 $1 && kill -9 $1
+}
+
+for pid in $(ps -ef | grep -v "$script_pid" | awk '/ \/usr\/local\/bin\/is$/{print $2}'); do
+    # Give each child processes up to 3 seconds to finish its work.
+    cleanup_child_pid $pid >/dev/null 2>&1 &
+done
+wait
+
+# The children should have been cleaned up already, but this way of
+# searching for and killing pids will kill ALL image server instances and
+# their children in case someone spawned a conflicting image server
+# instance. 
+for pid in $(ps -ef | awk '/ \/usr\/local\/bin\/is$/{print $2}'); do
+    kill $pid && sleep 3
+    kill -0 $pid && kill -9 $pid
+done

@@ -3,7 +3,8 @@
 
 Quickstart (Ubuntu 22.04)
 -------------------------
-Before installation and deployment, please run the following commands to install and configure the Image Server's dependencies:
+Before installation and deployment, please run the following commands 
+to install and configure the Image Server's dependencies:
 ```
 sudo apt install redis-server
 sudo systemctl enable redis-server
@@ -12,19 +13,22 @@ sudo apt install libhdf5-dev libjansson-dev libhiredis-dev libzmq3-dev \
   libbz2-dev libtiff-dev libjpeg-dev libturbojpeg-dev
 ```
 
-After starting a local redis server and obtaining all dependencies, please run the following commands to build and install the Image Server:
+After starting a local redis server and obtaining all dependencies,
+please run the following commands to build, install, and run the Image Server:
 ```
 git clone <this repo>
 cd <your clone>
 make
 sudo make install
+systemctl enable --now lscat-image-server.service
 ```
 
-To deploy the Image Server the way most LS-CAT members expect to use it, please run the following commands:
+To monitor the activity of the image server, please tail the log as shown below:
 ```
-screen -DRR
-is
+tail -f /var/log/lscat/is.log
 ```
+
+Note that image server restarts itself every 2 hours. This is a workaround for the many bugs that Keith Brister left unfixed. This software is deprecated and subject to replacement in the near future.
 
 Overview
 --------

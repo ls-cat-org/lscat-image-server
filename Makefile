@@ -17,12 +17,15 @@ docs:
 	(cd docs/latex; make)
 
 install:
-	install --mode=755 is /usr/local/bin
-	install --mode=644 ls-ee-contrabass-pubkey.pem /etc
-	install --mode=644 is.conf /etc/rsyslog.d
-	install --mode=644 is-dev.conf /etc/rsyslog.d
+	install --mode=0644 lscat-image-server.service /lib/systemd/system
+	install --mode=0755 kill-is /usr/local/bin
+	install --mode=0755 is /usr/local/bin
+	install --mode=0644 ls-ee-contrabass-pubkey.pem /etc
+	install --mode=0644 is.conf /etc/rsyslog.d
+	install --mode=0644 is-dev.conf /etc/rsyslog.d
 	systemctl restart rsyslog.service
-	install --mode=644 is.logrotate /etc/logrotate.d/is
+	install --mode=0644 is.logrotate /etc/logrotate.d/is
+	@echo "catsok is installed, please run 'systemctl enable --now lscat-image-server.service' when you are ready to run it."
 
 isLogging.o: isLogging.c is.h Makefile
 	$(CC) $(CFLAGS) -c isLogging.c
