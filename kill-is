@@ -1,25 +1,26 @@
 #!/bin/bash
 script_pid=$!
 
-cleanup_child_pid() {
-    # Give the child process up to 3 seconds to finish its outstanding work and
-    # then 1 second to peacefully abort. If it still exists after attempting
-    # graceful termination, use SIGKILL.
-    sleep 3 && kill $1 && sleep 3
+terminate_worker() {
+    # The worker should not even exist anymore, so we only wait 1 second for it
+    # to respond to SIGINT before sending SIGKILL.
+    kill $1 && sleep 1
     kill -0 $1 && kill -9 $1
+    echo "Terminated worker process w/ pid $1"
 }
 
-for pid in $(ps -ef | grep -v "$script_pid" | awk '/ \/usr\/local\/bin\/is$/{print $2}'); do
-    # Give each child processes up to 3 seconds to finish its work.
-    cleanup_child_pid $pid >/dev/null 2>&1 &
-done
-wait
-
-# The children should have been cleaned up already, but this way of
-# searching for and killing pids will kill ALL image server instances and
-# their children in case someone spawned a conflicting image server
-# instance. 
-for pid in $(ps -ef | awk '/ \/usr\/local\/bin\/is$/{print $2}'); do
-    kill $pid && sleep 3
+# Terminate the parent first. There should only be one, but belt and suspenders.
+# Any workers that do not finish their work within 3 seconds will still be
+# lingering aroud.
+for pid in $(ps -ef | awk '/^root .* [0-9]+ .* 1 .* (\[|\/usr\/local\/bin\/)is\]?$/{print $2}'); do
+    kill $pid && sleep 5
     kill -0 $pid && kill -9 $pid
 done
+
+# Terminate the workers (child processes) next if any are still hanging around.
+# Killing the parent should have been sufficient, but a child process may hang
+# if something went wrong.
+for pid in $(ps -ef | awk '/(\[|\/usr\/local\/bin\/)is\]?$/{print $2}'); do
+    terminate_worker $pid >/dev/null 2>&1 &
+done
+wait
