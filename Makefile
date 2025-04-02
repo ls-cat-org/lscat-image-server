@@ -25,7 +25,7 @@ install:
 	install --mode=0644 is-dev.conf /etc/rsyslog.d
 	systemctl restart rsyslog.service
 	install --mode=0644 is.logrotate /etc/logrotate.d/is
-	@echo "catsok is installed, please run 'systemctl enable --now lscat-image-server.service' when you are ready to run it."
+	@echo "lscat-image-server is installed, please run 'systemctl enable --now lscat-image-server.service' when you are ready to run it."
 
 isLogging.o: isLogging.c is.h Makefile
 	$(CC) $(CFLAGS) -c isLogging.c

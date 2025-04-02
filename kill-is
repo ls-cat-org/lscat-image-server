@@ -10,7 +10,7 @@ terminate_worker() {
 }
 
 # Terminate the parent first. There should only be one, but belt and suspenders.
-# Any workers that do not finish their work within 3 seconds will still be
+# Any workers that do not finish their work within 5 seconds will still be
 # lingering aroud.
 for pid in $(ps -ef | awk '/^root .* [0-9]+ .* 1 .* (\[|\/usr\/local\/bin\/)is\]?$/{print $2}'); do
     kill $pid && sleep 5
