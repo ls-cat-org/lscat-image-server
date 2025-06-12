@@ -130,8 +130,6 @@ void isStartProcess(isProcessListType *p) {
   int child;                            // Our child's process id returned by fork
   struct passwd *pwds;                  // Calling user's passwd entry
   struct passwd *esaf_pwds;             // ESAF user's passwd entry
-  int uid;                              // Calling user's uid
-  int gid;                              // ESAF user's uid (which will be our gid)
   const char *userName;                 // Our user's name
   const char *homeDirectory;            // ESAF user's home directory
   int err;                              // misc error return code
@@ -146,11 +144,7 @@ void isStartProcess(isProcessListType *p) {
     return;
   }
 
-  uid = pwds->pw_uid;
-
   if (p->esaf > 40000) {
-    // We want to run with the UID of the calling user and the GID of the referenced ESAF
-    //
     snprintf(esafUser, sizeof(esafUser)-1, "e%d", p->esaf);
     esafUser[sizeof(esafUser)-1] = 0;
 
@@ -160,14 +154,12 @@ void isStartProcess(isProcessListType *p) {
       isLogging_err("%s: bad esaf user name '%s':%s\n", id, esafUser, strerror(errno));
       return;
     }
-    gid = esaf_pwds->pw_gid;
     homeDirectory = strdup(esaf_pwds->pw_dir);
   } else {
-    gid = pwds->pw_gid;
     homeDirectory = strdup(pwds->pw_dir);
   }
 
-  isLogging_info("%s: Starting sub process: uid=%d, gid=%d, dir: %s,  User: %s  ESAF: %d\n", id, uid, gid, homeDirectory, userName, p->esaf);
+  isLogging_info("%s: Starting sub process: uid=0, gid=0, dir: %s,  User: %s  ESAF: %d\n", id, homeDirectory, userName, p->esaf);
 
   errno = 0;
   child = fork();
@@ -186,21 +178,6 @@ void isStartProcess(isProcessListType *p) {
   //
   // In child
   //
-
-  errno = 0;
-  err = setgid(gid);
-  if (err != 0) {
-    isLogging_err("%s: Could not change gid to %d: %s\n", id, gid, strerror(errno));
-    _exit (-1);
-  }
-
-  errno = 0;
-  err = setuid(uid);
-  if (err != 0) {
-    isLogging_err("Could not change uid to %d: %s\n", uid, strerror(errno));
-    _exit (-1);
-  }
-
   errno = 0;
   err = chdir(homeDirectory);
   if (err != 0) {
