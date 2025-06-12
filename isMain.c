@@ -81,7 +81,6 @@ int main(int argc, char **argv) {
   redisContext *rcLocal;        // connection to our local redis (for storage)
   json_t *isAuth;               // JSON object with our user's permission
   char *isAuth_str;             // string version of isAuth as received from redis
-  char *isAuthSig;              // signature used to authenticate isAuth
   json_error_t jerr;            // error returned from most json_ routines
   redisReply *reply;            // reply received from redis
   redisReply *subreply;         // sub reply returned from redis
@@ -501,29 +500,9 @@ int main(int argc, char **argv) {
       }      
       isAuth_str = subreply->str;
 
-      subreply = reply->element[1];
-      if (subreply->type != REDIS_REPLY_STRING) {
-        isLogging_err("%s: isAuthSig reply is not a string, got type %d\n", id, subreply->type);
-        is_zmq_error_reply(envelope_msgs, n_envelope_msgs, err_dealer, "%s: Process %s is not authorized (3)", id, pid);
-        
-        json_decref(isRequest);
-        freeReplyObject(reply);
-        continue;
-      }      
-      isAuthSig = subreply->str;
-        
-      if (!verifyIsAuth( isAuth_str, isAuthSig)) {
-        isLogging_err("%s: Bad isAuth signature for pid %s: isAuth_str: '%s'\n", id, pid, isAuth_str);
-        is_zmq_error_reply(envelope_msgs, n_envelope_msgs, err_dealer, "%s: Process %s is not authorized (4)", id, pid);
-
-        json_decref(isRequest);
-        freeReplyObject(reply);
-        continue;
-      }      
-
       isAuth = json_loads(isAuth_str, 0, &jerr);
       if (isRequest == NULL) {
-        isLogging_err("%s: Failed to parse '%s': %s\n", id, subreply->str, jerr.text);
+        isLogging_err("%s: Failed to parse JSON for '%s': %s\n", id, isAuth_str, jerr.text);
         is_zmq_error_reply(envelope_msgs, n_envelope_msgs, err_dealer, "%s: Process %s is not authorized (5)", id, pid);
 
         json_decref(isRequest);
@@ -540,23 +519,6 @@ int main(int argc, char **argv) {
       }
 
       freeReplyObject(reply);
-
-      if (strcmp(pid, json_string_value(json_object_get(isAuth, "pid"))) != 0) {
-        isLogging_err("%s: pid from request does not match pid from isAuth: '%s' vs '%s'\n", id, pid, json_string_value(json_object_get(isAuth, "pid")));
-        is_zmq_error_reply(envelope_msgs, n_envelope_msgs, err_dealer, "%s: Process %s is not authorized (6)", id, pid);
-
-        json_decref(isRequest);
-        json_decref(isAuth);
-        continue;
-      }
-      if (!isEsafAllowed(isAuth, esaf)) {
-        isLogging_err("%s: user %s is not permitted to access esaf %d\n", id, json_string_value(json_object_get(isAuth, "uid")), esaf);
-        is_zmq_error_reply(envelope_msgs, n_envelope_msgs, err_dealer, "%s: Process %s is not authorized for esaf %d", id, pid, esaf);
-        
-        json_decref(isRequest);
-        json_decref(isAuth);
-        continue;
-      }
 
       pli = isRun(zctx, rc, isAuth, esaf, dev_mode);
     } else {

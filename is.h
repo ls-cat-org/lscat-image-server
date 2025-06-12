@@ -259,12 +259,10 @@ extern double get_double_from_json_object(const char *cid,  const json_t *j, con
 extern image_access_type isFindFile(const char *fn);
 extern image_file_type isFileType(const char *fn);
 extern int get_integer_from_json_object(const char *cid, json_t *j, char *key);
-extern int isEsafAllowed(json_t *isAuth, int esaf);
 extern int isH5GetData(isWorkerContext_t *wctx, const char *fn, isImageBufType **imbp);
 extern int isNProcesses();
 extern int isRayonixGetData(isWorkerContext_t *wctx, const char *fn, isImageBufType **imbp);
 extern int is_h5_error_handler(hid_t estack_id, void *dummy);
-extern int verifyIsAuth( char *isAuth, char *isAuthSig_str);
 extern isImageBufType *isGetImageBufFromKey(isWorkerContext_t *ibctx, redisContext *rc, char *key);
 extern isImageBufType *isGetRawImageBuf(isWorkerContext_t *ibctx, redisContext *rc, json_t *job);
 extern isImageBufType *isReduceImage(isWorkerContext_t *ibctx, redisContext *rc, json_t *job);

@@ -786,7 +786,6 @@ isImageBufType *isReduceImage(isWorkerContext_t *wctx, redisContext *rc, json_t 
   const char *fn;
   int frame;
   char *reducedKey;
-  int gid;
   int reducedKeyStrlen;
 
   int srcWidth;
@@ -846,15 +845,6 @@ isImageBufType *isReduceImage(isWorkerContext_t *wctx, redisContext *rc, json_t 
   // Reality check on frame number
   //
   frame = frame <= 0 ? 1 : frame;
-
-  gid = getegid();
-  //
-  // Reality check on gid
-  //
-  if (gid < 9000) {
-    isLogging_err("%s: Unlikely gid %d\n", id, gid);
-    return NULL;
-  }
 
   // Instead of calculating the exact string length we'll guess a
   // value that's too big.  We've not set an upper limit on the frame
