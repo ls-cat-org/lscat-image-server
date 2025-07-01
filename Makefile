@@ -17,7 +17,6 @@ docs:
 	(cd docs/latex; make)
 
 install:
-	install --mode=0644 lscat-image-server.service /lib/systemd/system
 	install --mode=0755 kill-is /usr/local/bin
 	install --mode=0755 is /usr/local/bin
 	install --mode=0644 ls-ee-contrabass-pubkey.pem /etc
@@ -26,6 +25,8 @@ install:
 	systemctl restart rsyslog.service
 	install --mode=0644 is.logrotate /etc/logrotate.d/is
 	@echo "lscat-image-server is installed, please run 'systemctl enable --now lscat-image-server.service' when you are ready to run it."
+	@echo "Please run the following command manually if you updated lscat-image-server.service:"
+	@echo "  install --mode=0644 lscat-image-server.service /lib/systemd/system"
 
 isLogging.o: isLogging.c is.h Makefile
 	$(CC) $(CFLAGS) -c isLogging.c
