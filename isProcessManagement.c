@@ -133,26 +133,29 @@ void isStartProcess(isProcessListType *p) {
   const char *homeDirectory;  // ESAF user's home directory
   char esafUser[16];          // Generated ESAF user name
 
-  if (p->esaf <= 0) {
-    isLogging_err("%s: invalid esaf '%d'\n", id, p->esaf);
-    return;
-  }
-  snprintf(esafUser, sizeof(esafUser)-1, "e%d", p->esaf);
-  esafUser[sizeof(esafUser)-1] = 0;
+  if (p->esaf > 0) {
+    snprintf(esafUser, sizeof(esafUser)-1, "e%d", p->esaf);
+    esafUser[sizeof(esafUser)-1] = 0;
 
-  errno = 0;
-  esaf_pwds = getpwnam(esafUser);
-  if (esaf_pwds == NULL) {
-    isLogging_err("%s: bad esaf user name '%s': %s\n", id, esafUser,
-		  errno == 0 ? "does not exist" : strerror(errno));
-    return;
+    errno = 0;
+    esaf_pwds = getpwnam(esafUser);
+    if (esaf_pwds == NULL) {
+      isLogging_err("%s: bad esaf user name '%s': %s\n", id, esafUser,
+		    errno == 0 ? "does not exist" : strerror(errno));
+      return;
+    }
+    uid = esaf_pwds->pw_uid;
+    gid = esaf_pwds->pw_gid;
+    homeDirectory = strdup(esaf_pwds->pw_dir);
+    isLogging_info("%s: Starting sub process: uid=%d, gid=%d, dir: %s, ESAF: %d\n",
+		   id, uid, gid, homeDirectory, p->esaf);
+  } else {
+    uid = 0;
+    gid = 0;
+    homeDirectory = NULL;
+    isLogging_info("%s: Starting sub process as root, no ESAF specified\n");
   }
-  uid = esaf_pwds->pw_uid;
-  gid = esaf_pwds->pw_gid;
-  homeDirectory = strdup(esaf_pwds->pw_dir);
-  isLogging_info("%s: Starting sub process: uid=%d, gid=%d, dir: %s, ESAF: %d\n",
-		 id, uid, gid, homeDirectory, p->esaf);
-
+  
   child = fork();
   if (child < 0) { // fork failed (parent side)
     isLogging_err("%s: Could not start sub process: %s\n", id, strerror(errno));
@@ -163,15 +166,15 @@ void isStartProcess(isProcessListType *p) {
     p->processID = child;
 
   } else { // fork succeeded (child side)
-    if (setgid(gid) < 0) {
+    if (gid && setgid(gid) < 0) {
       isLogging_err("%s: Child process could not set gid to %d: %s\n", id, gid, strerror(errno));
       _exit(-1);
     }
-    if (setuid(uid) < 0) {
+    if (uid && setuid(uid) < 0) {
       isLogging_err("%s: Child process could not set uid to %d: %s\n", id, uid, strerror(errno));
       _exit(-1);
     }
-    if (chdir(homeDirectory) < 0) {
+    if (homeDirectory && chdir(homeDirectory) < 0) {
       isLogging_err("%s: Could not change working directory to %s: %s\n", id, homeDirectory, strerror(errno));
       _exit(-1);
     }
