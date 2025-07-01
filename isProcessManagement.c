@@ -127,65 +127,58 @@ void isProcessListInit() {
  */
 void isStartProcess(isProcessListType *p) {
   static const char *id = FILEID "isStartProcess";
-  int child;                            // Our child's process id returned by fork
-  struct passwd *pwds;                  // Calling user's passwd entry
-  struct passwd *esaf_pwds;             // ESAF user's passwd entry
-  const char *userName;                 // Our user's name
-  const char *homeDirectory;            // ESAF user's home directory
-  int err;                              // misc error return code
-  char esafUser[16];                    // Generated ESAF user name
+  int child;                  // Our child's process id returned by fork
+  struct passwd *esaf_pwds;   // ESAF user's passwd entry
+  int uid, gid;               // The ESAF's uid and gid in LDAP, which the child proc runs as.
+  const char *homeDirectory;  // ESAF user's home directory
+  int err;                    // misc error return code
+  char esafUser[16];          // Generated ESAF user name
 
-  userName = json_string_value(json_object_get(p->isAuth, "uid"));
-
-  errno = 0;
-  pwds = getpwnam(userName);
-  if (pwds == NULL) {
-    isLogging_err("%s: getpwnam failed for user %s: %s\n", id, userName, strerror(errno));
+  if (p->esaf < 0) {
+    isLogging_err("%s: invalid esaf '%d'\n", id, p->esaf);
     return;
   }
-
-  if (p->esaf > 40000) {
-    snprintf(esafUser, sizeof(esafUser)-1, "e%d", p->esaf);
-    esafUser[sizeof(esafUser)-1] = 0;
-
-    errno = 0;
-    esaf_pwds = getpwnam(esafUser);
-    if (esaf_pwds == NULL) {
-      isLogging_err("%s: bad esaf user name '%s':%s\n", id, esafUser, strerror(errno));
-      return;
-    }
-    homeDirectory = strdup(esaf_pwds->pw_dir);
-  } else {
-    homeDirectory = strdup(pwds->pw_dir);
-  }
-
-  isLogging_info("%s: Starting sub process: uid=0, gid=0, dir: %s,  User: %s  ESAF: %d\n", id, homeDirectory, userName, p->esaf);
+  snprintf(esafUser, sizeof(esafUser)-1, "e%d", p->esaf);
+  esafUser[sizeof(esafUser)-1] = 0;
 
   errno = 0;
-  child = fork();
-  if (child == -1) {
-    isLogging_err("%s: Could not start sub process: %s\n", id, strerror(errno));
-    exit (-1);
+  esaf_pwds = getpwnam(esafUser);
+  if (esaf_pwds == NULL) {
+    isLogging_err("%s: bad esaf user name '%s': %s\n", id, esafUser,
+		  errno == 0 ? "does not exist" : strerror(errno));
+    return;
   }
-  if (child) {
-    //
-    // In parent.
-    //
+  uid = esaf_pwds->pw_uid;
+  gid = esaf_pwds->pw_gid;
+  homeDirectory = strdup(esaf_pwds->pw_dir);
+  isLogging_info("%s: Starting sub process: uid=%d, gid=%d, dir: %s, ESAF: %d\n",
+		 id, uid, gid, homeDirectory, p->esaf);
+
+  child = fork();
+  if (child < 0) { // fork failed (parent side)
+    isLogging_err("%s: Could not start sub process: %s\n", id, strerror(errno));
+    exit(-1);
+
+  } else if (child) { // fork succeeded (parent side)
     n_processes++;
     p->processID = child;
-    return;
-  }
-  //
-  // In child
-  //
-  errno = 0;
-  err = chdir(homeDirectory);
-  if (err != 0) {
-    isLogging_err("%s: Could not change working directory to %s: %s\n", id, homeDirectory, strerror(errno));
-    _exit (-1);
-  }
 
-  isSupervisor(p->key);
+  } else { // fork succeeded (child side)
+    if (setgid(gid) < 0) {
+      isLogging_err("%s: Child process could not set gid to %d: %s\n", id, gid, strerror(errno));
+      _exit(-1);
+    }
+    if (setuid(uid) < 0) {
+      isLogging_err("%s: Child process could not set uid to %d: %s\n", id, uid, strerror(errno));
+      _exit(-1);
+    }
+    if (chdir(homeDirectory) < 0) {
+      isLogging_err("%s: Could not change working directory to %s: %s\n", id, homeDirectory, strerror(errno));
+      _exit(-1);
+    }
+    isSupervisor(p->key);
+    
+  }
 }
 
 
