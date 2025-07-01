@@ -131,10 +131,9 @@ void isStartProcess(isProcessListType *p) {
   struct passwd *esaf_pwds;   // ESAF user's passwd entry
   int uid, gid;               // The ESAF's uid and gid in LDAP, which the child proc runs as.
   const char *homeDirectory;  // ESAF user's home directory
-  int err;                    // misc error return code
   char esafUser[16];          // Generated ESAF user name
 
-  if (p->esaf < 0) {
+  if (p->esaf <= 0) {
     isLogging_err("%s: invalid esaf '%d'\n", id, p->esaf);
     return;
   }
