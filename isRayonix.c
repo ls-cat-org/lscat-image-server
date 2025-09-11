@@ -306,7 +306,7 @@ json_t *isRayonixGetMeta( isWorkerContext_t *wctx, const char *fn) {
 
   rtn = json_object();
   if (rtn == NULL) {
-    isLogging_err("%s: Could not create return object\n", id);
+    isLogging_err("%s: Could not create return JSON object\n", id);
     return NULL;
   }
 
@@ -314,7 +314,8 @@ json_t *isRayonixGetMeta( isWorkerContext_t *wctx, const char *fn) {
   //
   f = fopen( fn, "r");
   if( f == NULL) {
-    isLogging_err("%s: marTiffRead failed to open file '%s'\n", id, fn);
+    isLogging_err("%s: fopen failed to open MarCCD image file '%s'\n", id, fn);
+    json_decref(rtn);
     return NULL;
   }
 
@@ -349,11 +350,11 @@ json_t *isRayonixGetMeta( isWorkerContext_t *wctx, const char *fn) {
   }
   set_json_object_string(id, rtn, "beamline", tmps);
 
-  set_json_object_real(id, rtn, "detector_distance", fh.xtal_to_detector/1000000.0);
+  set_json_object_real(id, rtn, "detector_distance", fh.xtal_to_detector/1000000.0); // um to m
   set_json_object_real(id, rtn, "rotationRange",     fh.rotation_range/1000.0);
   set_json_object_real(id, rtn, "startPhi",          fh.start_phi/1000.0);
   set_json_object_real(id, rtn, "photon_energy",     12398.4193 / fh.source_wavelength * 100000.0);
-  set_json_object_real(id, rtn, "wavelength",        fh.source_wavelength/100000.0);
+  set_json_object_real(id, rtn, "wavelength",        fh.source_wavelength/100000.0); // femtometers to angstroms
   set_json_object_real(id, rtn, "beam_center_x",     fh.beam_x/1000.0);
   set_json_object_real(id, rtn, "beam_center_y",     fh.beam_y/1000.0);
   set_json_object_real(id, rtn, "x_pixel_size",      fh.pixelsize_x/1e9);
@@ -391,7 +392,8 @@ json_t *isRayonixGetMeta( isWorkerContext_t *wctx, const char *fn) {
   //  is->b->h_meanValue             = fh.mean/1000.0;
   //  is->b->h_rmsValue              = fh.rms/1000.0;
   //  is->b->h_nSaturated            = fh.n_saturated;
-  
+
+  // Each MarCCD file contains only 1 image.
   set_json_object_integer(id, rtn, "first_frame", 1);
   set_json_object_integer(id, rtn, "last_frame",  1);
   set_json_object_string(id, rtn, "fn", fn);
@@ -426,7 +428,7 @@ void is_tiff_warning_handler(const char *module, const char *fmt, va_list arg_pt
  **
  ** @param[out] imb  Image buffer we'd like to fill 
  **
- ** @returns 0 on success
+ ** @returns 0 on success, -1 on failure
  */
 int isRayonixGetData( isWorkerContext_t *wctx, const char *fn, isImageBufType **imbp) {
   static const char *id = "marTiffGetData";
@@ -481,7 +483,8 @@ int isRayonixGetData( isWorkerContext_t *wctx, const char *fn, isImageBufType **
   buf  = malloc( buf_size);
   if( buf == NULL) {
     TIFFClose( tf);
-    isLogging_crit("%s: Out of memory.  malloc(%d) failed\n", id,buf_size);
+    isLogging_crit("%s: Out of memory.  malloc(%d) failed while processing '%s'\n",
+		   id, buf_size, fn);
     signew.sa_handler = SIG_DFL;
     sigaction( SIGBUS, &signew, NULL);
     exit (-1);
