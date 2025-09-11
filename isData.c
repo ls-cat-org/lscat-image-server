@@ -275,6 +275,8 @@ image_file_type isFileType(const char *fn) {
   int fd;
   int nbytes;
   unsigned int buf4;
+  int fn_len;
+  int tmp;
 
   errno = 0;
   fd = open(fn, O_RDONLY);
@@ -298,11 +300,28 @@ image_file_type isFileType(const char *fn) {
     return RAYONIX_BS;
   }
 
-  //
-  // H5 is easy
-  //
-  //
-  // Turn off HDF5 error reporting.  The routines already return error codes 
+  /*
+    For CBFs, we are content to check the file extension.
+    We could verify the first N characters of the file begins with:
+
+    ###_CRYSTALLOGRAPHIC_BINARY_FILE
+    
+    ... but the unlikelihood of something other than an image
+    ending in .cbf in one of our ESAF directories makes it a
+    low priority.
+  */
+  fn_len = (int)strlen(fn);
+  tmp = fn_len - 4;
+  if (strcmp(&(fn[tmp]), ".cbf")) {
+    return LSCAT_CBF;
+  }
+
+  /*
+    I assume H5 is computationally cheap enough to inspect.
+    I don't know why Keith felt the need to inspect the file contents,
+    as data directories can only contain images conforming to one of
+    our supported types.
+  */
   herr = H5Eset_auto2(H5E_DEFAULT, NULL, NULL);
   if (herr < 0) {
     isLogging_crit("%s: Could not turn off HDF5 error reporting\n", id);
@@ -887,7 +906,13 @@ isImageBufType *isGetRawImageBuf(isWorkerContext_t *wctx, redisContext *rc, json
     }
     err = isH5GetData(wctx, fn, &rtn);
     break;
-      
+  case LSCAT_CBF:
+    rtn->meta = isCbfGetMeta(wctx, fn);
+    if (!rtn->meta) {
+      break;
+    }
+    err = isCbfGetData(wctx, fn, &rtn);
+    break;
   case RAYONIX:
   case RAYONIX_BS:
     rtn->meta = isRayonixGetMeta(wctx, fn);

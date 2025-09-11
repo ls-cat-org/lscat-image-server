@@ -110,7 +110,14 @@ typedef enum {NOACCESS, READABLE, WRITABLE} image_access_type;
 /** The type of image we'll be trying to read.  Based on the file
  ** contents, not by the file extension.
  */
-typedef enum {UNKNOWN, BLANK, HDF5, RAYONIX, RAYONIX_BS} image_file_type;
+typedef enum {
+  UNKNOWN,
+  BLANK,
+  HDF5,
+  RAYONIX,
+  RAYONIX_BS,
+  LSCAT_CBF // NOTE: libcbf already defines "CBF" as a numeric constant
+} image_file_type;
 
 /** Definition of an ice ring                                                                           */
 typedef struct ice_ring_struct {
@@ -262,6 +269,7 @@ extern int get_integer_from_json_object(const char *cid, json_t *j, char *key);
 extern int isH5GetData(isWorkerContext_t *wctx, const char *fn, isImageBufType **imbp);
 extern int isNProcesses();
 extern int isRayonixGetData(isWorkerContext_t *wctx, const char *fn, isImageBufType **imbp);
+extern int isCbfGetData(isWorkerContext_t *wctx, const char *fn, isImageBufType **imbp);
 extern int is_h5_error_handler(hid_t estack_id, void *dummy);
 extern isImageBufType *isGetImageBufFromKey(isWorkerContext_t *ibctx, redisContext *rc, char *key);
 extern isImageBufType *isGetRawImageBuf(isWorkerContext_t *ibctx, redisContext *rc, json_t *job);
@@ -271,6 +279,7 @@ extern isProcessListType *isRun(void *zctx, redisContext *rc, json_t *isAuth, in
 extern isWorkerContext_t  *isDataInit(const char *key);
 extern json_t *isH5GetMeta(isWorkerContext_t *wctx, const char *fn);
 extern json_t *isRayonixGetMeta(isWorkerContext_t *wctx, const char *fn);
+extern json_t *isCbfGetMeta(isWorkerContext_t *wctx, const char *fn);
 extern void destroyImageBuffer(isWorkerContext_t *wctx, isImageBufType *p);
 extern void isDataDestroy(isWorkerContext_t *c);
 extern void isIndex( isWorkerContext_t *ibctx, isThreadContextType *tcp, json_t *job);
