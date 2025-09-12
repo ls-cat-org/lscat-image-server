@@ -74,7 +74,7 @@ isSubProcess.o: isSubProcess.c is.h Makefile
 	$(CC) $(CFLAGS) -c isSubProcess.c
 
 isConvertTest: isConvertTest.c is.h Makefile isConvert.o isUtilities.o isH5.o isRayonix.o isCbf.o isProcessManagement.o isWorker.o isData.o isReduceImage.o isJpeg.o isBitmapFont.o isIndex.o isSpots.o isLogging.o isSubProcess.o
-	$(CC) $(CFLAGS) isConvertTest.c -o isConvertTest isLogging.o isConvert.o isUtilities.o isH5.o isRayonix.o isCbf.o isProcessManagement.o isWorker.o isSubProcess.o isData.o isReduceImage.o isJpeg.o isIndex.o isSpots.o isBitmapFont.o -lhiredis -ljansson -lhdf5 -lcbf -ltiff -lcrypto -ljpeg -lm -lzmq -pthread
+	$(CC) $(CFLAGS) isConvertTest.c -o isConvertTest isLogging.o isConvert.o isUtilities.o isH5.o isRayonix.o isCbf.o isProcessManagement.o isWorker.o isSubProcess.o isData.o isReduceImage.o isJpeg.o isIndex.o isSpots.o isBitmapFont.o -lbsd -lhiredis -ljansson -lhdf5 -lcbf -ltiff -lcrypto -ljpeg -lm -lzmq -pthread
 
 is: isMain.c is.h Makefile isConvert.o isUtilities.o isH5.o isRayonix.o isCbf.o isProcessManagement.o isWorker.o isData.o isReduceImage.o isJpeg.o isBitmapFont.o isIndex.o isSpots.o isLogging.o isSubProcess.o
-	$(CC) $(CFLAGS) isMain.c -o is isLogging.o isConvert.o isUtilities.o isH5.o isRayonix.o isCbf.o isProcessManagement.o isWorker.o isSubProcess.o isData.o isReduceImage.o isJpeg.o isIndex.o isSpots.o isBitmapFont.o -lhiredis -ljansson -lhdf5 -lcbf -ltiff -lcrypto -ljpeg -lm -lzmq -pthread
+	$(CC) $(CFLAGS) isMain.c -o is isLogging.o isConvert.o isUtilities.o isH5.o isRayonix.o isCbf.o isProcessManagement.o isWorker.o isSubProcess.o isData.o isReduceImage.o isJpeg.o isIndex.o isSpots.o isBitmapFont.o -lbsd -lhiredis -ljansson -lhdf5 -lcbf -ltiff -lcrypto -ljpeg -lm -lzmq -pthread
