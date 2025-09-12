@@ -312,7 +312,7 @@ image_file_type isFileType(const char *fn) {
   */
   fn_len = (int)strlen(fn);
   tmp = fn_len - 4;
-  if (strcmp(&(fn[tmp]), ".cbf")) {
+  if (strcmp(&(fn[tmp]), ".cbf") == 0) {
     return LSCAT_CBF;
   }
 
