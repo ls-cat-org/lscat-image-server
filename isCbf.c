@@ -1,4 +1,5 @@
 #include <stdbool.h>
+#include <bsd/string.h> // strlcopy, strlcat
 #include <libgen.h>
 #include <cbflib/cbf.h>
 #include <cbflib/cbf_simple.h>
@@ -138,9 +139,11 @@ json_t* isCbfGetMeta(isWorkerContext_t *wctx, const char *fn) {
   cbf_handle cbf = 0;
   cbf_detector detr = 0;
   cbf_goniometer goni = 0;
-  
-  struct cbf_dims dims;
-  struct lscat_cbf_meta meta;
+
+  const int fn_buflen = strlen(fn) + 1;
+  char* fn_basename = alloca(fn_buflen);
+  strlcpy(fn_basename, fn, fn_buflen);
+  fn_basename = basename(fn_basename);
 
   rtn = json_object();
   if (rtn == NULL) {
@@ -179,12 +182,14 @@ json_t* isCbfGetMeta(isWorkerContext_t *wctx, const char *fn) {
     goto error_return;
   }
 
+  struct cbf_dims dims;
   memset(&dims, 0, sizeof(struct cbf_dims));
   cbf_get_integerarrayparameters_wdims_fs(cbf, &(dims.compression), &(dims.binary_id), &(dims.elsize),
 					  &(dims.elsigned), &(dims.elunsigned), &(dims.elements),
 					  &(dims.minelement), &(dims.maxelement), &(dims.byteorder),
 					  &(dims.dimfast), &(dims.dimmid), &(dims.dimslow), &(dims.padding));
-  
+
+  struct lscat_cbf_meta meta;
   memset(&meta, 0, sizeof(struct lscat_cbf_meta));
   cbf_get_pixel_size_fs(cbf, 0, 0, &(meta.x_pixel_size));
   cbf_get_pixel_size_fs(cbf, 0, 1, &(meta.y_pixel_size));
@@ -199,8 +204,8 @@ json_t* isCbfGetMeta(isWorkerContext_t *wctx, const char *fn) {
   meta_mutex_locked = true;
   {
     set_json_object_string(id, rtn, "fn", fn);
-    set_json_object_string(id, rtn, "filename", basename(fn));
-    set_json_object_string(id, rtn, "filepath", dirname(fn));
+    set_json_object_string(id, rtn, "filename", fn_basename);
+    set_json_object_string(id, rtn, "filepath", fn);
     set_json_object_string(id, rtn, "comment",  "LS-CAT APS Sector 21");
     
     // TODO: Get this from the CBF.
