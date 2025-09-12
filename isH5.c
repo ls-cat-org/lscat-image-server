@@ -368,12 +368,12 @@ json_t *isH5GetMeta(isWorkerContext_t *wctx, const char *fn) {
   }
   
   const char* dcu_version_str = json_string_value( json_object_get(dcu_version, json_convert_software_version.json_name) );
-  if (dcu_version_str != NULL && strcmp("1.8.0", dcu_version_str) == 0) {
-    properties = json_convert_array_1_8;
-    n_properties = json_convert_array_1_8_size;
-  } else {
+  if (dcu_version_str != NULL && strcmp("1.6.0", dcu_version_str) == 0) {
     properties = json_convert_array_1_6;
     n_properties = json_convert_array_1_6_size;
+  } else {
+    properties = json_convert_array_1_8;
+    n_properties = json_convert_array_1_8_size;
   }
   
   if (dcu_version != NULL) {

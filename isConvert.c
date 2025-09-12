@@ -53,7 +53,7 @@ const struct h5_json_property json_convert_array_1_8[] = {
   // Params new to v1.8
   
   {"/entry/definition",                                                           "definition"},
-  {"/entry/instrument/detector/detectorSpecific/type",                            "type"},
+  {"/entry/instrument/detector/type",                                             "type"},
   {"/entry/instrument/detector/distance",                                         "distance"},
   {"/entry/instrument/detector/goniometer/two_theta",                             "two_theta"},
   {"/entry/instrument/detector/goniometer/two_theta_end",                         "two_theta_end"},
@@ -75,7 +75,7 @@ const struct h5_json_property json_convert_array_1_8[] = {
   {"/entry/sample/goniometer/phi_range_average",   "phi_range_average"},
   {"/entry/sample/goniometer/phi_range_total",     "phi_range_total"},
   
-  {"/entry/instrument/detector/detectorSpecific/countrate_correction_lookuptable", "countrate_correction_lookuptable"},
+  {"/entry/instrument/detector/detectorSpecific/countrate_correction_lookup_table", "countrate_correction_lookuptable"},
   {"/entry/instrument/detector/detectorSpecific/countrate_correction_table",       "countrate_correction_table"},
   {"/entry/instrument/detector/module/data_origin",                                "data_origin"},
   {"/entry/instrument/detector/module/data_size",                                  "data_size"},
