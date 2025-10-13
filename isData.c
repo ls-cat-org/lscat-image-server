@@ -476,38 +476,20 @@ isImageBufType *createNewImageBuf(isWorkerContext_t *wctx, const char *key) {
   return rtn;
 }
 
-/** Look to see if the data are already available to us from either
- * the image buffer hash table or from redis.  We will wait for the
- * data to appear if another process already is processing this.  In
- * this case we'll grab the data from redis when it's ready and
- * rerturn it.
+/**
+ * Look to see if the data are already available to us from the image
+ * buffer hash table. We will wait for the data to appear if another
+ * process already is processing this.
  *
- *  When the data are availabe we'll return a read locked buffer.
- *  Otherwise, we'll returned with no data and a write locked buffer.
- *
- *  It is expected that if the caller has to go get the data
- *  themselves that they'll do the kindness of writing the data out to
- *  redis and add something to the list key-READY so that the
- *  processes can get back to work.
- *
+ *  When the data is availabe we'll return a read locked buffer.
+ *  Otherwise, we'll return a write locked buffer w/ blank data.
  */
-isImageBufType *isGetImageBufFromKey(isWorkerContext_t *wctx, redisContext *rc, char *key) {
+isImageBufType *isGetImageBufFromKey(isWorkerContext_t *wctx, char *key) {
   static const char *id = FILEID "isGetImageBufFromKey";
-  isImageBufType *rtn;          // This is our return value
-  redisReply *rr;               // our redis reply object pointer
-  redisReply *meta_rr;          // redis reply object perhaps with our metadata
-  redisReply *width_rr;
-  redisReply *height_rr;
-  redisReply *depth_rr;
-  redisReply *image_rr;         // redis reply object perhaps with our image data
-  redisReply *badpixels_rr;     // redis reply object perhaps with our bad pixel map
-  int need_to_read_data;        // non-zero when we are the first one asking for this data
+  isImageBufType *rtn = NULL; // This is our return value
   ENTRY item;
-  ENTRY *return_item;
-  int err;
-  json_error_t jerr;
-
-  rtn = NULL;
+  ENTRY *return_item = NULL;
+  int err = 0;
 
   pthread_mutex_lock(&wctx->ctxMutex);
 
@@ -520,325 +502,30 @@ isImageBufType *isGetImageBufFromKey(isWorkerContext_t *wctx, redisContext *rc, 
   }
   
   if (rtn != NULL) {
-
+    // Somebody else already prepared the data for us, put a read lock
+    // on it.
+    isLogging_debug("%s: found existing copy of image buf and metadata for %s.\n", id, key);
     assert(rtn->in_use >= 0);
-
-    rtn->in_use++;                              // flag to keep our buffer in scope while we need it
+    rtn->in_use++; // flag to keep our buffer in scope while we need it
     pthread_mutex_unlock(&wctx->ctxMutex);
     pthread_rwlock_rdlock(&rtn->buflock);
-    return rtn;
+  } else {  
+    //
+    // Create a new entry then read some data into it.  We still have
+    // bufMutex write locked: This is used to avoid contention with
+    // other writers as well as potential readers.  We'll grab the read
+    // lock on the buffer before releasing the context mutex.
+    //
+    isLogging_debug("%s: image buf and metadata for %s do not exist yet, this thread is about to prepare them.\n", id, key);
+    rtn = createNewImageBuf(wctx, key);
+    pthread_mutex_unlock(&wctx->ctxMutex); // We can now allow access to the other buffers
   }
-  
-  //
-  // Create a new entry then read some data into it.  We still have
-  // bufMutex write locked: This is used to avoid contention with
-  // other writers as well as potential readers.  We'll grab the read
-  // lock on the buffer before releasing the context mutex.
-  //
-  rtn = createNewImageBuf(wctx, key);
-  // buffer is write locked and in_use = 1
-
-  pthread_mutex_unlock(&wctx->ctxMutex);       // We can now allow access to the other buffers
-
-  #ifdef IS_IGNORE_REDIS_STORE
-  //
-  // Just return now if we have not found a buffer.  Our caller will
-  // fill.  Leave with buffer write locked and in_use non-zero
-  //
   return rtn;
-  #endif
-
-  //
-  // Three redis queries follow:
-  //  1) increment properties 'USERS' in for our key
-  //  2) Set an expiration time for the key
-  //  3) read data and meta properties
-  //
-  //  When the first query returns '1' then we know that the key did
-  //  not exist before and that we'll need to find (or calculate) the
-  //  data and then return it to the hash.
-  //
-  //  When the first query returns something greater than 1 then we'll
-  //  run a blocking query to wait for the data to be written.
-  //
-  //  NB: Possibly one or more of our co-threads are already waiting
-  //  for us to drop the write lock on the buffer before they go
-  //  ahead.  All this magic here is to block other processes from
-  //  redundantly processing the same data in the same way.
-  //
-
-  redisAppendCommand(rc, "HINCRBY %s USERS 1", key);
-  redisAppendCommand(rc, "EXPIRE %s %d", key, IS_REDIS_TTL);
-  redisAppendCommand(rc, "HMGET %s META WIDTH HEIGHT DEPTH DATA BADPIXELS", key);
-
-  //
-  // hincby reply: 1 means we are the first and should get the data,
-  // >1 means we should block until the data are first written by
-  // another process.
-  //
-  err = redisGetReply(rc, (void **)&rr);
-  if (err != REDIS_OK) {
-    isLogging_crit("%s: Redis failure (hincby): %s\n", id, rc->errstr);
-    exit (-1);
-  }
-
-  need_to_read_data = rr->integer == 1;
-  //isLogging_info("%s: users = %d  reply type: %d\n", id, (int)rr->integer, rr->type);
-
-  freeReplyObject(rr);
-
-  //
-  // expire reply: we don't need to do anything with this  err = redisGetReply(rc, &rr);
-  //
-  err = redisGetReply(rc, (void **)&rr);
-  if (err != REDIS_OK) {
-    isLogging_crit("%s: Redis failure (expire): %s\n", id, rc->errstr);
-    exit (-1);
-  }
-  freeReplyObject(rr);
-
-  //
-  // Try to get the data.  If there is nothing to get then either get
-  // it block until someone else gets it.
-  //
-  err = redisGetReply(rc, (void **)&rr);
-  if (err != REDIS_OK) {
-    isLogging_crit("%s: Redis failure (hmget): %s\n", id, rc->errstr);
-    exit (-1);
-  }
-  
-  //
-  // Here the reply is an array.  element[0] is the meta data (if any)
-  // and element[1] is the image data (if any)
-  //
-  meta_rr      = rr->element[0];
-  width_rr     = rr->element[1];
-  height_rr    = rr->element[2];
-  depth_rr     = rr->element[3];
-  image_rr     = rr->element[4];
-  badpixels_rr = rr->element[5];
-
-  rtn->meta = NULL;
-  if (meta_rr->type == REDIS_REPLY_STRING) {
-    pthread_mutex_lock(&wctx->metaMutex);
-    rtn->meta = json_loads(meta_rr->str, 0, &jerr);
-    pthread_mutex_unlock(&wctx->metaMutex);
-  }
-
-  if (image_rr->type == REDIS_REPLY_STRING) {
-    //
-    // We're all set. We'll free the redis object after we are done
-    // with the image.  We'll also exchange our write lock for a read
-    // lock.
-    rtn->rr  = rr;
-    rtn->buf = image_rr->str;
-    rtn->buf_size = image_rr->len;
-
-    rtn->buf_width  = atoi(width_rr->str);
-    rtn->buf_height = atoi(height_rr->str);
-    rtn->buf_depth  = atoi(depth_rr->str);
-
-    rtn->bad_pixel_map = NULL;
-    if (badpixels_rr->type == REDIS_REPLY_STRING) {
-      rtn->bad_pixel_map = badpixels_rr->str;
-    }
-
-    rtn->extra = NULL;
-
-    if (rtn->buf_size != rtn->buf_width * rtn->buf_height * rtn->buf_depth) {
-      isLogging_crit("%s: Bad buffer size.  Width: %d  Height: %d  Depth: %d  Size: %d\n", id, rtn->buf_width, rtn->buf_height, rtn->buf_depth, rtn->buf_size);
-      exit (-1);
-    }
-
-    pthread_rwlock_unlock(&rtn->buflock);
-    pthread_rwlock_rdlock(&rtn->buflock);
-
-    freeReplyObject(rr);
-    return rtn;
-  }
-  // OK, no data yet.
-  freeReplyObject(rr);
-
-  if (need_to_read_data) {
-    // Who ever called us will go ahead and fill the image data if we
-    // return a null buffer.
-    //
-    // In this case we hold on to the write lock (and a non-zero in_use)
-    //
-    return rtn;
-  }
-
-  // Now we just wait for the data to magically appear
-  //
-  // TODO: evaluate and perhaps implement a timeout with error recovery
-  //
-
-  rr = redisCommand(rc, "BRPOP %s-READY 0", key);
-  if (rr == NULL) {
-    isLogging_crit("%s: Redis error: %s\n", id, rc->errstr);
-    exit (-1);
-  }
-  if (rr->type == REDIS_REPLY_STRING && strcmp(rr->str, "error")==0) {
-    //
-    // Something bad happened to whoever tried to read the data file.
-    //
-    // TODO: Pass the error condition on to whoever called us cause as
-    // it is they'll just try reading the file too.
-    //
-    freeReplyObject(rr);
-    return rtn;
-  }
-
-  freeReplyObject(rr);
-
-  redisAppendCommand(rc, "EXPIRE %s %d", key, IS_REDIS_TTL);
-  redisAppendCommand(rc, "HMGET %s META WIDTH HEIGHT DEPTH DATA BADPIXELS", key); 
-
-  // Expire
-  err = redisGetReply(rc, (void **)&rr);
-  if (err != REDIS_OK) {
-    isLogging_crit("%s: Redis failure (expire): %s\n", id, rc->errstr);
-    exit (-1);
-  }
-  freeReplyObject(rr);
-
-  // Mget
-  err = redisGetReply(rc, (void **)&rr);
-  if (err != REDIS_OK) {
-    isLogging_crit("%s: Redis failure (mget): %s\n", id, rc->errstr);
-    exit (-1);
-  }
-
-  meta_rr      = rr->element[0];
-  width_rr     = rr->element[1];
-  height_rr    = rr->element[2];
-  depth_rr     = rr->element[3];
-  image_rr     = rr->element[4];
-  badpixels_rr = rr->element[5];
-
-  rtn->meta = NULL;
-  if (meta_rr->type == REDIS_REPLY_STRING) {
-    pthread_mutex_lock(&wctx->metaMutex);
-    rtn->meta = json_loads(meta_rr->str, 0, &jerr);
-    pthread_mutex_unlock(&wctx->metaMutex);
-  }
-
-
-  if (image_rr->type != REDIS_REPLY_STRING) {
-    //
-    // Perhaps the other process had a problem.  We'll just return as
-    // we are and let our caller deal with it.
-    //
-    freeReplyObject(rr);
-    return rtn;
-  }
-
-  //
-  // We're all set. We'll free the redis object after we are done
-  // with the image.  We'll also exchange our write lock for a read
-  // lock.
-  rtn->rr  = rr;
-  rtn->buf = image_rr->str;
-  rtn->buf_size = image_rr->len;
-  
-  rtn->buf_width  = atoi(width_rr->str);
-  rtn->buf_height = atoi(height_rr->str);
-  rtn->buf_depth  = atoi(depth_rr->str);
-  
-  rtn->bad_pixel_map = NULL;
-  if (badpixels_rr->type == REDIS_REPLY_STRING) {
-    rtn->bad_pixel_map = badpixels_rr->str;
-  }
-  
-  if (rtn->buf_size != rtn->buf_width * rtn->buf_height * rtn->buf_depth) {
-    isLogging_crit("%s: Bad buffer size.  Width: %d  Height: %d  Depth: %d  Size: %d\n", id, rtn->buf_width, rtn->buf_height, rtn->buf_depth, rtn->buf_size);
-    exit (-1);
-  }
-  pthread_rwlock_unlock(&rtn->buflock);
-  pthread_rwlock_rdlock(&rtn->buflock);
-  
-  return rtn;
-}
-
-/**  After we've read some data we'll place it in redis so that other
- *   processes can access it without having to read the original file
- *   and/or re-reduce it.
- */
-void isWriteImageBufToRedis(isWorkerContext_t *wctx, isImageBufType *imb, redisContext *rc) {
-  static const char *id = FILEID "isWriteImageBufToRedis";
-  redisReply *rr;
-  char *meta_str;
-  int err;
-  int i;
-  int n;
-
-  pthread_mutex_lock(&wctx->metaMutex);
-  meta_str = json_dumps(imb->meta, JSON_COMPACT | JSON_INDENT(0) | JSON_SORT_KEYS);
-  pthread_mutex_unlock(&wctx->metaMutex);
-
-  redisAppendCommand(rc, "HMSET %s META %s WIDTH %d HEIGHT %d DEPTH %d", imb->key, meta_str, imb->buf_width, imb->buf_height, imb->buf_depth);
-  redisAppendCommand(rc, "HSET %s DATA %b", imb->key, imb->buf, imb->buf_size);
-  if (imb->bad_pixel_map) {
-    redisAppendCommand(rc, "HSET %s BADPIXELS %b", imb->key, imb->bad_pixel_map, sizeof(uint32_t) * imb->buf_width * imb->buf_height);
-  }
-  redisAppendCommand(rc, "EXPIRE %s %d", imb->key, IS_REDIS_TTL);
-  redisAppendCommand(rc, "HGET %s USERS", imb->key);
-
-  // meta reply
-  err = redisGetReply(rc, (void **)&rr);
-  if (err != REDIS_OK) {
-    isLogging_crit("%s: Redis failure (hset meta): %s\n", id, rc->errstr);
-    exit (-1);
-  }
-  freeReplyObject(rr);
-
-  // data reply
-  err = redisGetReply(rc, (void **)&rr);
-  if (err != REDIS_OK) {
-    isLogging_crit("%s: Redis failure (hset data): %s\n", id, rc->errstr);
-    exit (-1);
-  }
-  freeReplyObject(rr);
-
-  // badpixels reply
-  if (imb->bad_pixel_map != NULL) {
-    err = redisGetReply(rc, (void **)&rr);
-    if (err != REDIS_OK) {
-      isLogging_crit("%s: Redis failure (hset badpixels): %s\n", id, rc->errstr);
-      exit (-1);
-    }
-    freeReplyObject(rr);
-  }    
-
-  // expire reply
-  err = redisGetReply(rc, (void **)&rr);
-  if (err != REDIS_OK) {
-    isLogging_crit("%s: Redis failure (hset expire): %s\n", id, rc->errstr);
-    exit (-1);
-  }
-  freeReplyObject(rr);
-
-  // users reply
-  err = redisGetReply(rc, (void **)&rr);
-  if (err != REDIS_OK) {
-    isLogging_crit("%s: Redis failure (hget users): %s\n", id, rc->errstr);
-    exit (-1);
-  }
-  n = rr->integer;
-  freeReplyObject(rr);
-  
-  //
-  // tell the processes awaiting notification it's time to get back to work
-  //
-  for (i=1; i<n; i++) {
-    rr = redisCommand(rc, "LPUSH %s-READY ok", imb->key);
-    freeReplyObject(rr);
-  }
 }
 
 /** Get the unreduced image
  */
-isImageBufType *isGetRawImageBuf(isWorkerContext_t *wctx, redisContext *rc, json_t *job) {
+isImageBufType *isGetRawImageBuf(isWorkerContext_t *wctx, json_t *job) {
   static const char *id = FILEID "isGetRawImageBuf";
   const char *fn = NULL;
   int frame      = -1;
@@ -888,7 +575,7 @@ isImageBufType *isGetRawImageBuf(isWorkerContext_t *wctx, redisContext *rc, json
   //
   // isLogging_info("%s: about to get image buffer from key %s\n", id, key);
 
-  rtn = isGetImageBufFromKey(wctx, rc, key);
+  rtn = isGetImageBufFromKey(wctx, key);
   rtn->frame = frame;
   if (rtn->buf != NULL) {
     isLogging_crit("%s: Found buffer for key %s\n", id, key);
@@ -897,9 +584,9 @@ isImageBufType *isGetRawImageBuf(isWorkerContext_t *wctx, redisContext *rc, json
   }
   free(key);
 
-  // I guess we didn't find our buffer in redis
-  //
-  // META does not exist or was never entered.  Re-read both meta and data.
+  // The image has not been processed for us yet.
+  // We need to fetch both the metadata and data.
+  // Do it as atomically as possible to avoid holding a lock forever.
   err = -1;
   ft = isFileType(fn);
   switch (ft) {
@@ -950,14 +637,6 @@ isImageBufType *isGetRawImageBuf(isWorkerContext_t *wctx, redisContext *rc, json
     isLogging_crit("%s: unknown file type '%d' for file %s\n", id, ft, fn);
     err = -1;
   }
-
-  #ifndef IS_IGNORE_REDIS_STORE
-  // TODO: Get rid of this.
-  // Keith never finished this, it has never run in production before.
-  if (err == 0) {
-    isWriteImageBufToRedis(wctx, &rtn, rc);
-  }
-  #endif
 
   if (err != 0) {
     pthread_rwlock_unlock(&rtn->buflock);

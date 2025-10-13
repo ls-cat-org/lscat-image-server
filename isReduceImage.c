@@ -775,7 +775,7 @@ void reduceImage32( isImageBufType *src, isImageBufType *dst, int x, int y, int 
  **
  **    read locked buffer
  */
-isImageBufType *isReduceImage(isWorkerContext_t *wctx, redisContext *rc, json_t *job) {
+isImageBufType *isReduceImage(isWorkerContext_t *wctx, json_t *job) {
   static const char *id = FILEID "isReducedImage";
   isImageBufType *rtn;
   isImageBufType *raw;
@@ -861,7 +861,7 @@ isImageBufType *isReduceImage(isWorkerContext_t *wctx, redisContext *rc, json_t 
            getegid(), fn, frame, zoom, segcol, segrow, dstWidth);
   reducedKey[reducedKeyStrlen] = 0;
  
-  rtn = isGetImageBufFromKey(wctx, rc, reducedKey);
+  rtn = isGetImageBufFromKey(wctx, reducedKey);
 
   if (rtn == NULL || rtn->buf != NULL) {
     //
@@ -878,7 +878,7 @@ isImageBufType *isReduceImage(isWorkerContext_t *wctx, redisContext *rc, json_t 
   //
   
   // Get the unreduced file
-  raw = isGetRawImageBuf(wctx, rc, job);
+  raw = isGetRawImageBuf(wctx, job);
   if (raw == NULL) {
     isLogging_err("%s: Failed to get raw data for %s\n", id, rtn->key);
     //
@@ -962,10 +962,6 @@ isImageBufType *isReduceImage(isWorkerContext_t *wctx, redisContext *rc, json_t 
   //
   pthread_rwlock_unlock(&rtn->buflock);
   pthread_rwlock_rdlock(&rtn->buflock);
-  //
-  // Let the other processes get started on this one too.
-  //
-  //isWriteImageBufToRedis(rtn, rc);
 
   free(reducedKey);
   return rtn;

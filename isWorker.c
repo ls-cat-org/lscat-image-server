@@ -37,8 +37,7 @@ void *isWorker(void *voidp) {
   int err;
   int socket_option;
 
-  // make gcc happy
-  wctx = voidp;
+  wctx = (isWorkerContext_t*)voidp;
 
   tc.rep = zmq_socket(wctx->zctx, ZMQ_REP);
   if (tc.rep == NULL) {
@@ -126,14 +125,15 @@ void *isWorker(void *voidp) {
       isLogging_err("%s: No type parameter in job %s\n", id, jobstr);
       is_zmq_error_reply(NULL, 0, tc.rep, "%s: No type parameter in job %s", id, jobstr);
     } else {
-      // Cheapo command parser.  Probably the best way to go considering
-      // the small number of commands we'll likely have to service.
+      // The string comparisons are done in order of most likely to
+      // least likely match. This is a reasonable algorithm for such
+      // a small command set.
       if (strcasecmp("jpeg", job_type) == 0) {
         isJpeg(wctx, &tc, job);
-      } else if (strcasecmp("index", job_type) == 0) {
-        isIndex(wctx, &tc, job);
       } else if (strcasecmp("spots", job_type) == 0) {
         isSpots(wctx, &tc, job);
+      } else if (strcasecmp("index", job_type) == 0) {
+        isIndex(wctx, &tc, job);
       } else if (strcasecmp("rsync_host_test", job_type) == 0 ||
 		 strcasecmp("rsync_connection_test", job_type) == 0 ||
 		 strcasecmp("local_dir_stats", job_type) == 0 ||

@@ -68,7 +68,7 @@ void isSpots(isWorkerContext_t *wctx, isThreadContextType *tcp, json_t *job) {
   set_json_object_real(id, job, "zoom", 1.0);
 
   // when isReduceImage returns a buffer it is read locked
-  imb = isReduceImage(wctx, tcp->rc, job);
+  imb = isReduceImage(wctx, job);
   if (imb == NULL) {
     char *tmps;
 
