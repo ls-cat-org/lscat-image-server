@@ -111,12 +111,13 @@ typedef enum {NOACCESS, READABLE, WRITABLE} image_access_type;
  ** contents, not by the file extension.
  */
 typedef enum {
-  UNKNOWN,
-  BLANK,
-  HDF5,
-  RAYONIX,
-  RAYONIX_BS,
-  LSCAT_CBF // NOTE: libcbf already defines "CBF" as a numeric constant
+  LSCAT_IMG_UNKNOWN,
+  LSCAT_IMG_BLANK,
+  LSCAT_IMG_NEXUSV1_HDF5,   // Dectris EIGER dataset
+  LSCAT_IMG_RAYONIX,      // MarCCD TIFF w/ special marccd metadata schema
+  LSCAT_IMG_RAYONIX_BS,   // DEFUNCT: synonymous w/ RAYONIX
+  LSCAT_IMG_GENERIC_CBF,  // NOTE: libcbf already defines "CBF" as a numeric constant
+  LSCAT_IMG_GENERIC_TIFF  // Generic TIFF, not necessarily marccd image.
 } image_file_type;
 
 /** Definition of an ice ring                                                                           */
@@ -259,72 +260,55 @@ struct h5_json_property {
   const char *json_name;    //!< JSON equivalent
 };
 
-
-
-extern char *file_name_component(const char *parent_id, const char *path);
-extern double get_double_from_json_object(const char *cid,  const json_t *j, const char *key);
-extern image_access_type isFindFile(const char *fn);
-extern image_file_type isFileType(const char *fn);
-extern int get_integer_from_json_object(const char *cid, json_t *j, char *key);
-extern int isH5GetData(isWorkerContext_t *wctx, const char *fn, isImageBufType **imbp);
-extern int isNProcesses();
-extern int isRayonixGetData(isWorkerContext_t *wctx, const char *fn, isImageBufType **imbp);
-extern int isCbfGetData(isWorkerContext_t *wctx, const char *fn, isImageBufType **imbp);
-extern int is_h5_error_handler(hid_t estack_id, void *dummy);
-extern isImageBufType *isGetImageBufFromKey(isWorkerContext_t *ibctx, redisContext *rc, char *key);
-extern isImageBufType *isGetRawImageBuf(isWorkerContext_t *ibctx, redisContext *rc, json_t *job);
-extern isImageBufType *isReduceImage(isWorkerContext_t *ibctx, redisContext *rc, json_t *job);
-extern isProcessListType *isFindProcess(const char *pid, int esaf);
-extern isProcessListType *isRun(void *zctx, redisContext *rc, json_t *isAuth, int esaf, int dev_mode);
-extern isWorkerContext_t  *isDataInit(const char *key);
-extern json_t *isH5GetMeta(isWorkerContext_t *wctx, const char *fn);
-extern json_t *isRayonixGetMeta(isWorkerContext_t *wctx, const char *fn);
-extern json_t *isCbfGetMeta(isWorkerContext_t *wctx, const char *fn);
-extern void destroyImageBuffer(isWorkerContext_t *wctx, isImageBufType *p);
-extern void isDataDestroy(isWorkerContext_t *c);
-extern void isIndex( isWorkerContext_t *ibctx, isThreadContextType *tcp, json_t *job);
-extern void isInit(int dev_mode);
-extern void isJpeg( isWorkerContext_t *ibctx, isThreadContextType *tcp, json_t *job);
-extern void isLogging_alert(char *fmt, ...);
-extern void isLogging_crit(char *fmt, ...);
-extern void isLogging_debug(char *fmt, ...);
-extern void isLogging_emerg(char *fmt, ...);
-extern void isLogging_err(char *fmt, ...);
-extern void isLogging_info(char *fmt, ...);
-extern void isLogging_init();
-extern void isLogging_notice(char *fmt, ...);
-extern void isLogging_warning(char *fmt, ...);
-extern void isProcessListInit();
-extern void isSpots( isWorkerContext_t *ibctx, isThreadContextType *tcp, json_t *job);
-extern void isSubProcess(const char *cid, isSubProcess_type *spt, pthread_mutex_t *mutex);
-extern void isSupervisor(const char *key);
-extern void isWriteImageBufToRedis(isWorkerContext_t *wctx, isImageBufType *imb, redisContext *rc);
-extern void is_zmq_error_reply(zmq_msg_t *msgs, int n_msgs, void *err_dealer, char *fmt, ...);
-extern void is_zmq_free_fn(void *data, void *hint);
-extern void set_json_object_float_array( const char *cid, json_t *j, const char *key, float *values, int n);
-extern void set_json_object_float_array_2d(const char *cid, json_t *j, const char *k, float *v, int rows, int cols);
-extern void set_json_object_integer(const char *cid, json_t *j, const char *key, int value);
-extern void set_json_object_real(const char *cid, json_t *j, const char *key, double value);
-extern void set_json_object_string(const char *cid, json_t *j, const char *key, const char *fmt, ...);
-extern zmq_pollitem_t *isGetZMQPollItems();
-extern zmq_pollitem_t *isRemakeZMQPollItems(void *parent_router, void *err_rep, void *err_dealer);
-
-// Get the software_version first so we can determine which params we have.
-extern const struct h5_json_property json_convert_software_version;
-
-/**
- * Our mapping between hdf5 file properties and our metadata object properties for 
- * datasets produced by the Eiger 2X 16M, and all other v1.8 DCUs.
- */
-extern const struct h5_json_property json_convert_array_1_8[];
-extern const size_t json_convert_array_1_8_size;
-
-/**
- * Our mapping between hdf5 file properties and our metadata object properties for 
- * datasets produced by the Eiger 9M, and all other v1.6 DCUs.
- */
-extern const struct h5_json_property json_convert_array_1_6[];
-extern const size_t json_convert_array_1_6_size;
+char *file_name_component(const char *parent_id, const char *path);
+double get_double_from_json_object(const char *cid,  const json_t *j, const char *key);
+image_access_type isFindFile(const char *fn);
+image_file_type isFileType(const char *fn);
+int get_integer_from_json_object(const char *cid, json_t *j, char *key);
+int isH5GetData(const char *fn, isImageBufType* imb);
+int isNProcesses();
+int isRayonixGetData(const char *fn, isImageBufType* imb);
+int isCbfGetData(const char *fn, isImageBufType* imb);
+int isTiffGetData(const char *fn, isImageBufType* imb);
+int is_h5_error_handler(hid_t estack_id, void *dummy);
+isImageBufType *isGetImageBufFromKey(isWorkerContext_t *ibctx, redisContext *rc, char *key);
+isImageBufType *isGetRawImageBuf(isWorkerContext_t *ibctx, redisContext *rc, json_t *job);
+isImageBufType *isReduceImage(isWorkerContext_t *ibctx, redisContext *rc, json_t *job);
+isProcessListType *isFindProcess(const char *pid, int esaf);
+isProcessListType *isRun(void *zctx, redisContext *rc, json_t *isAuth, int esaf, int dev_mode);
+isWorkerContext_t  *isDataInit(const char *key);
+json_t *isH5GetMeta(const char *fn);
+json_t *isRayonixGetMeta(const char *fn);
+json_t *isCbfGetMeta(const char *fn);
+json_t *isTiffGetMeta(const char *fn);
+void destroyImageBuffer(isWorkerContext_t *wctx, isImageBufType *p);
+void isDataDestroy(isWorkerContext_t *c);
+void isIndex( isWorkerContext_t *ibctx, isThreadContextType *tcp, json_t *job);
+void isInit(int dev_mode);
+void isJpeg( isWorkerContext_t *ibctx, isThreadContextType *tcp, json_t *job);
+void isLogging_alert(char *fmt, ...);
+void isLogging_crit(char *fmt, ...);
+void isLogging_debug(char *fmt, ...);
+void isLogging_emerg(char *fmt, ...);
+void isLogging_err(char *fmt, ...);
+void isLogging_info(char *fmt, ...);
+void isLogging_init();
+void isLogging_notice(char *fmt, ...);
+void isLogging_warning(char *fmt, ...);
+void isProcessListInit();
+void isSpots( isWorkerContext_t *ibctx, isThreadContextType *tcp, json_t *job);
+void isSubProcess(const char *cid, isSubProcess_type *spt, pthread_mutex_t *mutex);
+void isSupervisor(const char *key);
+void isWriteImageBufToRedis(isWorkerContext_t *wctx, isImageBufType *imb, redisContext *rc);
+void is_zmq_error_reply(zmq_msg_t *msgs, int n_msgs, void *err_dealer, char *fmt, ...);
+void is_zmq_free_fn(void *data, void *hint);
+void set_json_object_float_array( const char *cid, json_t *j, const char *key, float *values, int n);
+void set_json_object_float_array_2d(const char *cid, json_t *j, const char *k, float *v, int rows, int cols);
+void set_json_object_integer(const char *cid, json_t *j, const char *key, int value);
+void set_json_object_real(const char *cid, json_t *j, const char *key, double value);
+void set_json_object_string(const char *cid, json_t *j, const char *key, const char *fmt, ...);
+zmq_pollitem_t *isGetZMQPollItems();
+zmq_pollitem_t *isRemakeZMQPollItems(void *parent_router, void *err_rep, void *err_dealer);
 
 /**
  * Converts an HDF5 Dataset (a single property within a .h5 file) into a JSON object.
@@ -332,7 +316,7 @@ extern const size_t json_convert_array_1_6_size;
  * @param [in] property A mapping of an HDF5 dataset to a desired output JSON field name.
  * @return A jansson library-internal representation of a JSON object. Returns NULL on failure.
  */
-extern json_t* h5_property_to_json(hid_t file, const struct h5_json_property* property);
+json_t* h5_property_to_json(hid_t file, const struct h5_json_property* property);
 
 /**
  * Gets the Dectris DCU software version which produced the specified HDF5 archive (i.e. master file).
@@ -343,7 +327,7 @@ extern json_t* h5_property_to_json(hid_t file, const struct h5_json_property* pr
  * @warning  { This function creates a string using malloc(), but caller is responsible for calling
  *             free() when no longer needed. }
  */
-extern json_t* get_dcu_version(hid_t file);
+json_t* get_dcu_version(hid_t file);
 
 /**
    Gets the DCU version.
@@ -359,6 +343,6 @@ extern json_t* get_dcu_version(hid_t file);
    @note { This function is a hack to support indexing Eiger2 image sets, and all uses 
    of it are used to infer which of two detectors are used on-site. }
  */
-extern void get_dcu_version_str(const char* master_file, char* strbuf, size_t strbuf_size);
+void get_dcu_version_str(const char* master_file, char* strbuf, size_t strbuf_size);
 
 #endif // header guard

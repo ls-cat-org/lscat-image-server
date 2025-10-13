@@ -130,11 +130,10 @@ static void log_cbf_error(int errcode, const char* id, const char* cbf_func) {
  * @param[in] fn Our file name
  * @return JSON object containing metadata from a CBF file.
  */
-json_t* isCbfGetMeta(isWorkerContext_t *wctx, const char *fn) {
+json_t* isCbfGetMeta(const char *fn) {
   static const char *id = "isCbfGetMeta";
   json_t* rtn = NULL;
   int errcode = 0;
-  bool meta_mutex_locked = false;
   FILE* f = NULL;
   cbf_handle cbf = 0;
   cbf_detector detr = 0;
@@ -199,9 +198,6 @@ json_t* isCbfGetMeta(isWorkerContext_t *wctx, const char *fn) {
   cbf_get_beam_center_fs(detr, &(meta.beam_center_x), &(meta.beam_center_y), NULL, NULL);
   cbf_get_rotation_range(goni, 0, &(meta.omega_start), &(meta.omega_increment));
   
-
-  pthread_mutex_lock(&wctx->metaMutex);
-  meta_mutex_locked = true;
   {
     set_json_object_string(id, rtn, "fn", fn);
     set_json_object_string(id, rtn, "filename", fn_basename);
@@ -252,15 +248,12 @@ json_t* isCbfGetMeta(isWorkerContext_t *wctx, const char *fn) {
 
   // Cleanup. Reminder: libcbf owns the file handle created by fopen and
   // disposes of it for us.
-  pthread_mutex_unlock(&wctx->metaMutex);
-  meta_mutex_locked = false;
   cbf_free_goniometer(goni);
   cbf_free_detector(detr);
   cbf_free_handle(cbf);
   return rtn;
   
  error_return: // cleanup in reverse order
-  if (meta_mutex_locked) {pthread_mutex_unlock(&wctx->metaMutex);}
   if (goni) {cbf_free_goniometer(goni);}
   if (detr) {cbf_free_detector(detr);}
   if (cbf) {cbf_free_handle(cbf);}
@@ -278,15 +271,14 @@ json_t* isCbfGetMeta(isWorkerContext_t *wctx, const char *fn) {
  *
  * @return 0 on success, -1 on failure
  */
-int isCbfGetData(isWorkerContext_t *wctx, const char* fn, isImageBufType **imbp) {
+int isCbfGetData(const char* fn, isImageBufType* imb) {
   static const char *id = "isCbfGetData";
-  isImageBufType* imb = *imbp;
   int errcode = 0;
   FILE* f = NULL;
   cbf_handle cbf = 0;
   struct cbf_dims dims;
   int bufsize = 0;
-  
+
   f = fopen(fn, "r");
   if (f == NULL) {
     isLogging_err("%s: fopen failed to open CBF image file '%s'\n", id, fn);

@@ -3,6 +3,7 @@
  ** @author Keith Brister
  ** @brief Code to read Rayonix TIFF image files for the LS-CAT Image Server Version 2
  */
+#include <tiffio.h>
 #include "is.h"
 /*
 **
@@ -252,7 +253,7 @@ typedef struct frame_header_type {
  ** @returns string with our parameter's value or null if not found.  Be sure to free it later.
  **
  */
-char *parseComment( char const *cp, char const *needle) {
+static char *parseComment( char const *cp, char const *needle) {
   static const char *id = "parseComment";
   char *p;    // pointer into the comment string
   char *rtn;  // our return value
@@ -292,7 +293,7 @@ char *parseComment( char const *cp, char const *needle) {
  **
  ** @returns JSON object chock full of  our metadata.
  */
-json_t *isRayonixGetMeta( isWorkerContext_t *wctx, const char *fn) {
+json_t *isRayonixGetMeta(const char *fn) {
   static const char *id = "marTiffGetHeader";
   //
   // is is the image structure we are getting all our info from
@@ -324,7 +325,6 @@ json_t *isRayonixGetMeta( isWorkerContext_t *wctx, const char *fn) {
   fread( &fh, sizeof(frame_header), 1, f);
   fclose( f);
 
-  pthread_mutex_lock(&wctx->metaMutex);
   set_json_object_string(id, rtn, "filename", fh.filename);
   set_json_object_string(id, rtn, "filepath", fh.filepath);
   set_json_object_string(id, rtn, "comment",  fh.file_comment);
@@ -398,28 +398,17 @@ json_t *isRayonixGetMeta( isWorkerContext_t *wctx, const char *fn) {
   set_json_object_integer(id, rtn, "last_frame",  1);
   set_json_object_string(id, rtn, "fn", fn);
   set_json_object_integer(id, rtn, "frame", 1);
-  
-  pthread_mutex_unlock(&wctx->metaMutex);
 
   return rtn;
 }
 
-void is_tiff_error_handler(const char *module, const char *fmt, va_list arg_ptr) {
+static void is_tiff_error_handler(const char *module, const char *fmt, va_list arg_ptr) {
   //  va_list arg_ptr;
 
   if (module) {
     syslog(LOG_ERR, "%s", module);
   }
   vsyslog(LOG_ERR, fmt, arg_ptr);
-}
-
-void is_tiff_warning_handler(const char *module, const char *fmt, va_list arg_ptr) {
-  //  va_list arg_ptr;
-
-  if (module) {
-    syslog(LOG_WARNING, "%s", module);
-  }
-  vsyslog(LOG_WARNING, fmt, arg_ptr);
 }
 
 /** Retreive a buffer full of image
@@ -430,8 +419,8 @@ void is_tiff_warning_handler(const char *module, const char *fmt, va_list arg_pt
  **
  ** @returns 0 on success, -1 on failure
  */
-int isRayonixGetData( isWorkerContext_t *wctx, const char *fn, isImageBufType **imbp) {
-  static const char *id = "marTiffGetData";
+int isRayonixGetData(const char *fn, isImageBufType* imb) {
+  static const char *id = "isRayonixGetData";
 
   //
   // is is the image structure we are getting all our info from
@@ -447,13 +436,10 @@ int isRayonixGetData( isWorkerContext_t *wctx, const char *fn, isImageBufType **
   unsigned int inWidth;
   unsigned short *buf;
   int buf_size;
-  isImageBufType *imb;
 
   void sigbusHandler( int sig) {
     longjmp( jmpenv, 1);
   }
-
-  imb = *imbp;
 
   if( setjmp( jmpenv)) {
     isLogging_err("%s: Caught bus error, trying to recover\n", id);

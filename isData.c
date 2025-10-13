@@ -276,44 +276,50 @@ image_file_type isFileType(const char *fn) {
   int nbytes;
   unsigned int buf4;
   int fn_len;
-  int tmp;
 
   errno = 0;
   fd = open(fn, O_RDONLY);
   if (fd == -1) {
     isLogging_crit("%s: Could not open file '%s'  uid: %d  gid: %d  error: %s\n", id, fn, geteuid(), getegid(), strerror(errno));
-    return UNKNOWN;
+    return LSCAT_IMG_UNKNOWN;
   }
 
   nbytes = read(fd, (char *)&buf4, 4);
   close(fd);
   if (nbytes != 4) {
     isLogging_crit("%s: Could not read 4 bytes from file '%s'\n", id, fn);
-    return UNKNOWN;
+    return LSCAT_IMG_UNKNOWN;
   }
 
-  if (buf4 == 0x002a4949) {
-    return RAYONIX;
-  }
-
-  if (buf4 == 0x49492a00) {
-    return RAYONIX_BS;
-  }
+  // For most file types, we are content to save time
+  // and trust that the file extension is not misleading.
+  // LS-CAT ultimately controls what data lands and where
+  // it lands within its own compute/storage cluster.
+  fn_len = (int)strlen(fn);
+  if (strcmp(&(fn[(fn_len-4)]), ".tif") == 0
+      || strcmp(&(fn[(fn_len-5)]), ".tiff") == 0) {
+    return LSCAT_IMG_GENERIC_TIFF;
+  } else if (strcmp(&(fn[fn_len-4]), ".cbf") == 0) {
+    return LSCAT_IMG_GENERIC_CBF;
+  } else if (strcmp(&(fn[fn_len-3]), ".h5") == 0) {
+    return LSCAT_IMG_NEXUSV1_HDF5;
+  } else if (strcmp(&(fn[fn_len-5]), ".mccd") == 0) {
+    return LSCAT_IMG_RAYONIX;
+  } 
 
   /*
-    For CBFs, we are content to check the file extension.
-    We could verify the first N characters of the file begins with:
-
-    ###_CRYSTALLOGRAPHIC_BINARY_FILE
+    If there is no universally-recognizable file extension,
+    we are most likely using Keith's old naming scheme for
+    marCCD images.
     
-    ... but the unlikelihood of something other than an image
-    ending in .cbf in one of our ESAF directories makes it a
-    low priority.
+    Check 2 variants of the TIFF magic number:
+    49 49 2A 00 - "Intel byte ordering" (little endian)
+    4D 4D 2A 00 - "Motorola byte ordering" (big endian)
+    ... And check both byte orderings of each number.
   */
-  fn_len = (int)strlen(fn);
-  tmp = fn_len - 4;
-  if (strcmp(&(fn[tmp]), ".cbf") == 0) {
-    return LSCAT_CBF;
+  if (buf4 == 0x002a4949 || buf4 == 0x49492a00
+      || buf4 == 0x002a4d4d || buf4 == 0x4d4d2a00) {
+    return LSCAT_IMG_RAYONIX;
   }
 
   /*
@@ -335,11 +341,11 @@ image_file_type isFileType(const char *fn) {
   }
   
   if (ish5 > 0) {
-    return HDF5;
+    return LSCAT_IMG_NEXUSV1_HDF5;
   }
 
   isLogging_crit("%s: Unknown file type '%s' buf4 = %x08\n", id, fn, buf4);
-  return UNKNOWN;
+  return LSCAT_IMG_UNKNOWN;
 }
 
 /** Create new buffer
@@ -834,38 +840,36 @@ void isWriteImageBufToRedis(isWorkerContext_t *wctx, isImageBufType *imb, redisC
  */
 isImageBufType *isGetRawImageBuf(isWorkerContext_t *wctx, redisContext *rc, json_t *job) {
   static const char *id = FILEID "isGetRawImageBuf";
-  const char *fn;
-  int frame;
-  int frame_strlen;
-  isImageBufType *rtn;
-  int gid;
-  int gid_strlen;
-  char *key;
-  int key_strlen;
+  const char *fn = NULL;
+  int frame      = -1;
+  int frame_strlen = 0;
+  isImageBufType *rtn = NULL;
+  int gid        = -1;
+  int gid_strlen = 0;
+  char *key      = NULL;
+  int key_strlen = 0;
   image_file_type ft;
-  int err;
+  int err        = -1;
+  json_t* meta   = NULL;
 
   pthread_mutex_lock(&wctx->metaMutex);
   fn = json_string_value(json_object_get(job, "fn"));
+  frame = json_integer_value(json_object_get(job,"frame"));
   pthread_mutex_unlock(&wctx->metaMutex);
   if (fn == NULL || strlen(fn) == 0) {
     return NULL;
   }
-
-  gid = getegid();
-  if (gid <= 0) {
-    isLogging_crit("%s: Bad gid %d\n", id, gid);
-    return NULL;
-  }
-  gid_strlen = ((int)log10(gid)) + 1;
-
-  pthread_mutex_lock(&wctx->metaMutex);
-  frame = json_integer_value(json_object_get(job,"frame"));
-  pthread_mutex_unlock(&wctx->metaMutex);
+  
   if (frame <= 0) {
     frame = 1;
   }
 
+  gid = getegid();
+  if (gid < 0) {
+    isLogging_crit("%s: Bad gid %d\n", id, gid);
+    return NULL;
+  }
+  gid_strlen = ((int)log10(gid)) + 1;
   frame_strlen = ((int)log10(frame)) + 1;
 
   //           length of strings plus 2 slashes and one dash  
@@ -899,38 +903,59 @@ isImageBufType *isGetRawImageBuf(isWorkerContext_t *wctx, redisContext *rc, json
   err = -1;
   ft = isFileType(fn);
   switch (ft) {
-  case HDF5:
-    rtn->meta = isH5GetMeta(wctx, fn);
-    if (!rtn->meta) {
+  case LSCAT_IMG_NEXUSV1_HDF5:
+    meta = isH5GetMeta(fn);
+    if (!meta) {
       break;
     }
-    err = isH5GetData(wctx, fn, &rtn);
+    pthread_mutex_lock(&wctx->metaMutex);
+    rtn->meta = meta;
+    pthread_mutex_unlock(&wctx->metaMutex);
+    err = isH5GetData(fn, rtn);
     break;
-  case LSCAT_CBF:
-    rtn->meta = isCbfGetMeta(wctx, fn);
-    if (!rtn->meta) {
+  case LSCAT_IMG_GENERIC_CBF:
+    meta = isCbfGetMeta(fn);  
+    if (!meta) {
       break;
     }
-    err = isCbfGetData(wctx, fn, &rtn);
+    pthread_mutex_lock(&wctx->metaMutex);
+    rtn->meta = meta;
+    pthread_mutex_unlock(&wctx->metaMutex);
+    err = isCbfGetData(fn, rtn);
     break;
-  case RAYONIX:
-  case RAYONIX_BS:
-    rtn->meta = isRayonixGetMeta(wctx, fn);
-    if (!rtn->meta) {
+  case LSCAT_IMG_GENERIC_TIFF:
+    meta = isTiffGetMeta(fn);
+    if (!meta) {
       break;
     }
-    err = isRayonixGetData(wctx, fn, &rtn);
+    pthread_mutex_lock(&wctx->metaMutex);
+    rtn->meta = meta;
+    pthread_mutex_unlock(&wctx->metaMutex);
+    err = isTiffGetData(fn, rtn);
+    break;
+  case LSCAT_IMG_RAYONIX:
+  case LSCAT_IMG_RAYONIX_BS:
+    meta = isRayonixGetMeta(fn);
+    if (!meta) {
+      break;
+    }
+    pthread_mutex_lock(&wctx->metaMutex);
+    rtn->meta = meta;
+    pthread_mutex_unlock(&wctx->metaMutex);
+    err = isRayonixGetData(fn, rtn);
     break;
       
-  case UNKNOWN:
+  case LSCAT_IMG_UNKNOWN:
   default:
     isLogging_crit("%s: unknown file type '%d' for file %s\n", id, ft, fn);
     err = -1;
   }
 
   #ifndef IS_IGNORE_REDIS_STORE
+  // TODO: Get rid of this.
+  // Keith never finished this, it has never run in production before.
   if (err == 0) {
-    isWriteImageBufToRedis(wctx, rtn, rc);
+    isWriteImageBufToRedis(wctx, &rtn, rc);
   }
   #endif
 

@@ -7,142 +7,9 @@
 #include "is.h"
 
 // Get the software_version first so we can determine which params we have.
-const struct h5_json_property json_convert_software_version = {
+static const struct h5_json_property json_convert_software_version = {
   "/entry/instrument/detector/detectorSpecific/software_version", "software_version"};
 
-/**
- * Our mapping between hdf5 file properties and our metadata object properties for 
- * datasets produced by the Eiger 2X 16M, and all other v1.8 DCUs.
- */
-const struct h5_json_property json_convert_array_1_8[] = {
-  {"/entry/instrument/detector/detectorSpecific/software_version",                "software_version"},
-  {"/entry/instrument/detector/detectorSpecific/auto_summation",                  "auto_summation"},
-  {"/entry/instrument/detector/beam_center_x",                                    "beam_center_x"},
-  {"/entry/instrument/detector/beam_center_y",                                    "beam_center_y"},
-  {"/entry/instrument/detector/bit_depth_readout",                                "bit_depth_readout"},
-  {"/entry/instrument/detector/bit_depth_image",                                  "bit_depth_image"},
-  {"/entry/instrument/detector/count_time",                                       "count_time"},
-  {"/entry/instrument/detector/detectorSpecific/data_collection_date",            "data_collection_date"},
-  {"/entry/instrument/detector/description",                                      "description"},
-  {"/entry/instrument/detector/detector_distance",                                "detector_distance"},
-  {"/entry/instrument/detector/detector_number",                                  "detector_number"},
-  {"/entry/instrument/detector/geometry/orientation/value",                       "detector_orientation"},
-  {"/entry/instrument/detector/detector_readout_time",                            "detector_readout_time"},
-  {"/entry/instrument/detector/geometry/translation/distances",                   "detector_translation"},
-  {"/entry/instrument/detector/detectorSpecific/element",                         "element"},
-  {"/entry/instrument/detector/flatfield_correction_applied",                     "flatfield_correction_applied"},
-  {"/entry/instrument/detector/detectorSpecific/frame_count_time",                "frame_count_time"},
-  {"/entry/instrument/detector/detectorSpecific/frame_period",                    "frame_period"},
-  {"/entry/instrument/detector/frame_time",                                       "frame_time"},
-  {"/entry/instrument/detector/detectorSpecific/nimages",                         "nimages"},
-  {"/entry/instrument/detector/detectorSpecific/ntrigger",                        "ntrigger"},
-  {"/entry/instrument/detector/detectorSpecific/number_of_excluded_pixels",       "number_of_excluded_pixels"},
-  {"/entry/instrument/detector/detectorSpecific/photon_energy",                   "photon_energy"},
-  {"/entry/instrument/detector/pixel_mask_applied",                               "pixel_mask_applied"},
-  {"/entry/instrument/detector/sensor_material",                                  "sensor_material"},
-  {"/entry/instrument/detector/sensor_thickness",                                 "sensor_thickness"},
-  {"/entry/instrument/detector/threshold_energy",                                 "threshold_energy"},
-  {"/entry/instrument/detector/detectorSpecific/trigger_mode",                    "trigger_mode"},
-  {"/entry/instrument/detector/virtual_pixel_correction_applied",                 "virtual_pixel_correction_applied"},
-  {"/entry/instrument/beam/incident_wavelength",                                  "wavelength"},
-  {"/entry/instrument/detector/x_pixel_size",                                     "x_pixel_size"},
-  {"/entry/instrument/detector/detectorSpecific/x_pixels_in_detector",            "x_pixels_in_detector"},
-  {"/entry/instrument/detector/y_pixel_size",                                     "y_pixel_size"},
-  {"/entry/instrument/detector/detectorSpecific/y_pixels_in_detector",            "y_pixels_in_detector"},
-
-  // Params new to v1.8
-  
-  {"/entry/definition",                                                           "definition"},
-  {"/entry/instrument/detector/type",                                             "type"},
-  {"/entry/instrument/detector/distance",                                         "distance"},
-  {"/entry/instrument/detector/goniometer/two_theta",                             "two_theta"},
-  {"/entry/instrument/detector/goniometer/two_theta_end",                         "two_theta_end"},
-  {"/entry/instrument/detector/goniometer/two_theta_range_average",               "two_theta_range_average"},
-  {"/entry/instrument/detector/goniometer/two_theta_range_total",                 "two_theta_range_total"},
-  {"/entry/instrument/detector/saturation_value",                                 "saturation_value"},
-  {"/entry/instrument/detector/transformations/translation",                      "translation"},
-  
-  {"/entry/sample/goniometer/omega",               "omega"},
-  {"/entry/sample/goniometer/omega_end",           "omega_end"},
-  {"/entry/sample/goniometer/omega_range_average", "omega_range_average"},
-  {"/entry/sample/goniometer/omega_range_total",   "omega_range_total"},
-  {"/entry/sample/goniometer/chi",                 "chi"},
-  {"/entry/sample/goniometer/chi_end",             "chi_end"},
-  {"/entry/sample/goniometer/chi_range_average",   "chi_range_average"},
-  {"/entry/sample/goniometer/chi_range_total",     "chi_range_total"},
-  {"/entry/sample/goniometer/phi",                 "phi"},
-  {"/entry/sample/goniometer/phi_end",             "phi_end"},
-  {"/entry/sample/goniometer/phi_range_average",   "phi_range_average"},
-  {"/entry/sample/goniometer/phi_range_total",     "phi_range_total"},
-  
-  {"/entry/instrument/detector/detectorSpecific/countrate_correction_lookup_table", "countrate_correction_lookuptable"},
-  {"/entry/instrument/detector/detectorSpecific/countrate_correction_table",       "countrate_correction_table"},
-  {"/entry/instrument/detector/module/data_origin",                                "data_origin"},
-  {"/entry/instrument/detector/module/data_size",                                  "data_size"},
-  {"/entry/instrument/detector/module/fast_pixel_direction",                       "fast_pixel_direction"},
-  {"/entry/instrument/detector/module/module_index",                               "module_index"},
-  {"/entry/instrument/detector/module/module_offset",                              "module_offset"},
-  {"/entry/instrument/detector/module/slow_pixel_direction",                       "slow_pixel_direction"}
-};
-const size_t json_convert_array_1_8_size = sizeof(json_convert_array_1_8)/sizeof(struct h5_json_property);
-
-/**
- * Our mapping between hdf5 file properties and our metadata object properties for 
- * datasets produced by the Eiger 9M, and all other v1.6 DCUs.
- */
-const struct h5_json_property json_convert_array_1_6[] = {
-  {"/entry/instrument/detector/detectorSpecific/software_version",                 "software_version"},
-  { "/entry/instrument/detector/detectorSpecific/auto_summation",                  "auto_summation"},
-  { "/entry/instrument/detector/beam_center_x",                                    "beam_center_x"},
-  { "/entry/instrument/detector/beam_center_y",                                    "beam_center_y"},
-  { "/entry/instrument/detector/bit_depth_readout",                                "bit_depth_readout"},
-  { "/entry/instrument/detector/bit_depth_image",                                  "bit_depth_image"},
-  { "/entry/instrument/detector/detectorSpecific/calibration_type",                "calibration_type"},
-  { "/entry/sample/goniometer/chi_increment",                                      "chi_increment"},
-  { "/entry/sample/goniometer/chi_start",                                          "chi_start"},
-  { "/entry/instrument/detector/count_time",                                       "count_time"},
-  { "/entry/instrument/detector/detectorSpecific/countrate_correction_bunch_mode", "countrate_correction_bunch_mode"},
-  { "/entry/instrument/detector/detectorSpecific/data_collection_date",            "data_collection_date"},
-  { "/entry/instrument/detector/description",                                      "description"},
-  { "/entry/instrument/detector/detector_distance",                                "detector_distance"},
-  { "/entry/instrument/detector/detector_number",                                  "detector_number"},
-  { "/entry/instrument/detector/geometry/orientation/value",                       "detector_orientation"},
-  { "/entry/instrument/detector/detectorSpecific/detector_readout_period",         "detector_readout_period"},
-  { "/entry/instrument/detector/detector_readout_time",                            "detector_readout_time"},
-  { "/entry/instrument/detector/geometry/translation/distances",                   "detector_translation"},
-  { "/entry/instrument/detector/efficiency_correction_applied",                    "efficiency_correction_applied"},
-  { "/entry/instrument/detector/detectorSpecific/element",                         "element"},
-  { "/entry/instrument/detector/flatfield_correction_applied",                     "flatfield_correction_applied"},
-  { "/entry/instrument/detector/detectorSpecific/frame_count_time",                "frame_count_time"},
-  { "/entry/instrument/detector/detectorSpecific/frame_period",                    "frame_period"},
-  { "/entry/instrument/detector/frame_time",                                       "frame_time"},
-  { "/entry/sample/goniometer/kappa_increment",                                    "kappa_increment"},
-  { "/entry/sample/goniometer/kappa_start",                                        "kappa_start"},
-  { "/entry/instrument/detector/detectorSpecific/nframes_sum",                     "nframes_sum"},
-  { "/entry/instrument/detector/detectorSpecific/nimages",                         "nimages"},
-  { "/entry/instrument/detector/detectorSpecific/ntrigger",                        "ntrigger"},
-  { "/entry/instrument/detector/detectorSpecific/number_of_excluded_pixels",       "number_of_excluded_pixels"},
-  { "/entry/sample/goniometer/omega_increment",                                    "omega_increment"},
-  { "/entry/sample/goniometer/omega_start",                                        "omega_start"},
-  { "/entry/sample/goniometer/phi_increment",                                      "phi_increment"},
-  { "/entry/sample/goniometer/phi_start",                                          "phi_start"},
-  { "/entry/instrument/detector/detectorSpecific/photon_energy",                   "photon_energy"},
-  { "/entry/instrument/detector/pixel_mask_applied",                               "pixel_mask_applied"},
-  { "/entry/instrument/detector/sensor_material",                                  "sensor_material"},
-  { "/entry/instrument/detector/sensor_thickness",                                 "sensor_thickness"},
-  { "/entry/instrument/detector/detectorSpecific/summation_nimages",               "summation_nimages"},
-  { "/entry/instrument/detector/threshold_energy",                                 "threshold_energy"},
-  { "/entry/instrument/detector/detectorSpecific/trigger_mode",                    "trigger_mode"},
-  { "/entry/instrument/detector/goniometer/two_theta_increment",                   "two_theta_increment"},
-  { "/entry/instrument/detector/goniometer/two_theta_start",                       "two_theta_start"},
-  { "/entry/instrument/detector/virtual_pixel_correction_applied",                 "virtual_pixel_correction_applied"},
-  { "/entry/instrument/beam/incident_wavelength",                                  "wavelength"},
-  { "/entry/instrument/detector/x_pixel_size",                                     "x_pixel_size"},
-  { "/entry/instrument/detector/detectorSpecific/x_pixels_in_detector",            "x_pixels_in_detector"},
-  { "/entry/instrument/detector/y_pixel_size",                                     "y_pixel_size"},
-  { "/entry/instrument/detector/detectorSpecific/y_pixels_in_detector",            "y_pixels_in_detector"}
-};
-const size_t json_convert_array_1_6_size = sizeof(json_convert_array_1_6)/sizeof(struct h5_json_property);
 
 /**
  * 
@@ -592,11 +459,11 @@ void get_dcu_version_str(const char* master_file, char* strbuf, size_t strbuf_si
   json_t* json_obj     = NULL;
   const char* value    = NULL;
 
-  if (strbuf == NULL && strbuf_size <= 0) {
+  if (strbuf == NULL || strbuf_size <= 0) {
     ERRLOG("bad arguments, strbuf must be non-NULL and nonzero size");
     goto error;
   }
-  strbuf[0] = '\0';
+  memset(strbuf, 0, strbuf_size);
   
   master_file_id = H5Fopen(master_file, H5F_ACC_RDONLY, H5P_DEFAULT);
   if (master_file < 0) {
@@ -610,9 +477,9 @@ void get_dcu_version_str(const char* master_file, char* strbuf, size_t strbuf_si
     goto error;
   }
   
-  value = json_string_value( json_object_get(json_obj, json_convert_software_version.json_name) );
+  value = json_string_value( json_object_get(json_obj, "software_version") );
   if (value != NULL) {
-    strncpy(strbuf, value, strbuf_size);
+    strncpy(strbuf, value, strbuf_size-1);
   }
   
   json_decref(json_obj);
