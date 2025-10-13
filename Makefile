@@ -2,7 +2,7 @@
 CC=gcc
 CFLAGS=-std=gnu99 -g -Wall -D_GNU_SOURCE -I /usr/include/hdf5/serial -L /usr/lib/x86_64-linux-gnu/hdf5/serial -L /usr/local/lib64 -L /usr/local/lib -L/usr/lib
 
-all: is isConvertTest
+all: is
 
 distclean:
 	@rm -f *.o is
