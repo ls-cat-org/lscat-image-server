@@ -171,7 +171,7 @@ json_t* isCbfGetMeta(const char *fn) {
 
   errcode = cbf_require_reference_detector(cbf, &detr, 0);
   if (errcode != 0) {
-    log_cbf_error(errcode, id, "cbf_construct_detector");
+    log_cbf_error(errcode, id, "cbf_require_reference_detector");
     goto error_return;
   }
 
