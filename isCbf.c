@@ -144,6 +144,7 @@ json_t* isCbfGetMeta(const char *fn) {
   strlcpy(fn_basename, fn, fn_buflen);
   fn_basename = basename(fn_basename);
 
+  isLogging_info("%s: %s\n", id, fn);
   rtn = json_object();
   if (rtn == NULL) {
     isLogging_err("%s: Could not create return JSON object\n", id);
@@ -169,16 +170,26 @@ json_t* isCbfGetMeta(const char *fn) {
   }
   f = NULL; // libcbf now owns the file handle
 
+  struct lscat_cbf_meta meta;
+  memset(&meta, 0, sizeof(struct lscat_cbf_meta));
+
   errcode = cbf_require_reference_detector(cbf, &detr, 0);
   if (errcode != 0) {
     log_cbf_error(errcode, id, "cbf_require_reference_detector");
-    goto error_return;
+    meta.beam_center_x = 0;
+    meta.beam_center_y = 0;
+  } else {
+    cbf_get_detector_distance(detr, &(meta.detector_distance));
+    cbf_get_beam_center_fs(detr, &(meta.beam_center_x), &(meta.beam_center_y), NULL, NULL);
   }
 
   errcode = cbf_construct_goniometer(cbf, &goni);
   if (errcode != 0) {
     log_cbf_error(errcode, id, "cbf_construct_goniometer");
-    goto error_return;
+    meta.omega_start = 0;
+    meta.omega_increment = 0;
+  } else {
+    cbf_get_rotation_range(goni, 0, &(meta.omega_start), &(meta.omega_increment));
   }
 
   struct cbf_dims dims;
@@ -187,17 +198,11 @@ json_t* isCbfGetMeta(const char *fn) {
 					  &(dims.elsigned), &(dims.elunsigned), &(dims.elements),
 					  &(dims.minelement), &(dims.maxelement), &(dims.byteorder),
 					  &(dims.dimfast), &(dims.dimmid), &(dims.dimslow), &(dims.padding));
-
-  struct lscat_cbf_meta meta;
-  memset(&meta, 0, sizeof(struct lscat_cbf_meta));
+  
   cbf_get_pixel_size_fs(cbf, 0, 0, &(meta.x_pixel_size));
   cbf_get_pixel_size_fs(cbf, 0, 1, &(meta.y_pixel_size));
   cbf_get_wavelength(cbf, &(meta.wavelength));
   cbf_get_integration_time(cbf, 0, &(meta.integration_time));
-  cbf_get_detector_distance(detr, &(meta.detector_distance));
-  cbf_get_beam_center_fs(detr, &(meta.beam_center_x), &(meta.beam_center_y), NULL, NULL);
-  cbf_get_rotation_range(goni, 0, &(meta.omega_start), &(meta.omega_increment));
-  
   {
     set_json_object_string(id, rtn, "fn", fn);
     set_json_object_string(id, rtn, "filename", fn_basename);
@@ -222,23 +227,6 @@ json_t* isCbfGetMeta(const char *fn) {
     set_json_object_real(id, rtn, "x_pixel_size",      (meta.x_pixel_size)/1000); // mm to m
     set_json_object_real(id, rtn, "y_pixel_size",      (meta.y_pixel_size)/1000); // mm to m
     set_json_object_real(id, rtn, "integrationTime",   meta.integration_time); // seconds 
-
-    // TODO: libcbf doesn't have a smart way to get these.
-    // Check if Dectris stores it in the CBF, and if so retrieve it the hard way.
-    //set_json_object_real(id, rtn, "exposureTime",      -1.0);
-    //set_json_object_real(id, rtn, "readoutTime",       -1.0);
-
-    // Vestigial fields that are supposed to be computed by
-    // Keith's unfinished raster scanning implementation.
-    /*
-    int dummy_val = -1;
-    set_json_object_real(id, rtn, "meanValue",       dummy_val);
-    set_json_object_real(id, rtn, "rmsValue",        dummy_val);
-    set_json_object_integer(id, rtn, "nSaturated",   dummy_val);
-    set_json_object_integer(id, rtn, "saturation",   dummy_val);
-    set_json_object_integer(id, rtn, "minValue",     dummy_val);
-    set_json_object_integer(id, rtn, "maxValue",     dummy_val);
-    */
     
     // Each CBF produced by the Pilatus only contains 1 image.
     set_json_object_integer(id, rtn, "first_frame", 1);
@@ -248,8 +236,8 @@ json_t* isCbfGetMeta(const char *fn) {
 
   // Cleanup. Reminder: libcbf owns the file handle created by fopen and
   // disposes of it for us.
-  cbf_free_goniometer(goni);
-  cbf_free_detector(detr);
+  if (goni) {cbf_free_goniometer(goni);}
+  if (detr) {cbf_free_detector(detr);}
   cbf_free_handle(cbf);
   return rtn;
   
