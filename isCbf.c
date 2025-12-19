@@ -169,7 +169,7 @@ json_t* isCbfGetMeta(const char *fn) {
   }
   f = NULL; // libcbf now owns the file handle
 
-  errcode = cbf_construct_detector(cbf, &detr, 0);
+  errcode = cbf_require_reference_detector(cbf, &detr, 0);
   if (errcode != 0) {
     log_cbf_error(errcode, id, "cbf_construct_detector");
     goto error_return;
