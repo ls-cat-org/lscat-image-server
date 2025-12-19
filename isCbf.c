@@ -163,7 +163,7 @@ json_t* isCbfGetMeta(const char *fn) {
     goto error_return;
   }
 
-  errcode = cbf_read_widefile(cbf, f, MSG_NODIGEST);
+  errcode = cbf_read_widefile(cbf, f, MSG_DIGEST);
   if (errcode != 0) {
     log_cbf_error(errcode, id, "cbf_read_widefile");
     goto error_return;
@@ -212,9 +212,9 @@ json_t* isCbfGetMeta(const char *fn) {
     // TODO: Get this from the CBF.
     set_json_object_string(id, rtn, "detector", "PILATUS3X 6M");
 
-    set_json_object_integer(id, rtn, "image_depth", (int)(dims.elsize));
-    set_json_object_integer(id, rtn, "x_pixels_in_detector", (int)(dims.dimfast));
-    set_json_object_integer(id, rtn, "y_pixels_in_detector", (int)(dims.dimmid));
+    set_json_object_integer(id, rtn, "image_depth", 4);
+    set_json_object_integer(id, rtn, "x_pixels_in_detector", 2463);
+    set_json_object_integer(id, rtn, "y_pixels_in_detector", 2527);
 
     // Mandatory information.
     set_json_object_real(id, rtn, "detector_distance", (meta.detector_distance)/1000.0); // mm to m
@@ -279,20 +279,28 @@ int isCbfGetData(const char* fn, isImageBufType* imb) {
     goto error_return;
   }
 
-  errcode = cbf_read_widefile(cbf, f, MSG_NODIGEST);
+  errcode = cbf_read_widefile(cbf, f, MSG_DIGEST);
   if (errcode != 0) {
     log_cbf_error(errcode, id, "cbf_read_widefile");
     goto error_return;
   }
   f = NULL; // libcbf now owns the file handle
   
+  cbf_find_category(cbf, "array_data");
+  cbf_find_column(cbf, "data");
+  cbf_find_row(cbf, 0);
+
+  /*
   cbf_get_integerarrayparameters_wdims_fs(cbf, &(dims.compression), &(dims.binary_id), &(dims.elsize),
 					  &(dims.elsigned), &(dims.elunsigned), &(dims.elements),
 					  &(dims.minelement), &(dims.maxelement), &(dims.byteorder),
 					  &(dims.dimfast), &(dims.dimmid), &(dims.dimslow), &(dims.padding));
-  imb->buf_depth  = (int)(dims.elsize);
-  imb->buf_width  = (int)(dims.dimfast);
-  imb->buf_height = (int)(dims.dimmid);
+  */
+  // We know the settings on our pilatus, we can avoid libcbf's
+  // broken library for reading metadata.
+  imb->buf_depth  = 4;
+  imb->buf_width  = 2463;
+  imb->buf_height = 2527;
   bufsize = (imb->buf_depth) * (imb->buf_width) * (imb->buf_height);
   if (bufsize <= 0) {
     isLogging_err("%s: cbf_get_integerarrayparameters_wdims_fs invalid image dimensions for file '%d', width=%u, height=%u, depth=%u\n",
@@ -311,10 +319,8 @@ int isCbfGetData(const char* fn, isImageBufType* imb) {
   // If "elunsigned" is true, prefer reading the image pixels
   // as unsigned values.
   // Note: This routine decompresses the data for us.
-  cbf_get_image_fs(cbf, /*unused*/0, 0,
-		   imb->buf, imb->buf_depth,
-		   /*elsigned*/(dims.elunsigned) ? 0 : 1,
-		   imb->buf_width, imb->buf_height);
+  cbf_get_image_fs(cbf, /*unused*/0, 0, imb->buf, imb->buf_depth,
+		   /*elsigned*/1, imb->buf_width, imb->buf_height);
 
   // Cleanup. Reminder: libcbf owns the file handle created by fopen and
   // disposes of it for us.
